@@ -640,16 +640,16 @@ def load_config():
             logger.warning(f"Failed to load {config_file}: {e}. Falling back to environment variables.")
             config = {}
     
-    # Load from environment variables (with fallback to config.json values)
-    config.setdefault('gitlab_url', os.environ.get('GITLAB_URL', config.get('gitlab_url', 'https://gitlab.com')))
-    config.setdefault('api_token', os.environ.get('GITLAB_API_TOKEN', config.get('api_token', '')))
-    config.setdefault('group_ids', os.environ.get('GITLAB_GROUP_IDS', '').split(',') if os.environ.get('GITLAB_GROUP_IDS') else config.get('group_ids', []))
-    config.setdefault('project_ids', os.environ.get('GITLAB_PROJECT_IDS', '').split(',') if os.environ.get('GITLAB_PROJECT_IDS') else config.get('project_ids', []))
-    config.setdefault('port', int(os.environ.get('PORT', config.get('port', 8080))))
-    config.setdefault('cache_ttl_sec', int(os.environ.get('CACHE_TTL', config.get('cache_ttl_sec', 300))))
-    config.setdefault('poll_interval_sec', int(os.environ.get('POLL_INTERVAL', config.get('poll_interval_sec', 60))))
-    config.setdefault('per_page', int(os.environ.get('PER_PAGE', config.get('per_page', 100))))
-    config.setdefault('insecure_skip_verify', os.environ.get('INSECURE_SKIP_VERIFY', '').lower() in ['true', '1', 'yes'] or config.get('insecure_skip_verify', False))
+    # Environment variables take precedence over config.json
+    config['gitlab_url'] = os.environ.get('GITLAB_URL', config.get('gitlab_url', 'https://gitlab.com'))
+    config['api_token'] = os.environ.get('GITLAB_API_TOKEN', config.get('api_token', ''))
+    config['group_ids'] = os.environ.get('GITLAB_GROUP_IDS', '').split(',') if os.environ.get('GITLAB_GROUP_IDS') else config.get('group_ids', [])
+    config['project_ids'] = os.environ.get('GITLAB_PROJECT_IDS', '').split(',') if os.environ.get('GITLAB_PROJECT_IDS') else config.get('project_ids', [])
+    config['port'] = int(os.environ.get('PORT', config.get('port', 8080)))
+    config['cache_ttl_sec'] = int(os.environ.get('CACHE_TTL', config.get('cache_ttl_sec', 300)))
+    config['poll_interval_sec'] = int(os.environ.get('POLL_INTERVAL', config.get('poll_interval_sec', 60)))
+    config['per_page'] = int(os.environ.get('PER_PAGE', config.get('per_page', 100)))
+    config['insecure_skip_verify'] = os.environ.get('INSECURE_SKIP_VERIFY', '').lower() in ['true', '1', 'yes'] or config.get('insecure_skip_verify', False)
     
     # Filter out empty strings from group_ids and project_ids
     config['group_ids'] = [gid.strip() for gid in config['group_ids'] if gid.strip()]
