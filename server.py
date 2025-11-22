@@ -6,14 +6,12 @@ Python 3.10 stdlib-only implementation using http.server and urllib
 
 import json
 import os
-import sys
-import time
 import threading
 from datetime import datetime, timedelta
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 import logging
 
 # Configure logging
@@ -37,7 +35,7 @@ class GitLabAPIClient:
         url = f"{self.base_url}/{endpoint}"
         
         if params:
-            query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+            query_string = urlencode(params)
             url = f"{url}?{query_string}"
         
         headers = {
