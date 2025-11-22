@@ -426,7 +426,8 @@ class BackgroundPoller(threading.Thread):
                 if project is None:
                     # API error occurred
                     api_error = True
-                elif project:
+                else:
+                    # project is not None, add it (even if empty dict)
                     all_projects.append(project)
         
         # Fetch from groups if configured
@@ -438,9 +439,11 @@ class BackgroundPoller(threading.Thread):
                 if group_projects is None:
                     # API error occurred
                     api_error = True
-                elif group_projects:
-                    all_projects.extend(group_projects)
-                    logger.info(f"Added {len(group_projects)} projects from group {group_id}")
+                else:
+                    # group_projects is not None, extend (even if empty list)
+                    if group_projects:
+                        all_projects.extend(group_projects)
+                        logger.info(f"Added {len(group_projects)} projects from group {group_id}")
         
         # If no specific sources configured, fetch all accessible projects
         if not self.project_ids and not self.group_ids:
@@ -449,8 +452,10 @@ class BackgroundPoller(threading.Thread):
             if projects is None:
                 # API error occurred
                 api_error = True
-            elif projects:
-                all_projects = projects
+            else:
+                # projects is not None, use it (even if empty list)
+                if projects:
+                    all_projects = projects
         
         # Return None only if we had an API error
         # Return empty list if no projects were found (valid state)
@@ -463,8 +468,22 @@ class BackgroundPoller(threading.Thread):
         return all_projects
     
     def _fetch_pipelines(self):
-        """Fetch pipelines across projects"""
-        return self.gitlab_client.get_all_pipelines(per_page=50)
+        """Fetch pipelines across projects
+        
+        Returns:
+            list: List of pipelines (may be empty if no pipelines found)
+            None: Only if API error occurred
+        """
+        pipelines = self.gitlab_client.get_all_pipelines(per_page=50)
+        
+        # Return None for API errors, empty list is valid
+        if pipelines is None:
+            return None
+        
+        if not pipelines:
+            logger.debug("No pipelines found")
+        
+        return pipelines
     
     def _calculate_summary(self, projects, pipelines):
         """Calculate summary statistics"""
