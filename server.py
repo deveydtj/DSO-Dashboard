@@ -159,7 +159,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         cache_key = 'summary'
         cached_data = self.server.cache.get(cache_key)
         
-        if cached_data:
+        if cached_data is not None:
             self.send_json_response(cached_data)
             return
         
@@ -210,7 +210,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         cache_key = 'repos'
         cached_data = self.server.cache.get(cache_key)
         
-        if cached_data:
+        if cached_data is not None:
             self.send_json_response(cached_data)
             return
         
@@ -258,7 +258,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         cache_key = 'pipelines'
         cached_data = self.server.cache.get(cache_key)
         
-        if cached_data:
+        if cached_data is not None:
             self.send_json_response(cached_data)
             return
         

@@ -214,6 +214,7 @@ class DashboardApp {
         // Set up new timer
         this.updateTimer = setInterval(() => {
             console.log('🔄 Auto-refreshing data...');
+            this.checkHealth();  // Re-check health status
             this.loadAllData();
         }, this.refreshInterval);
     }
