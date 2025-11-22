@@ -39,7 +39,10 @@ class GitLabAPIClient:
         
         # Create SSL context for self-signed certificates
         if self.insecure_skip_verify:
-            self.ssl_context = ssl._create_unverified_context()
+            # Use public API for better stability
+            self.ssl_context = ssl.create_default_context()
+            self.ssl_context.check_hostname = False
+            self.ssl_context.verify_mode = ssl.CERT_NONE
             logger.warning("=" * 70)
             logger.warning("SSL VERIFICATION DISABLED - SECURITY RISK")
             logger.warning("Using unverified SSL context for self-signed certificates")
@@ -77,8 +80,14 @@ class GitLabAPIClient:
             if e.code == 429:
                 retry_after = e.headers.get('Retry-After')
                 if retry_after:
-                    wait_time = int(retry_after)
-                    logger.warning(f"Rate limited (429). Waiting {wait_time}s before retry...")
+                    try:
+                        wait_time = int(retry_after)
+                    except (ValueError, TypeError):
+                        # If Retry-After is not a valid integer, use exponential backoff
+                        wait_time = self.initial_retry_delay * (2 ** retry_count)
+                        logger.warning(f"Invalid Retry-After header: {retry_after}. Using exponential backoff: {wait_time}s")
+                    else:
+                        logger.warning(f"Rate limited (429). Waiting {wait_time}s before retry...")
                     time.sleep(wait_time)
                 else:
                     # Exponential backoff
@@ -123,8 +132,15 @@ class GitLabAPIClient:
     
     def _process_response(self, response):
         """Process HTTP response and extract data and headers"""
-        data = response.read().decode('utf-8')
-        parsed_data = json.loads(data)
+        try:
+            data = response.read().decode('utf-8')
+            parsed_data = json.loads(data)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON response: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error processing response: {e}")
+            return None
         
         # Extract pagination info from headers
         headers = response.headers
@@ -336,6 +352,7 @@ class BackgroundPoller(threading.Thread):
         self.group_ids = group_ids or []
         self.project_ids = project_ids or []
         self.running = True
+        self.stop_event = threading.Event()
         
     def run(self):
         """Main polling loop"""
@@ -348,9 +365,11 @@ class BackgroundPoller(threading.Thread):
                 logger.error(f"Error in background poller: {e}")
                 set_state_error(e)
             
-            # Sleep for poll interval
+            # Sleep for poll interval with interruptible wait
             logger.debug(f"Sleeping for {self.poll_interval}s before next poll")
-            time.sleep(self.poll_interval)
+            if self.stop_event.wait(timeout=self.poll_interval):
+                # Event was set, exit loop
+                break
     
     def poll_data(self):
         """Poll GitLab API and update STATE"""
@@ -441,6 +460,7 @@ class BackgroundPoller(threading.Thread):
         """Stop the polling thread"""
         logger.info("Stopping background poller")
         self.running = False
+        self.stop_event.set()  # Wake up the thread if it's sleeping
 
 
 class DashboardRequestHandler(SimpleHTTPRequestHandler):
@@ -633,6 +653,22 @@ class DashboardServer(HTTPServer):
         self.gitlab_client = gitlab_client
 
 
+def parse_int_config(value, default, name):
+    """Parse integer configuration value with error handling"""
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        logger.warning(f"Invalid {name} value: {value}. Using default: {default}")
+        return default
+
+
+def parse_csv_list(value):
+    """Parse comma-separated list from environment variable"""
+    if not value:
+        return []
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
 def load_config():
     """Load configuration from config.json or environment variables"""
     config = {}
@@ -653,12 +689,12 @@ def load_config():
     # Environment variables take precedence over config.json
     config['gitlab_url'] = os.environ.get('GITLAB_URL', config.get('gitlab_url', 'https://gitlab.com'))
     config['api_token'] = os.environ.get('GITLAB_API_TOKEN', config.get('api_token', ''))
-    config['group_ids'] = os.environ.get('GITLAB_GROUP_IDS', '').split(',') if os.environ.get('GITLAB_GROUP_IDS') else config.get('group_ids', [])
-    config['project_ids'] = os.environ.get('GITLAB_PROJECT_IDS', '').split(',') if os.environ.get('GITLAB_PROJECT_IDS') else config.get('project_ids', [])
-    config['port'] = int(os.environ.get('PORT', config.get('port', 8080)))
-    config['cache_ttl_sec'] = int(os.environ.get('CACHE_TTL', config.get('cache_ttl_sec', 300)))
-    config['poll_interval_sec'] = int(os.environ.get('POLL_INTERVAL', config.get('poll_interval_sec', 60)))
-    config['per_page'] = int(os.environ.get('PER_PAGE', config.get('per_page', 100)))
+    config['group_ids'] = parse_csv_list(os.environ.get('GITLAB_GROUP_IDS', '')) or config.get('group_ids', [])
+    config['project_ids'] = parse_csv_list(os.environ.get('GITLAB_PROJECT_IDS', '')) or config.get('project_ids', [])
+    config['port'] = parse_int_config(os.environ.get('PORT'), config.get('port', 8080), 'PORT')
+    config['cache_ttl_sec'] = parse_int_config(os.environ.get('CACHE_TTL'), config.get('cache_ttl_sec', 300), 'CACHE_TTL')
+    config['poll_interval_sec'] = parse_int_config(os.environ.get('POLL_INTERVAL'), config.get('poll_interval_sec', 60), 'POLL_INTERVAL')
+    config['per_page'] = parse_int_config(os.environ.get('PER_PAGE'), config.get('per_page', 100), 'PER_PAGE')
     config['insecure_skip_verify'] = os.environ.get('INSECURE_SKIP_VERIFY', '').lower() in ['true', '1', 'yes'] or config.get('insecure_skip_verify', False)
     
     # Filter out empty strings from group_ids and project_ids
