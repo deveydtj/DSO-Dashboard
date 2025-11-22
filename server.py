@@ -606,11 +606,19 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         try:
             status_info = get_state_status()
             
+            # Safe handling of last_updated
+            last_poll = None
+            if status_info['last_updated']:
+                if isinstance(status_info['last_updated'], datetime):
+                    last_poll = status_info['last_updated'].isoformat()
+                else:
+                    last_poll = str(status_info['last_updated'])
+            
             health = {
                 'status': 'healthy' if status_info['status'] in ['ONLINE', 'INITIALIZING'] else 'unhealthy',
                 'backend_status': status_info['status'],
                 'timestamp': datetime.now().isoformat(),
-                'last_poll': status_info['last_updated'].isoformat() if status_info['last_updated'] else None,
+                'last_poll': last_poll,
                 'error': status_info['error']
             }
             
@@ -697,9 +705,11 @@ def load_config():
     config['per_page'] = parse_int_config(os.environ.get('PER_PAGE'), config.get('per_page', 100), 'PER_PAGE')
     config['insecure_skip_verify'] = os.environ.get('INSECURE_SKIP_VERIFY', '').lower() in ['true', '1', 'yes'] or config.get('insecure_skip_verify', False)
     
-    # Filter out empty strings from group_ids and project_ids
-    config['group_ids'] = [gid.strip() for gid in config['group_ids'] if gid.strip()]
-    config['project_ids'] = [pid.strip() for pid in config['project_ids'] if pid.strip()]
+    # Ensure lists are clean (filter config.json values that might have empty strings)
+    if isinstance(config['group_ids'], list):
+        config['group_ids'] = [gid.strip() for gid in config['group_ids'] if gid and str(gid).strip()]
+    if isinstance(config['project_ids'], list):
+        config['project_ids'] = [pid.strip() for pid in config['project_ids'] if pid and str(pid).strip()]
     
     # Validate required fields
     if not config['api_token']:
@@ -758,6 +768,9 @@ def main():
     except KeyboardInterrupt:
         logger.info("\nShutting down server...")
         poller.stop()
+        poller.join(timeout=5)  # Wait for poller thread to finish
+        if poller.is_alive():
+            logger.warning("Poller thread did not stop cleanly")
         httpd.shutdown()
         logger.info("Server stopped.")
 
