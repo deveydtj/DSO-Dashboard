@@ -23,6 +23,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Pipeline fetching configuration constants
+MAX_PROJECTS_FOR_PIPELINES = 20  # Max projects to fetch pipelines from
+PIPELINES_PER_PROJECT = 10       # Pipelines to fetch per project
+MAX_TOTAL_PIPELINES = 50         # Max total pipelines to return
+
 
 class GitLabAPIClient:
     """GitLab API client using urllib with retry, rate limiting, and pagination support"""
@@ -484,23 +489,22 @@ class BackgroundPoller(threading.Thread):
         if projects:
             logger.info(f"Fetching pipelines for {len(projects)} configured projects")
             all_pipelines = []
-            api_error = False
+            api_errors = 0
             
             # Limit to reasonable number of projects to avoid too many API calls
-            # Fetch from up to 20 projects for good coverage
-            projects_to_check = projects[:20]
+            projects_to_check = projects[:MAX_PROJECTS_FOR_PIPELINES]
             
             for project in projects_to_check:
                 project_id = project.get('id')
                 project_name = project.get('name', f'Project {project_id}')
                 
-                # Fetch recent pipelines for this project (last 10)
-                pipelines = self.gitlab_client.get_pipelines(project_id, per_page=10)
+                # Fetch recent pipelines for this project
+                pipelines = self.gitlab_client.get_pipelines(project_id, per_page=PIPELINES_PER_PROJECT)
                 
                 if pipelines is None:
                     # API error occurred
                     logger.warning(f"Failed to fetch pipelines for project {project_name} (ID: {project_id})")
-                    api_error = True
+                    api_errors += 1
                 elif pipelines:
                     # Add project info to each pipeline
                     for pipeline in pipelines:
@@ -508,14 +512,17 @@ class BackgroundPoller(threading.Thread):
                         pipeline['project_id'] = project_id
                         all_pipelines.append(pipeline)
             
-            # Return None only if we had API errors
-            if api_error and not all_pipelines:
-                # All fetches failed
-                return None
+            # Handle partial failures
+            if api_errors > 0:
+                if all_pipelines:
+                    logger.warning(f"Partial pipeline fetch: {api_errors} projects failed, but got {len(all_pipelines)} pipelines from others")
+                else:
+                    logger.error("All pipeline fetches failed")
+                    return None
             
-            # Sort by created_at descending and limit to 50 most recent
+            # Sort by created_at descending and limit to max
             all_pipelines.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-            result = all_pipelines[:50]
+            result = all_pipelines[:MAX_TOTAL_PIPELINES]
             
             if not result:
                 logger.info("No pipelines found in configured projects")
@@ -524,7 +531,7 @@ class BackgroundPoller(threading.Thread):
         else:
             # Fallback to arbitrary membership sample if no projects configured
             logger.info("No projects provided, using membership sample for pipelines")
-            pipelines = self.gitlab_client.get_all_pipelines(per_page=50)
+            pipelines = self.gitlab_client.get_all_pipelines(per_page=MAX_TOTAL_PIPELINES)
             
             # Return None for API errors, empty list is valid
             if pipelines is None:
