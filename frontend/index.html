@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitLab DSO Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1 class="header-title">🚀 GitLab DSO Dashboard</h1>
+            <div class="header-info">
+                <span class="status-indicator" id="statusIndicator">●</span>
+                <span id="lastUpdated">Last updated: --</span>
+            </div>
+        </header>
+
+        <!-- Summary KPIs -->
+        <section class="kpi-section">
+            <div class="kpi-card">
+                <div class="kpi-icon">📦</div>
+                <div class="kpi-content">
+                    <div class="kpi-value" id="totalRepos">--</div>
+                    <div class="kpi-label">Total Repositories</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">✅</div>
+                <div class="kpi-content">
+                    <div class="kpi-value" id="successPipelines">--</div>
+                    <div class="kpi-label">Successful Pipelines</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">❌</div>
+                <div class="kpi-content">
+                    <div class="kpi-value" id="failedPipelines">--</div>
+                    <div class="kpi-label">Failed Pipelines</div>
+                </div>
+            </div>
+
+            <div class="kpi-card">
+                <div class="kpi-icon">🔄</div>
+                <div class="kpi-content">
+                    <div class="kpi-value" id="runningPipelines">--</div>
+                    <div class="kpi-label">Running Pipelines</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Repositories Section -->
+        <section class="section">
+            <h2 class="section-title">📚 Repositories</h2>
+            <div class="repo-grid" id="repoGrid">
+                <!-- Repository cards will be inserted here -->
+                <div class="loading">Loading repositories...</div>
+            </div>
+        </section>
+
+        <!-- Pipelines Section -->
+        <section class="section">
+            <h2 class="section-title">🔧 Recent Pipelines</h2>
+            <div class="table-container">
+                <table class="pipeline-table" id="pipelineTable">
+                    <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>Project</th>
+                            <th>Branch</th>
+                            <th>Commit</th>
+                            <th>Duration</th>
+                            <th>Created</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="pipelineTableBody">
+                        <!-- Pipeline rows will be inserted here -->
+                        <tr>
+                            <td colspan="7" class="loading">Loading pipelines...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>GitLab DSO Dashboard | Auto-refreshes every 60 seconds</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
