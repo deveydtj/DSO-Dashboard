@@ -40,7 +40,11 @@ class GitLabAPIClient:
         # Create SSL context for self-signed certificates
         if self.insecure_skip_verify:
             self.ssl_context = ssl._create_unverified_context()
-            logger.warning("SSL verification disabled - using unverified SSL context")
+            logger.warning("=" * 70)
+            logger.warning("SSL VERIFICATION DISABLED - SECURITY RISK")
+            logger.warning("Using unverified SSL context for self-signed certificates")
+            logger.warning("Only use this setting on trusted internal networks")
+            logger.warning("=" * 70)
         else:
             self.ssl_context = None
     
@@ -151,7 +155,7 @@ class GitLabAPIClient:
                 logger.error(f"Failed to fetch {endpoint} page {page}")
                 return None
             
-            data = result['data']
+            data = result.get('data')
             if not data:
                 break
             
@@ -178,7 +182,9 @@ class GitLabAPIClient:
         if per_page:
             # For backward compatibility, use single page request
             result = self._make_request('projects', {'per_page': per_page, 'membership': 'true'})
-            return result['data'] if result else None
+            if result is None:
+                return None
+            return result.get('data', None)
         else:
             # Full pagination for all projects
             return self._make_paginated_request('projects', {'membership': 'true'})
@@ -190,14 +196,18 @@ class GitLabAPIClient:
     def get_project(self, project_id):
         """Get single project details"""
         result = self._make_request(f'projects/{project_id}')
-        return result['data'] if result else None
+        if result is None:
+            return None
+        return result.get('data', None)
     
     def get_pipelines(self, project_id, per_page=None):
         """Get pipelines for a project with pagination"""
         if per_page:
             # For backward compatibility, use single page request
             result = self._make_request(f'projects/{project_id}/pipelines', {'per_page': per_page})
-            return result['data'] if result else None
+            if result is None:
+                return None
+            return result.get('data', None)
         else:
             # Full pagination for all pipelines
             return self._make_paginated_request(f'projects/{project_id}/pipelines')
