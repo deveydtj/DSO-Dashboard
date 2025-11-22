@@ -81,6 +81,9 @@ class GitLabAPIClient:
         all_pipelines = []
         for project in projects[:5]:  # Limit to first 5 projects
             pipelines = self.get_pipelines(project['id'], per_page=5)
+            if pipelines is None:
+                # Propagate API failure from per-project pipeline fetch
+                return None
             if pipelines:
                 for pipeline in pipelines:
                     pipeline['project_name'] = project['name']
@@ -300,12 +303,32 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
     
     def handle_health(self):
         """Handle /api/health endpoint"""
-        health = {
-            'status': 'healthy',
-            'timestamp': datetime.now().isoformat(),
-            'cache_entries': len(self.server.cache.cache)
-        }
-        self.send_json_response(health)
+        # Perform a lightweight GitLab API check
+        gitlab_healthy = False
+        try:
+            # Make a lightweight request to verify GitLab connectivity
+            projects = self.server.gitlab_client.get_projects(per_page=1)
+            gitlab_healthy = projects is not None
+        except Exception as e:
+            logger.warning(f"Health check: GitLab API failed: {e}")
+            gitlab_healthy = False
+        
+        if gitlab_healthy:
+            health = {
+                'status': 'healthy',
+                'timestamp': datetime.now().isoformat(),
+                'cache_entries': len(self.server.cache.cache),
+                'gitlab_api': 'connected'
+            }
+            self.send_json_response(health)
+        else:
+            health = {
+                'status': 'unhealthy',
+                'timestamp': datetime.now().isoformat(),
+                'cache_entries': len(self.server.cache.cache),
+                'gitlab_api': 'disconnected'
+            }
+            self.send_json_response(health, status=503)
     
     def send_json_response(self, data, status=200):
         """Send JSON response"""
