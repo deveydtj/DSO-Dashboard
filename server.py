@@ -387,8 +387,8 @@ class BackgroundPoller(threading.Thread):
             update_state('projects', projects)
             logger.info(f"Updated projects in STATE: {len(projects)} projects")
         
-        # Fetch pipelines
-        pipelines = self._fetch_pipelines()
+        # Fetch pipelines (pass projects to respect configured scope)
+        pipelines = self._fetch_pipelines(projects)
         if pipelines is None:
             logger.error("Failed to fetch pipelines - API error")
             had_failures = True
@@ -469,23 +469,71 @@ class BackgroundPoller(threading.Thread):
         
         return all_projects
     
-    def _fetch_pipelines(self):
-        """Fetch pipelines across projects
+    def _fetch_pipelines(self, projects=None):
+        """Fetch pipelines for configured projects
+        
+        Args:
+            projects: List of project dicts from _fetch_projects(). If None or empty,
+                     falls back to arbitrary membership sample.
         
         Returns:
             list: List of pipelines (may be empty if no pipelines found)
             None: Only if API error occurred
         """
-        pipelines = self.gitlab_client.get_all_pipelines(per_page=50)
-        
-        # Return None for API errors, empty list is valid
-        if pipelines is None:
-            return None
-        
-        if not pipelines:
-            logger.info("No pipelines found")
-        
-        return pipelines
+        # If we have projects from configured scope, fetch pipelines for those
+        if projects:
+            logger.info(f"Fetching pipelines for {len(projects)} configured projects")
+            all_pipelines = []
+            api_error = False
+            
+            # Limit to reasonable number of projects to avoid too many API calls
+            # Fetch from up to 20 projects for good coverage
+            projects_to_check = projects[:20]
+            
+            for project in projects_to_check:
+                project_id = project.get('id')
+                project_name = project.get('name', f'Project {project_id}')
+                
+                # Fetch recent pipelines for this project (last 10)
+                pipelines = self.gitlab_client.get_pipelines(project_id, per_page=10)
+                
+                if pipelines is None:
+                    # API error occurred
+                    logger.warning(f"Failed to fetch pipelines for project {project_name} (ID: {project_id})")
+                    api_error = True
+                elif pipelines:
+                    # Add project info to each pipeline
+                    for pipeline in pipelines:
+                        pipeline['project_name'] = project_name
+                        pipeline['project_id'] = project_id
+                        all_pipelines.append(pipeline)
+            
+            # Return None only if we had API errors
+            if api_error and not all_pipelines:
+                # All fetches failed
+                return None
+            
+            # Sort by created_at descending and limit to 50 most recent
+            all_pipelines.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+            result = all_pipelines[:50]
+            
+            if not result:
+                logger.info("No pipelines found in configured projects")
+            
+            return result
+        else:
+            # Fallback to arbitrary membership sample if no projects configured
+            logger.info("No projects provided, using membership sample for pipelines")
+            pipelines = self.gitlab_client.get_all_pipelines(per_page=50)
+            
+            # Return None for API errors, empty list is valid
+            if pipelines is None:
+                return None
+            
+            if not pipelines:
+                logger.info("No pipelines found")
+            
+            return pipelines
     
     def _calculate_summary(self, projects, pipelines):
         """Calculate summary statistics
