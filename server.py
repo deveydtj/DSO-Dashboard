@@ -439,10 +439,14 @@ class BackgroundPoller(threading.Thread):
                 if group_projects is None:
                     # API error occurred
                     api_error = True
+                    logger.warning(f"Failed to fetch projects for group {group_id}")
                 elif group_projects:
                     # Non-empty list, extend our results
                     all_projects.extend(group_projects)
                     logger.info(f"Added {len(group_projects)} projects from group {group_id}")
+                else:
+                    # Empty list - group has no projects
+                    logger.info(f"Group {group_id} has no projects")
         
         # If no specific sources configured, fetch all accessible projects
         if not self.project_ids and not self.group_ids:
@@ -479,15 +483,23 @@ class BackgroundPoller(threading.Thread):
             return None
         
         if not pipelines:
-            logger.debug("No pipelines found")
+            logger.info("No pipelines found")
         
         return pipelines
     
     def _calculate_summary(self, projects, pipelines):
-        """Calculate summary statistics"""
+        """Calculate summary statistics
+        
+        Note: This should only be called when both projects and pipelines
+        were successfully fetched (not None). The caller is responsible for
+        ensuring valid data.
+        """
+        # Use empty lists if None (should not happen in normal flow)
         if projects is None:
+            logger.warning("_calculate_summary called with None projects - using empty list")
             projects = []
         if pipelines is None:
+            logger.warning("_calculate_summary called with None pipelines - using empty list")
             pipelines = []
         
         total_repos = len(projects)
