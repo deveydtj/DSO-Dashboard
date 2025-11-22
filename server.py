@@ -71,16 +71,27 @@ class GitLabAPIClient:
         return self._make_request(f'projects/{project_id}/pipelines', {'per_page': per_page})
     
     def get_all_pipelines(self, per_page=20):
-        """Get recent pipelines across all projects"""
-        projects = self.get_projects(per_page=10)
+        """Get recent pipelines across all projects
+        
+        Note: To optimize API calls, we fetch from a limited number of projects.
+        We retrieve pipelines from up to 10 projects, requesting enough per project
+        to meet the per_page requirement.
+        """
+        # Fetch enough projects to cover the requested pipelines
+        num_projects = min(10, per_page)  # Limit to 10 projects max
+        projects = self.get_projects(per_page=num_projects)
         if projects is None:
             return None  # Propagate API failure
         if not projects:
             return []  # No projects available (valid empty state)
         
+        # Calculate how many pipelines to fetch per project
+        # Fetch extra to account for projects with fewer pipelines
+        pipelines_per_project = max(5, (per_page // len(projects)) + 2)
+        
         all_pipelines = []
-        for project in projects[:5]:  # Limit to first 5 projects
-            pipelines = self.get_pipelines(project['id'], per_page=5)
+        for project in projects:
+            pipelines = self.get_pipelines(project['id'], per_page=pipelines_per_project)
             if pipelines is None:
                 # Propagate API failure from per-project pipeline fetch
                 return None

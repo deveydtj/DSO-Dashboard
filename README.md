@@ -60,14 +60,36 @@ DSO-Dashboard/
    ```
 
 2. **Configure environment variables**
-   ```bash
-   # Copy the example env file
-   cp .env.example .env
    
-   # Edit .env and add your GitLab credentials
-   # GITLAB_URL=https://gitlab.com
-   # GITLAB_API_TOKEN=your_token_here
+   The server reads configuration from environment variables. You have two options:
+   
+   **Option A: Export variables in your shell (recommended for development)**
+   ```bash
+   export GITLAB_URL="https://gitlab.com"
+   export GITLAB_API_TOKEN="your_token_here"
+   export PORT="8080"
+   export CACHE_TTL="300"
    ```
+   
+   **Option B: Use a shell script**
+   ```bash
+   # Create a run script
+   cat > run.sh << 'EOF'
+   #!/bin/bash
+   export GITLAB_URL="https://gitlab.com"
+   export GITLAB_API_TOKEN="your_token_here"
+   export PORT="8080"
+   export CACHE_TTL="300"
+   python3 server.py
+   EOF
+   
+   chmod +x run.sh
+   ./run.sh
+   ```
+   
+   **Note**: The `.env.example` file is provided as a reference for required variables,
+   but the server does not automatically load `.env` files (keeping it stdlib-only).
+   You must export the variables before running the server.
 
 3. **Run the server**
    ```bash
