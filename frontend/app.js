@@ -244,7 +244,7 @@ class DashboardApp {
     }
 
     formatDuration(seconds) {
-        if (!seconds || seconds < 0) return '--';
+        if (seconds == null || seconds < 0) return '--';
         
         const mins = Math.floor(seconds / 60);
         const secs = seconds % 60;
@@ -256,9 +256,14 @@ class DashboardApp {
     escapeHtml(text) {
         if (!text) return '';
         
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return String(text).replace(/[&<>"']/g, char => map[char]);
     }
 }
 
