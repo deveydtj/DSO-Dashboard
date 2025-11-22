@@ -375,35 +375,58 @@ class BackgroundPoller(threading.Thread):
         """Poll GitLab API and update STATE"""
         logger.info("Starting data poll...")
         
+        # Track if we had any failures during this poll
+        had_failures = False
+        
         # Fetch projects
         projects = self._fetch_projects()
-        if projects is not None:
+        if projects is None:
+            logger.error("Failed to fetch projects - API error")
+            had_failures = True
+        else:
             update_state('projects', projects)
             logger.info(f"Updated projects in STATE: {len(projects)} projects")
         
         # Fetch pipelines
         pipelines = self._fetch_pipelines()
-        if pipelines is not None:
+        if pipelines is None:
+            logger.error("Failed to fetch pipelines - API error")
+            had_failures = True
+        else:
             update_state('pipelines', pipelines)
             logger.info(f"Updated pipelines in STATE: {len(pipelines)} pipelines")
         
-        # Calculate summary
-        summary = self._calculate_summary(projects, pipelines)
-        update_state('summary', summary)
-        logger.info("Updated summary in STATE")
-        
-        logger.info("Data poll completed successfully")
+        # Only update summary and mark as ONLINE if we successfully fetched data
+        if not had_failures:
+            # Calculate summary
+            summary = self._calculate_summary(projects, pipelines)
+            update_state('summary', summary)
+            logger.info("Updated summary in STATE")
+            logger.info("Data poll completed successfully")
+        else:
+            # Set error state so health endpoint reflects the failure
+            set_state_error("Failed to fetch data from GitLab API")
+            logger.error("Data poll completed with failures - state marked as ERROR")
     
     def _fetch_projects(self):
-        """Fetch projects from configured sources"""
+        """Fetch projects from configured sources
+        
+        Returns:
+            list: List of projects (may be empty if no projects found)
+            None: Only if API error occurred
+        """
         all_projects = []
+        api_error = False
         
         # Fetch from specific project IDs if configured
         if self.project_ids:
             logger.info(f"Fetching {len(self.project_ids)} specific projects")
             for project_id in self.project_ids:
                 project = self.gitlab_client.get_project(project_id)
-                if project:
+                if project is None:
+                    # API error occurred
+                    api_error = True
+                elif project:
                     all_projects.append(project)
         
         # Fetch from groups if configured
@@ -412,7 +435,10 @@ class BackgroundPoller(threading.Thread):
             for group_id in self.group_ids:
                 logger.info(f"Fetching projects for group {group_id}")
                 group_projects = self.gitlab_client.get_group_projects(group_id)
-                if group_projects:
+                if group_projects is None:
+                    # API error occurred
+                    api_error = True
+                elif group_projects:
                     all_projects.extend(group_projects)
                     logger.info(f"Added {len(group_projects)} projects from group {group_id}")
         
@@ -420,10 +446,21 @@ class BackgroundPoller(threading.Thread):
         if not self.project_ids and not self.group_ids:
             logger.info("Fetching all accessible projects")
             projects = self.gitlab_client.get_projects()
-            if projects:
+            if projects is None:
+                # API error occurred
+                api_error = True
+            elif projects:
                 all_projects = projects
         
-        return all_projects if all_projects else None
+        # Return None only if we had an API error
+        # Return empty list if no projects were found (valid state)
+        if api_error:
+            return None
+        
+        if not all_projects:
+            logger.info("No projects found (this may be expected for configured groups/IDs)")
+        
+        return all_projects
     
     def _fetch_pipelines(self):
         """Fetch pipelines across projects"""
@@ -494,7 +531,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             summary = get_state('summary')
             
             if summary is None:
-                # If no data yet, return initializing status
+                # If no data yet, return initializing or error status
                 status_info = get_state_status()
                 if status_info['status'] == 'INITIALIZING':
                     self.send_json_response({
@@ -502,7 +539,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                         'message': 'Dashboard is initializing, please wait...'
                     }, status=503)
                 else:
-                    self.send_json_response({'error': 'No summary data available'}, status=500)
+                    # Summary is None means API error during polling
+                    self.send_json_response({'error': 'Failed to fetch data from GitLab API'}, status=502)
                 return
             
             self.send_json_response(summary)
@@ -524,10 +562,11 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                         'message': 'Dashboard is initializing, please wait...'
                     }, status=503)
                 else:
-                    self.send_json_response({'error': 'No projects data available'}, status=500)
+                    # Projects is None means API error, not empty results
+                    self.send_json_response({'error': 'Failed to fetch projects from GitLab API'}, status=502)
                 return
             
-            # Format repository data
+            # Format repository data (projects can be empty list, which is valid)
             repos = []
             for project in projects:
                 repo = {
@@ -569,10 +608,11 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                         'message': 'Dashboard is initializing, please wait...'
                     }, status=503)
                 else:
-                    self.send_json_response({'error': 'No pipelines data available'}, status=500)
+                    # Pipelines is None means API error, not empty results
+                    self.send_json_response({'error': 'Failed to fetch pipelines from GitLab API'}, status=502)
                 return
             
-            # Format pipeline data
+            # Format pipeline data (pipelines can be empty list, which is valid)
             formatted_pipelines = []
             for pipeline in pipelines:
                 formatted = {
