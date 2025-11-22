@@ -521,7 +521,8 @@ class BackgroundPoller(threading.Thread):
                     return None
             
             # Sort by created_at descending and limit to max
-            all_pipelines.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+            # ISO 8601 string sorting works correctly; empty values sort to bottom
+            all_pipelines.sort(key=lambda x: x.get('created_at') or '', reverse=True)
             result = all_pipelines[:MAX_TOTAL_PIPELINES]
             
             if not result:
