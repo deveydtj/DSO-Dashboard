@@ -73,8 +73,10 @@ class GitLabAPIClient:
     def get_all_pipelines(self, per_page=20):
         """Get recent pipelines across all projects"""
         projects = self.get_projects(per_page=10)
+        if projects is None:
+            return None  # Propagate API failure
         if not projects:
-            return []
+            return []  # No projects available (valid empty state)
         
         all_pipelines = []
         for project in projects[:5]:  # Limit to first 5 projects
@@ -162,10 +164,15 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             projects = self.server.gitlab_client.get_projects(per_page=100)
             pipelines = self.server.gitlab_client.get_all_pipelines(per_page=50)
             
+            # Propagate API failures instead of masking them
             if projects is None:
-                projects = []
+                logger.error("Failed to fetch projects from GitLab API")
+                self.send_json_response({'error': 'Failed to fetch projects from GitLab API'}, status=502)
+                return
             if pipelines is None:
-                pipelines = []
+                logger.error("Failed to fetch pipelines from GitLab API")
+                self.send_json_response({'error': 'Failed to fetch pipelines from GitLab API'}, status=502)
+                return
             
             # Calculate summary statistics
             total_repos = len(projects)
@@ -207,8 +214,11 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         try:
             projects = self.server.gitlab_client.get_projects(per_page=20)
             
+            # Propagate API failures instead of masking them
             if projects is None:
-                projects = []
+                logger.error("Failed to fetch projects from GitLab API")
+                self.send_json_response({'error': 'Failed to fetch projects from GitLab API'}, status=502)
+                return
             
             # Format repository data
             repos = []
@@ -252,8 +262,11 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         try:
             pipelines = self.server.gitlab_client.get_all_pipelines(per_page=30)
             
+            # Propagate API failures instead of masking them
             if pipelines is None:
-                pipelines = []
+                logger.error("Failed to fetch pipelines from GitLab API")
+                self.send_json_response({'error': 'Failed to fetch pipelines from GitLab API'}, status=502)
+                return
             
             # Format pipeline data
             formatted_pipelines = []

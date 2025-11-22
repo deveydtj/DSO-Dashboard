@@ -19,6 +19,14 @@ class DashboardApp {
     async checkHealth() {
         try {
             const response = await fetch(`${this.apiBase}/api/health`);
+            
+            // Check if response is successful (status 200-299)
+            if (!response.ok) {
+                console.error(`❌ Backend health check failed: HTTP ${response.status}`);
+                this.updateStatusIndicator(false);
+                return;
+            }
+            
             const data = await response.json();
             this.updateStatusIndicator(true);
             console.log('✅ Backend health check passed', data);
