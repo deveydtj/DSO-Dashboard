@@ -1,0 +1,10 @@
+{
+  "gitlab_url": "https://gitlab.com",
+  "api_token": "your_gitlab_api_token_here",
+  "group_ids": [],
+  "project_ids": [],
+  "poll_interval_sec": 60,
+  "cache_ttl_sec": 300,
+  "per_page": 100,
+  "insecure_skip_verify": false
+}

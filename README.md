@@ -1,10 +1,15 @@
 # GitLab DSO Dashboard
 
-A modern, dark neomorphic dashboard for monitoring GitLab repositories and CI/CD pipelines. Built with Python 3.10 standard library only (no external dependencies) and vanilla JavaScript.
+A production-ready, dark neomorphic dashboard for monitoring GitLab repositories and CI/CD pipelines. Built with Python 3.10 standard library only (no external dependencies) and vanilla JavaScript.
 
 ## ✨ Features
 
-- **Real-time Monitoring**: Polls GitLab API and displays live data
+- **Real-time Monitoring**: Background poller continuously updates data from GitLab API
+- **Production-Ready**: Thread-safe architecture with retry logic and rate limiting
+- **Flexible Configuration**: Load config from JSON file or environment variables
+- **Pagination Support**: Handles large groups (>100 projects) efficiently
+- **SSL Support**: Works with internal CAs and self-signed certificates
+- **Retry & Rate Limiting**: Automatic retry with exponential backoff and 429 handling
 - **Dark Neomorphic UI**: Modern, eye-friendly dark theme with neomorphic design
 - **KPI Dashboard**: View key metrics at a glance
   - Total repositories
@@ -12,15 +17,17 @@ A modern, dark neomorphic dashboard for monitoring GitLab repositories and CI/CD
   - Repository statistics
 - **Repository Cards**: Browse your GitLab repositories with stats
 - **Pipeline Table**: Monitor recent pipeline runs across projects
-- **Auto-refresh**: Data updates automatically every 60 seconds
-- **Caching**: Built-in caching to reduce API calls
+- **Auto-refresh**: Frontend updates automatically every 60 seconds
 
 ## 🏗️ Architecture
 
 ### Backend (Python 3.10 stdlib-only)
 - `http.server`: HTTP server for serving API and static files
-- `urllib`: GitLab API client (no requests library needed)
-- Built-in caching with TTL
+- `urllib`: GitLab API client with retry and pagination (no requests library needed)
+- Thread-safe global STATE with background poller
+- Automatic retry with exponential backoff for transient errors
+- Rate limiting support (429 responses with Retry-After)
+- Full pagination support for large datasets
 - RESTful JSON API endpoints
 
 ### Frontend (Vanilla HTML/CSS/JS)
@@ -34,6 +41,7 @@ A modern, dark neomorphic dashboard for monitoring GitLab repositories and CI/CD
 ```
 DSO-Dashboard/
 ├── server.py              # Backend server (Python 3.10 stdlib only)
+├── config.json.example    # Configuration file template
 ├── frontend/              # Static frontend files
 │   ├── index.html        # Main HTML page
 │   ├── styles.css        # Dark neomorphic styles
@@ -59,37 +67,45 @@ DSO-Dashboard/
    cd DSO-Dashboard
    ```
 
-2. **Configure environment variables**
+2. **Configure the application**
    
-   The server reads configuration from environment variables. You have two options:
+   You have two options for configuration:
    
-   **Option A: Export variables in your shell (recommended for development)**
+   **Option A: Using config.json (Recommended for production)**
+   ```bash
+   # Copy the example config file
+   cp config.json.example config.json
+   
+   # Edit config.json with your settings
+   nano config.json
+   ```
+   
+   Example `config.json`:
+   ```json
+   {
+     "gitlab_url": "https://gitlab.example.com",
+     "api_token": "your_gitlab_api_token_here",
+     "group_ids": ["group1", "group2"],
+     "project_ids": [],
+     "poll_interval_sec": 60,
+     "cache_ttl_sec": 300,
+     "per_page": 100,
+     "insecure_skip_verify": false
+   }
+   ```
+   
+   **Option B: Using environment variables**
    ```bash
    export GITLAB_URL="https://gitlab.com"
    export GITLAB_API_TOKEN="your_token_here"
+   export GITLAB_GROUP_IDS="group1,group2"
    export PORT="8080"
+   export POLL_INTERVAL="60"
    export CACHE_TTL="300"
+   export PER_PAGE="100"
    ```
    
-   **Option B: Use a shell script**
-   ```bash
-   # Create a run script
-   cat > run.sh << 'EOF'
-   #!/bin/bash
-   export GITLAB_URL="https://gitlab.com"
-   export GITLAB_API_TOKEN="your_token_here"
-   export PORT="8080"
-   export CACHE_TTL="300"
-   python3 server.py
-   EOF
-   
-   chmod +x run.sh
-   ./run.sh
-   ```
-   
-   **Note**: The `.env.example` file is provided as a reference for required variables,
-   but the server does not automatically load `.env` files (keeping it stdlib-only).
-   You must export the variables before running the server.
+   **Note**: If both config.json and environment variables are present, environment variables take precedence.
 
 3. **Run the server**
    ```bash
@@ -103,22 +119,54 @@ DSO-Dashboard/
    http://localhost:8080
    ```
 
-### Environment Variables
+### Configuration Options
 
-Configure the application using these environment variables:
+Configure the application using `config.json` or environment variables:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `GITLAB_URL` | GitLab instance URL | `https://gitlab.com` |
-| `GITLAB_API_TOKEN` | GitLab API token (required) | - |
-| `PORT` | Server port | `8080` |
-| `CACHE_TTL` | Cache TTL in seconds | `300` |
+| JSON Field / Environment Variable | Description | Default |
+|----------------------------------|-------------|---------|
+| `gitlab_url` / `GITLAB_URL` | GitLab instance URL | `https://gitlab.com` |
+| `api_token` / `GITLAB_API_TOKEN` | GitLab API token (required) | - |
+| `group_ids` / `GITLAB_GROUP_IDS` | Comma-separated list of group IDs to monitor | All accessible projects |
+| `project_ids` / `GITLAB_PROJECT_IDS` | Comma-separated list of specific project IDs | - |
+| `poll_interval_sec` / `POLL_INTERVAL` | Background poll interval in seconds | `60` |
+| `cache_ttl_sec` / `CACHE_TTL` | Cache TTL in seconds (deprecated, kept for compatibility) | `300` |
+| `per_page` / `PER_PAGE` | Items per page for pagination | `100` |
+| `insecure_skip_verify` / `INSECURE_SKIP_VERIFY` | Skip SSL verification for self-signed certs | `false` |
+| - / `PORT` | Server port | `8080` |
 
 ### Creating a GitLab API Token
 
 1. Go to GitLab → Settings → Access Tokens
 2. Create a new token with `read_api` scope
-3. Copy the token and set it in your `.env` file
+3. Copy the token and add it to your `config.json` or set it as `GITLAB_API_TOKEN`
+
+### Production Deployment Tips
+
+1. **Internal CA / Self-Signed Certificates**
+   - Set `insecure_skip_verify: true` in config.json or `INSECURE_SKIP_VERIFY=true`
+   - Only use this for trusted internal networks
+
+2. **Large Groups**
+   - The dashboard automatically paginates through all projects
+   - Set `per_page` to a higher value (e.g., 100) for better performance
+   - Monitor logs to see pagination progress
+
+3. **Rate Limiting**
+   - The backend automatically handles 429 responses
+   - Implements exponential backoff with Retry-After header support
+   - Retries transient errors (5xx, timeouts) up to 3 times
+
+4. **Background Polling**
+   - All data is fetched by a background thread
+   - API endpoints return immediately from in-memory STATE
+   - `/api/health` returns ONLINE even while polling
+   - Adjust `poll_interval_sec` based on your needs (default: 60s)
+
+5. **Thread Safety**
+   - Global STATE is protected by threading.Lock
+   - Safe for concurrent requests
+   - No race conditions or blocking issues
 
 ## 📡 API Endpoints
 
@@ -184,10 +232,18 @@ Health check endpoint:
 ```json
 {
   "status": "healthy",
+  "backend_status": "ONLINE",
   "timestamp": "2024-01-01T12:00:00",
-  "cache_entries": 3
+  "last_poll": "2024-01-01T11:59:00"
 }
 ```
+
+**Status values:**
+- `INITIALIZING`: Backend is starting up and polling data for the first time
+- `ONLINE`: Backend is healthy and data is being polled regularly
+- `ERROR`: Backend encountered errors during polling
+
+**Note:** The health endpoint returns 200 OK even during `INITIALIZING` state, allowing the dashboard to remain responsive while data loads.
 
 ## 🎨 UI Features
 
