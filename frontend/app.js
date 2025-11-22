@@ -167,7 +167,7 @@ class DashboardApp {
 
     createPipelineRow(pipeline) {
         const status = pipeline.status || 'unknown';
-        const duration = pipeline.duration 
+        const duration = pipeline.duration != null
             ? this.formatDuration(pipeline.duration) 
             : '--';
         const createdAt = pipeline.created_at 
