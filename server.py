@@ -77,8 +77,9 @@ class GitLabAPIClient:
         We retrieve pipelines from up to 10 projects, requesting enough per project
         to meet the per_page requirement.
         """
-        # Fetch enough projects to cover the requested pipelines
-        num_projects = min(10, per_page)  # Limit to 10 projects max
+        # Always fetch from a reasonable number of projects (5-10) for good distribution
+        # Scale based on request size but maintain reasonable bounds
+        num_projects = min(10, max(5, per_page // 5))
         projects = self.get_projects(per_page=num_projects)
         if projects is None:
             return None  # Propagate API failure
@@ -87,6 +88,7 @@ class GitLabAPIClient:
         
         # Calculate how many pipelines to fetch per project
         # Fetch extra to account for projects with fewer pipelines
+        # Protected from division by zero since we've confirmed projects is not empty
         pipelines_per_project = max(5, (per_page // len(projects)) + 2)
         
         all_pipelines = []
