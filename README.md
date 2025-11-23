@@ -259,7 +259,7 @@ DSO-Dashboard includes pre-built mock scenarios for testing different edge cases
 | **Default** | `mock_data.json` | Mixed status with moderate activity | General development |
 | **healthy** | `data/mock_scenarios/healthy.json` | Mostly successful pipelines (80% success rate) | Demo healthy CI/CD state |
 | **failing** | `data/mock_scenarios/failing.json` | Multiple repos with consecutive failures (23% success rate) | Test failure handling, alerts |
-| **running** | `data/mock_scenarios/running.json` | Many running and pending pipelines (50% in progress) | Test active build visualization |
+| **running** | `data/mock_scenarios/running.json` | Many running and pending pipelines (~92% in progress) | Test active build visualization |
 
 **Switching Scenarios:**
 
