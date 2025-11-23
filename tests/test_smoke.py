@@ -26,7 +26,7 @@ class TestConfigLoading(unittest.TestCase):
         self.env_backup = os.environ.copy()
         # Clear all GITLAB_* and related env vars
         for key in list(os.environ.keys()):
-            if key.startswith('GITLAB_') or key in ['PORT', 'CACHE_TTL', 'POLL_INTERVAL', 'PER_PAGE', 'INSECURE_SKIP_VERIFY']:
+            if key.startswith('GITLAB_') or key in ['PORT', 'CACHE_TTL', 'POLL_INTERVAL', 'PER_PAGE', 'INSECURE_SKIP_VERIFY', 'USE_MOCK_DATA']:
                 del os.environ[key]
     
     def tearDown(self):
@@ -45,6 +45,7 @@ class TestConfigLoading(unittest.TestCase):
             self.assertEqual(config['poll_interval_sec'], 60)
             self.assertEqual(config['per_page'], 100)
             self.assertEqual(config['insecure_skip_verify'], False)
+            self.assertEqual(config['use_mock_data'], False)
             self.assertEqual(config['group_ids'], [])
             self.assertEqual(config['project_ids'], [])
     
@@ -66,6 +67,24 @@ class TestConfigLoading(unittest.TestCase):
             self.assertEqual(config['poll_interval_sec'], 120)
             self.assertEqual(config['group_ids'], ['group1', 'group2', 'group3'])
             self.assertEqual(config['insecure_skip_verify'], True)
+    
+    def test_load_config_mock_mode_enabled(self):
+        """Test config with mock mode enabled"""
+        os.environ['USE_MOCK_DATA'] = 'true'
+        
+        with patch('os.path.exists', return_value=False):
+            config = server.load_config()
+            
+            self.assertTrue(config['use_mock_data'])
+    
+    def test_load_config_mock_mode_disabled(self):
+        """Test config with mock mode explicitly disabled"""
+        os.environ['USE_MOCK_DATA'] = 'false'
+        
+        with patch('os.path.exists', return_value=False):
+            config = server.load_config()
+            
+            self.assertFalse(config['use_mock_data'])
     
     def test_parse_csv_list(self):
         """Test CSV list parsing for group_ids and project_ids"""
@@ -273,6 +292,53 @@ class TestImports(unittest.TestCase):
         
         # If we got here, all imports succeeded
         self.assertTrue(True)
+
+
+class TestMockDataMode(unittest.TestCase):
+    """Test mock data mode functionality"""
+    
+    def test_load_mock_data_success(self):
+        """Test loading mock data from valid JSON file"""
+        mock_data = {
+            'summary': {'total_repositories': 5},
+            'repositories': [{'id': 1, 'name': 'test'}],
+            'pipelines': [{'id': 100, 'status': 'success'}]
+        }
+        
+        with patch('os.path.exists', return_value=True):
+            with patch('builtins.open', unittest.mock.mock_open(read_data=json.dumps(mock_data))):
+                result = server.load_mock_data()
+                
+                self.assertIsNotNone(result)
+                self.assertIn('summary', result)
+                self.assertIn('repositories', result)
+                self.assertIn('pipelines', result)
+                self.assertEqual(result['summary']['total_repositories'], 5)
+    
+    def test_load_mock_data_file_not_found(self):
+        """Test loading mock data when file doesn't exist"""
+        with patch('os.path.exists', return_value=False):
+            result = server.load_mock_data()
+            self.assertIsNone(result)
+    
+    def test_load_mock_data_missing_keys(self):
+        """Test loading mock data with missing required keys"""
+        incomplete_data = {
+            'summary': {'total_repositories': 5}
+            # Missing 'repositories' and 'pipelines'
+        }
+        
+        with patch('os.path.exists', return_value=True):
+            with patch('builtins.open', unittest.mock.mock_open(read_data=json.dumps(incomplete_data))):
+                result = server.load_mock_data()
+                self.assertIsNone(result)
+    
+    def test_load_mock_data_invalid_json(self):
+        """Test loading mock data with invalid JSON"""
+        with patch('os.path.exists', return_value=True):
+            with patch('builtins.open', unittest.mock.mock_open(read_data='invalid json {')):
+                result = server.load_mock_data()
+                self.assertIsNone(result)
 
 
 if __name__ == '__main__':

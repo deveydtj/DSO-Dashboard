@@ -1127,14 +1127,20 @@ def load_config():
     else:
         config['insecure_skip_verify'] = config.get('insecure_skip_verify', False)
     
+    # For use_mock_data, check if env var is explicitly set to allow overriding
+    if 'USE_MOCK_DATA' in os.environ:
+        config['use_mock_data'] = os.environ['USE_MOCK_DATA'].lower() in ['true', '1', 'yes']
+    else:
+        config['use_mock_data'] = config.get('use_mock_data', False)
+    
     # Ensure lists are clean (filter config.json values that might have empty strings or numeric IDs)
     if isinstance(config['group_ids'], list):
         config['group_ids'] = [str(gid).strip() for gid in config['group_ids'] if gid and str(gid).strip()]
     if isinstance(config['project_ids'], list):
         config['project_ids'] = [str(pid).strip() for pid in config['project_ids'] if pid and str(pid).strip()]
     
-    # Validate required fields
-    if not config['api_token']:
+    # Validate required fields (only if not in mock mode)
+    if not config['use_mock_data'] and not config['api_token']:
         logger.warning("GITLAB_API_TOKEN not set. API requests will fail.")
         logger.warning("Set GITLAB_API_TOKEN environment variable or add 'api_token' to config.json")
     
@@ -1148,9 +1154,48 @@ def load_config():
     logger.info(f"  Group IDs: {config['group_ids'] if config['group_ids'] else 'None (using all accessible projects)'}")
     logger.info(f"  Project IDs: {config['project_ids'] if config['project_ids'] else 'None'}")
     logger.info(f"  Insecure skip verify: {config['insecure_skip_verify']}")
+    logger.info(f"  Use mock data: {config['use_mock_data']}")
     logger.info(f"  API token: {'***' if config['api_token'] else 'NOT SET'}")
     
     return config
+
+
+def load_mock_data():
+    """Load mock data from mock_data.json file
+    
+    Returns:
+        dict: Mock data with 'summary', 'repositories', and 'pipelines' keys
+        None: If file not found or JSON parsing fails
+    """
+    mock_data_file = 'mock_data.json'
+    
+    if not os.path.exists(mock_data_file):
+        logger.error(f"Mock data file not found: {mock_data_file}")
+        return None
+    
+    try:
+        with open(mock_data_file, 'r') as f:
+            data = json.load(f)
+        
+        # Validate required keys
+        required_keys = ['summary', 'repositories', 'pipelines']
+        for key in required_keys:
+            if key not in data:
+                logger.error(f"Mock data file missing required key: {key}")
+                return None
+        
+        logger.info(f"Successfully loaded mock data from {mock_data_file}")
+        logger.info(f"  Repositories: {len(data['repositories'])}")
+        logger.info(f"  Pipelines: {len(data['pipelines'])}")
+        
+        return data
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse mock data JSON: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Error loading mock data: {e}")
+        return None
 
 
 def main():
@@ -1160,23 +1205,50 @@ def main():
     # Load configuration
     config = load_config()
     
-    # Initialize GitLab client
-    gitlab_client = GitLabAPIClient(
-        config['gitlab_url'], 
-        config['api_token'],
-        per_page=config['per_page'],
-        insecure_skip_verify=config['insecure_skip_verify']
-    )
-    
-    # Start background poller
-    poller = BackgroundPoller(
-        gitlab_client,
-        config['poll_interval_sec'],
-        group_ids=config['group_ids'],
-        project_ids=config['project_ids']
-    )
-    poller.start()
-    logger.info(f"Background poller started (interval: {config['poll_interval_sec']}s)")
+    # Check if mock mode is enabled
+    if config['use_mock_data']:
+        logger.info("=" * 70)
+        logger.info("MOCK DATA MODE ENABLED")
+        logger.info("Server will use mock_data.json instead of GitLab API")
+        logger.info("GitLab polling is DISABLED in this mode")
+        logger.info("=" * 70)
+        
+        # Load mock data
+        mock_data = load_mock_data()
+        if mock_data is None:
+            logger.error("Failed to load mock data. Exiting.")
+            return
+        
+        # Initialize STATE with mock data
+        update_state_atomic({
+            'projects': mock_data['repositories'],
+            'pipelines': mock_data['pipelines'],
+            'summary': mock_data['summary']
+        })
+        logger.info("Mock data loaded into STATE successfully")
+        
+        # No GitLab client or poller in mock mode
+        gitlab_client = None
+        poller = None
+        
+    else:
+        # Normal mode: Initialize GitLab client and poller
+        gitlab_client = GitLabAPIClient(
+            config['gitlab_url'], 
+            config['api_token'],
+            per_page=config['per_page'],
+            insecure_skip_verify=config['insecure_skip_verify']
+        )
+        
+        # Start background poller
+        poller = BackgroundPoller(
+            gitlab_client,
+            config['poll_interval_sec'],
+            group_ids=config['group_ids'],
+            project_ids=config['project_ids']
+        )
+        poller.start()
+        logger.info(f"Background poller started (interval: {config['poll_interval_sec']}s)")
     
     # Create server
     server_address = ('', config['port'])
@@ -1189,10 +1261,11 @@ def main():
         httpd.serve_forever()
     except KeyboardInterrupt:
         logger.info("\nShutting down server...")
-        poller.stop()
-        poller.join(timeout=5)  # Wait for poller thread to finish
-        if poller.is_alive():
-            logger.warning("Poller thread did not stop cleanly")
+        if poller:
+            poller.stop()
+            poller.join(timeout=5)  # Wait for poller thread to finish
+            if poller.is_alive():
+                logger.warning("Poller thread did not stop cleanly")
         httpd.shutdown()
         logger.info("Server stopped.")
 

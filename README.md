@@ -179,6 +179,7 @@ DSO-Dashboard supports two configuration methods that can be used together. **En
 | `cache_ttl_sec` | `CACHE_TTL` | Cache TTL (deprecated, kept for compatibility) | `300` |
 | `per_page` | `PER_PAGE` | API pagination size | `100` |
 | `insecure_skip_verify` | `INSECURE_SKIP_VERIFY` | Skip SSL verification (self-signed certs) | `false` |
+| `use_mock_data` | `USE_MOCK_DATA` | Use mock data instead of GitLab API | `false` |
 | `port` (N/A in json) | `PORT` | Server port | `8080` |
 
 ### Configuration Examples
@@ -218,6 +219,85 @@ DSO-Dashboard supports two configuration methods that can be used together. **En
 export GITLAB_URL="https://staging-gitlab.example.com"
 python3 server.py
 ```
+
+### Mock Data Mode
+
+Mock data mode allows the dashboard to run without GitLab API access. This is useful for:
+- **Development**: Test the UI without a GitLab instance
+- **Demos**: Show the dashboard functionality without credentials
+- **Testing**: Validate frontend changes with predictable data
+- **Offline Mode**: Run the dashboard when GitLab is unavailable
+
+#### Enabling Mock Mode
+
+**Option 1: Environment Variable**
+```bash
+export USE_MOCK_DATA=true
+python3 server.py
+```
+
+**Option 2: config.json**
+```json
+{
+  "use_mock_data": true
+}
+```
+
+When mock mode is enabled:
+- Server loads data from `mock_data.json` at startup
+- GitLab API polling is **disabled** (no network calls)
+- `/api/health` returns `ONLINE` status
+- All API endpoints serve data from the mock file
+
+#### Mock Data File Structure
+
+The `mock_data.json` file contains sample data matching the API response format:
+
+```json
+{
+  "summary": {
+    "total_repositories": 8,
+    "active_repositories": 7,
+    "total_pipelines": 45,
+    "successful_pipelines": 38,
+    "failed_pipelines": 4,
+    "running_pipelines": 2,
+    "pending_pipelines": 1,
+    "pipeline_success_rate": 0.8444,
+    "pipeline_statuses": { ... }
+  },
+  "repositories": [
+    {
+      "id": 10001,
+      "name": "frontend-app",
+      "path_with_namespace": "demo-group/frontend-app",
+      "description": "Modern React frontend application",
+      "web_url": "https://gitlab.com/...",
+      "last_pipeline_status": "success",
+      "recent_success_rate": 0.9,
+      ...
+    }
+  ],
+  "pipelines": [
+    {
+      "id": 50001,
+      "project_id": 10001,
+      "project_name": "frontend-app",
+      "status": "success",
+      "ref": "main",
+      "sha": "a1b2c3d4",
+      ...
+    }
+  ]
+}
+```
+
+**Required Keys:**
+- `summary`: Overall statistics matching `/api/summary` response
+- `repositories`: Array of repository objects matching `/api/repos` response
+- `pipelines`: Array of pipeline objects matching `/api/pipelines` response
+
+You can customize `mock_data.json` to test different scenarios (failures, various project counts, etc.).
 
 ## API Endpoints
 
