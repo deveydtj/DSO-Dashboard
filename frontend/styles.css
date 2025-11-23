@@ -101,6 +101,68 @@ body {
     border: 1px solid rgba(245, 158, 11, 0.4);
 }
 
+/* TV Mode Toggle Button */
+.tv-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 0.4rem 0.85rem;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 
+        4px 4px 8px var(--shadow-dark),
+        -4px -4px 8px var(--shadow-light);
+}
+
+.tv-toggle:hover {
+    color: var(--text-primary);
+    box-shadow: 
+        6px 6px 12px var(--shadow-dark),
+        -6px -6px 12px var(--shadow-light);
+    transform: translateY(-1px);
+}
+
+.tv-toggle:active {
+    box-shadow: 
+        inset 3px 3px 6px var(--shadow-inset-dark),
+        inset -3px -3px 6px var(--shadow-inset-light);
+    transform: translateY(0);
+}
+
+.tv-toggle.active {
+    background: var(--bg-secondary);
+    color: var(--accent-info);
+    box-shadow: 
+        inset 3px 3px 6px var(--shadow-inset-dark),
+        inset -3px -3px 6px var(--shadow-inset-light),
+        0 0 12px rgba(59, 130, 246, 0.3);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+.tv-toggle.active:hover {
+    box-shadow: 
+        inset 3px 3px 6px var(--shadow-inset-dark),
+        inset -3px -3px 6px var(--shadow-inset-light),
+        0 0 16px rgba(59, 130, 246, 0.4);
+}
+
+.tv-toggle-icon {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.tv-toggle-label {
+    line-height: 1;
+}
+
 .status-indicator {
     font-size: 1.2rem;
     animation: pulse 2s ease-in-out infinite;
@@ -710,6 +772,15 @@ body.tv .header-info {
 body.tv .mock-badge {
     font-size: 1rem;
     padding: 0.6rem 1.2rem;
+}
+
+body.tv .tv-toggle {
+    font-size: 1rem;
+    padding: 0.6rem 1.2rem;
+}
+
+body.tv .tv-toggle-icon {
+    font-size: 1.4rem;
 }
 
 body.tv .status-indicator {
