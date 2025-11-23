@@ -299,6 +299,35 @@ The `mock_data.json` file contains sample data matching the API response format:
 
 You can customize `mock_data.json` to test different scenarios (failures, various project counts, etc.).
 
+#### Hot-Reloading Mock Data
+
+When running in mock mode, you can reload the `mock_data.json` file without restarting the server. This is useful for:
+- **Rapid iteration**: Test UI changes with different data sets
+- **Demo scenarios**: Switch between different mock data snapshots
+- **Testing edge cases**: Quickly test how the UI handles various data states
+
+**Reload Mock Data:**
+```bash
+# Edit mock_data.json with your changes, then reload:
+curl -X POST http://localhost:8080/api/mock/reload
+
+# Example response:
+# {
+#   "reloaded": true,
+#   "timestamp": "2024-01-15T12:00:00.000000",
+#   "summary": {
+#     "repositories": 8,
+#     "pipelines": 45
+#   }
+# }
+```
+
+**Important Notes:**
+- Hot-reload only works when `USE_MOCK_DATA=true` (mock mode enabled)
+- If you call the endpoint when not in mock mode, you'll get a `400 Bad Request` error
+- The dashboard will reflect the new data on the next auto-refresh (within 60 seconds) or when you manually refresh the page
+- Invalid JSON in `mock_data.json` will return a `500 Internal Server Error` with details in the response
+
 ## API Endpoints
 
 The backend provides RESTful JSON API endpoints that the frontend consumes.
@@ -463,6 +492,48 @@ GET /api/pipelines?project=my-app
 - `canceled`: Pipeline was canceled
 - `skipped`: Pipeline was skipped
 - `manual`: Pipeline requires manual action
+
+### POST `/api/mock/reload`
+
+Hot-reload mock data from `mock_data.json` without restarting the server. Only available when running in mock mode (`USE_MOCK_DATA=true`).
+
+**Request:**
+```bash
+curl -X POST http://localhost:8080/api/mock/reload
+```
+
+**Response (200 OK - Success):**
+```json
+{
+  "reloaded": true,
+  "timestamp": "2024-01-15T12:00:00.000000",
+  "summary": {
+    "repositories": 8,
+    "pipelines": 45
+  }
+}
+```
+
+**Response (400 Bad Request - Not in mock mode):**
+```json
+{
+  "error": "Mock reload endpoint only available in mock mode",
+  "hint": "Set USE_MOCK_DATA=true or use_mock_data: true in config.json"
+}
+```
+
+**Response (500 Internal Server Error - Failed to load):**
+```json
+{
+  "error": "Failed to load mock_data.json",
+  "details": "Check server logs for details"
+}
+```
+
+**Use Cases:**
+- Rapid iteration during development (edit mock data and reload)
+- Testing different data scenarios without server restart
+- Demo preparation (swap mock data snapshots quickly)
 
 ## Frontend Features
 
