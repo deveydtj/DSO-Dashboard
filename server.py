@@ -891,7 +891,15 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             query_params = parse_qs(parsed_path.query)
             
             # Get query parameter values (parse_qs returns lists)
-            limit = int(query_params.get('limit', ['50'])[0])
+            try:
+                limit = int(query_params.get('limit', ['50'])[0])
+                if limit < 1:
+                    raise ValueError("limit must be positive")
+            except (ValueError, IndexError) as e:
+                logger.error(f"Invalid limit parameter: {e}")
+                self.send_json_response({'error': f'Invalid limit parameter: must be a positive integer'}, status=400)
+                return
+            
             status_filter = query_params.get('status', [None])[0]
             ref_filter = query_params.get('ref', [None])[0]
             project_filter = query_params.get('project', [None])[0]
@@ -946,6 +954,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             response = {
                 'pipelines': limited_pipelines,
                 'total': len(limited_pipelines),
+                'total_before_limit': len(filtered_pipelines),  # For pagination context
                 'last_updated': status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
             }
             
