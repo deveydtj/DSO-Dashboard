@@ -7,7 +7,7 @@
     "failed_pipelines": 28,
     "running_pipelines": 4,
     "pending_pipelines": 3,
-    "pipeline_success_rate": 0.4615384615384615,
+    "pipeline_success_rate": 0.46,
     "pipeline_statuses": {
       "success": 30,
       "failed": 28,

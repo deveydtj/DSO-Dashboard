@@ -77,7 +77,7 @@
       "id": 40004,
       "name": "web-app-frontend",
       "path_with_namespace": "busy-org/web-app-frontend",
-      "description": "React frontend application with CI running",
+      "description": "Web frontend application with active CI/CD pipelines",
       "web_url": "https://gitlab.com/busy-org/web-app-frontend",
       "last_activity_at": "2024-01-25T15:15:00.000Z",
       "star_count": 30,
