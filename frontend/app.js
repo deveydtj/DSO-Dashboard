@@ -102,17 +102,92 @@ class DashboardApp {
             return;
         }
 
-        container.innerHTML = repos.map(repo => this.createRepoCard(repo)).join('');
+        // Sort repositories: failing repos first
+        const sortedRepos = [...repos].sort((a, b) => {
+            // First priority: consecutive_default_branch_failures DESC
+            const failuresA = a.consecutive_default_branch_failures || 0;
+            const failuresB = b.consecutive_default_branch_failures || 0;
+            if (failuresB !== failuresA) {
+                return failuresB - failuresA;
+            }
+
+            // Second priority: failed/running pipelines first
+            const statusPriorityMap = {
+                'failed': 0,
+                'running': 1,
+                'pending': 2,
+                'success': 3,
+                'canceled': 4,
+                'cancelled': 4,
+                'skipped': 5,
+                null: 6,
+                undefined: 6
+            };
+            const priorityA = statusPriorityMap[a.last_pipeline_status] ?? 6;
+            const priorityB = statusPriorityMap[b.last_pipeline_status] ?? 6;
+            if (priorityA !== priorityB) {
+                return priorityA - priorityB;
+            }
+
+            // Third priority: alphabetical by name
+            const nameA = (a.name || '').toLowerCase();
+            const nameB = (b.name || '').toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+
+        container.innerHTML = sortedRepos.map(repo => this.createRepoCard(repo)).join('');
     }
 
     createRepoCard(repo) {
         const description = repo.description || 'No description available';
-        const lastActivity = repo.last_activity_at 
-            ? this.formatDate(repo.last_activity_at) 
-            : 'Unknown';
+        const pipelineStatus = repo.last_pipeline_status || null;
+        const statusClass = pipelineStatus ? `status-${pipelineStatus}` : 'status-none';
+        
+        // Pipeline info section
+        let pipelineInfo = '';
+        if (pipelineStatus) {
+            const ref = repo.last_pipeline_ref || 'unknown';
+            const duration = repo.last_pipeline_duration != null 
+                ? this.formatDuration(repo.last_pipeline_duration) 
+                : '--';
+            const updatedAt = repo.last_pipeline_updated_at 
+                ? this.formatDate(repo.last_pipeline_updated_at) 
+                : 'unknown';
+            
+            pipelineInfo = `
+                <div class="repo-pipeline">
+                    <div class="pipeline-status-chip ${pipelineStatus}">
+                        <span class="status-dot"></span>
+                        <span>${pipelineStatus}</span>
+                    </div>
+                    <div class="pipeline-details">
+                        <span class="pipeline-ref">${this.escapeHtml(ref)}</span>
+                        <span class="pipeline-duration">${duration}</span>
+                        <span class="pipeline-time">updated ${updatedAt}</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Success rate section
+        let successRateSection = '';
+        if (repo.recent_success_rate != null) {
+            const successPercent = Math.round(repo.recent_success_rate * 100);
+            successRateSection = `
+                <div class="repo-success-rate">
+                    <div class="success-rate-label">
+                        <span>Success Rate</span>
+                        <span class="success-rate-value">${successPercent}%</span>
+                    </div>
+                    <div class="success-rate-bar">
+                        <div class="success-rate-fill" style="width: ${successPercent}%"></div>
+                    </div>
+                </div>
+            `;
+        }
 
         return `
-            <div class="repo-card">
+            <div class="repo-card ${statusClass}">
                 <div class="repo-header">
                     <div>
                         <h3 class="repo-name">${this.escapeHtml(repo.name)}</h3>
@@ -120,6 +195,8 @@ class DashboardApp {
                     <span class="repo-visibility">${repo.visibility}</span>
                 </div>
                 <p class="repo-description">${this.escapeHtml(description)}</p>
+                ${pipelineInfo}
+                ${successRateSection}
                 <div class="repo-stats">
                     <div class="repo-stat">
                         <span>⭐</span>
