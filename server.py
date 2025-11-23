@@ -418,10 +418,10 @@ class BackgroundPoller(threading.Thread):
         
         Returns:
             list: List of projects (may be empty if no projects found)
-            None: Only if API error occurred
+            None: Only if API error occurred and NO projects were fetched
         """
         all_projects = []
-        api_error = False
+        api_errors = 0
         
         # Fetch from specific project IDs if configured
         if self.project_ids:
@@ -430,7 +430,8 @@ class BackgroundPoller(threading.Thread):
                 project = self.gitlab_client.get_project(project_id)
                 if project is None:
                     # API error occurred
-                    api_error = True
+                    api_errors += 1
+                    logger.warning(f"Failed to fetch project {project_id}")
                 else:
                     # Non-None means successful API call, add the project
                     all_projects.append(project)
@@ -443,7 +444,7 @@ class BackgroundPoller(threading.Thread):
                 group_projects = self.gitlab_client.get_group_projects(group_id)
                 if group_projects is None:
                     # API error occurred
-                    api_error = True
+                    api_errors += 1
                     logger.warning(f"Failed to fetch projects for group {group_id}")
                 elif group_projects:
                     # Non-empty list, extend our results
@@ -459,15 +460,19 @@ class BackgroundPoller(threading.Thread):
             projects = self.gitlab_client.get_projects()
             if projects is None:
                 # API error occurred
-                api_error = True
+                api_errors += 1
+                logger.error("Failed to fetch all accessible projects")
             elif projects:
                 # Non-empty list, use it as our results
                 all_projects = projects
         
-        # Return None only if we had an API error
-        # Return empty list if no projects were found (valid state)
-        if api_error:
-            return None
+        # Handle partial failures
+        if api_errors > 0:
+            if all_projects:
+                logger.warning(f"Partial project fetch: {api_errors} sources failed, but got {len(all_projects)} projects from others")
+            else:
+                logger.error("All project fetches failed")
+                return None
         
         if not all_projects:
             logger.info("No projects found (this may be expected for configured groups/IDs)")
