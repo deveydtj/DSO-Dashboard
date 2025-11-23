@@ -141,7 +141,7 @@ class TestMockReloadEndpoint(unittest.TestCase):
         response_data = json.loads(call_args.decode('utf-8'))
         
         self.assertIn('error', response_data)
-        self.assertIn('Failed to load mock_data.json', response_data['error'])
+        self.assertIn('Failed to load mock data file', response_data['error'])
     
     def test_mock_reload_exception_handling(self):
         """Test that exceptions are caught and returned as 500 errors"""

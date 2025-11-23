@@ -180,6 +180,7 @@ DSO-Dashboard supports two configuration methods that can be used together. **En
 | `per_page` | `PER_PAGE` | API pagination size | `100` |
 | `insecure_skip_verify` | `INSECURE_SKIP_VERIFY` | Skip SSL verification (self-signed certs) | `false` |
 | `use_mock_data` | `USE_MOCK_DATA` | Use mock data instead of GitLab API | `false` |
+| `mock_scenario` | `MOCK_SCENARIO` | Mock scenario name: `healthy`, `failing`, or `running` | `` (uses `mock_data.json`) |
 | `port` (N/A in json) | `PORT` | Server port | `8080` |
 
 ### Configuration Examples
@@ -244,10 +245,58 @@ python3 server.py
 ```
 
 When mock mode is enabled:
-- Server loads data from `mock_data.json` at startup
+- Server loads data from `mock_data.json` at startup (or a scenario file if specified)
 - GitLab API polling is **disabled** (no network calls)
 - `/api/health` returns `ONLINE` status
 - All API endpoints serve data from the mock file
+
+#### Mock Scenarios
+
+DSO-Dashboard includes pre-built mock scenarios for testing different edge cases:
+
+| Scenario | File | Description | Use Case |
+|----------|------|-------------|----------|
+| **Default** | `mock_data.json` | Mixed status with moderate activity | General development |
+| **healthy** | `data/mock_scenarios/healthy.json` | Mostly successful pipelines (95% success rate) | Demo healthy CI/CD state |
+| **failing** | `data/mock_scenarios/failing.json` | Multiple repos with consecutive failures | Test failure handling, alerts |
+| **running** | `data/mock_scenarios/running.json` | Many running and pending pipelines | Test active build visualization |
+
+**Switching Scenarios:**
+
+```bash
+# Use the healthy scenario
+export USE_MOCK_DATA=true
+export MOCK_SCENARIO=healthy
+python3 server.py
+
+# Use the failing scenario
+export USE_MOCK_DATA=true
+export MOCK_SCENARIO=failing
+python3 server.py
+
+# Use the running scenario
+export USE_MOCK_DATA=true
+export MOCK_SCENARIO=running
+python3 server.py
+
+# Use default mock_data.json (no scenario specified)
+export USE_MOCK_DATA=true
+python3 server.py
+```
+
+**Or via config.json:**
+```json
+{
+  "use_mock_data": true,
+  "mock_scenario": "healthy"
+}
+```
+
+**Scenario Details:**
+
+- **healthy**: 10 repositories, 95% pipeline success rate, minimal failures
+- **failing**: 10 repositories, multiple with 3-10 consecutive failures on main branch, 46% success rate
+- **running**: 12 repositories, 18 running pipelines, 12 pending pipelines, high activity
 
 #### Mock Data File Structure
 
@@ -297,36 +346,39 @@ The `mock_data.json` file contains sample data matching the API response format:
 - `repositories`: Array of repository objects matching `/api/repos` response
 - `pipelines`: Array of pipeline objects matching `/api/pipelines` response
 
-You can customize `mock_data.json` to test different scenarios (failures, various project counts, etc.).
+You can customize `mock_data.json` to test different scenarios, or use the pre-built scenarios in `data/mock_scenarios/`.
 
 #### Hot-Reloading Mock Data
 
-When running in mock mode, you can reload the `mock_data.json` file without restarting the server. This is useful for:
+When running in mock mode, you can reload the mock data file without restarting the server. This is useful for:
 - **Rapid iteration**: Test UI changes with different data sets
 - **Demo scenarios**: Switch between different mock data snapshots
 - **Testing edge cases**: Quickly test how the UI handles various data states
 
 **Reload Mock Data:**
 ```bash
-# Edit mock_data.json with your changes, then reload:
+# Edit the mock file (mock_data.json or scenario file) with your changes, then reload:
 curl -X POST http://localhost:8080/api/mock/reload
 
 # Example response:
 # {
 #   "reloaded": true,
 #   "timestamp": "2024-01-15T12:00:00.000000",
+#   "scenario": "healthy",
 #   "summary": {
-#     "repositories": 8,
-#     "pipelines": 45
+#     "repositories": 10,
+#     "pipelines": 60
 #   }
 # }
 ```
 
 **Important Notes:**
 - Hot-reload only works when `USE_MOCK_DATA=true` (mock mode enabled)
+- The endpoint reloads from the same file that was initially configured (e.g., if you started with `MOCK_SCENARIO=healthy`, it reloads `data/mock_scenarios/healthy.json`)
+- To switch scenarios, you need to restart the server with a different `MOCK_SCENARIO` value
 - If you call the endpoint when not in mock mode, you'll get a `400 Bad Request` error
 - The dashboard will reflect the new data on the next auto-refresh (within 60 seconds) or when you manually refresh the page
-- Invalid JSON in `mock_data.json` will return a `500 Internal Server Error` with details in the response
+- Invalid JSON in the mock file will return a `500 Internal Server Error` with details in the response
 
 ## API Endpoints
 
