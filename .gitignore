@@ -30,3 +30,18 @@ Thumbs.db
 
 # Temporary files
 /tmp/
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Backups
+*.bak
+*.backup
+*~
