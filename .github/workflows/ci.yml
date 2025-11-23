@@ -253,8 +253,6 @@ jobs:
     
     permissions:
       contents: read
-    needs: [validate, frontend-validation, integration-test]
-    if: always()
     
     steps:
     - name: Check results
@@ -263,13 +261,13 @@ jobs:
         echo "==================="
         echo ""
         echo "Validation: ${{ needs.validate.result }}"
-        echo "Frontend Validation: ${{ needs.frontend-validation.result }}"
-        echo "Integration Test: ${{ needs.integration-test.result }}"
+        echo "Frontend Validation: ${{ needs['frontend-validation'].result }}"
+        echo "Integration Test: ${{ needs['integration-test'].result }}"
         echo ""
         
         if [ "${{ needs.validate.result }}" = "success" ] && \
-           [ "${{ needs.frontend-validation.result }}" = "success" ] && \
-           [ "${{ needs.integration-test.result }}" = "success" ]; then
+           [ "${{ needs['frontend-validation'].result }}" = "success" ] && \
+           [ "${{ needs['integration-test'].result }}" = "success" ]; then
           echo "✓ All checks passed!"
           exit 0
         else
