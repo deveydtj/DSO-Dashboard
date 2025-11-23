@@ -1,0 +1,14 @@
+{
+  "gitlab_url": "https://gitlab.com",
+  "api_token": "your_gitlab_api_token_here",
+  "group_ids": [],
+  "project_ids": [],
+  "poll_interval_sec": 60,
+  "cache_ttl_sec": 300,
+  "per_page": 100,
+  "insecure_skip_verify": false,
+  "comment": "group_ids and project_ids can be numeric (e.g., [123, 456]) or strings (e.g., ['proj-1', 'proj-2'])",
+  "note1": "Environment variables override config.json values when explicitly set.",
+  "note2": "Set GITLAB_GROUP_IDS='' (empty) to clear configured scope at runtime.",
+  "note3": "Set INSECURE_SKIP_VERIFY=false to re-enable certificate verification."
+}
