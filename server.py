@@ -325,6 +325,9 @@ STATE = {
 }
 STATE_LOCK = threading.Lock()
 
+# Global flag to track if server is running in mock mode
+MOCK_MODE_ENABLED = False
+
 
 def update_state(key, value):
     """Thread-safe update of global STATE (single key)
@@ -788,6 +791,18 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             # Serve static files
             super().do_GET()
     
+    def do_POST(self):
+        """Handle POST requests"""
+        parsed_path = urlparse(self.path)
+        path = parsed_path.path
+        
+        # API endpoints
+        if path == '/api/mock/reload':
+            self.handle_mock_reload()
+        else:
+            # Unsupported POST endpoint
+            self.send_json_response({'error': 'Endpoint not found'}, status=404)
+    
     def handle_summary(self):
         """Handle /api/summary endpoint"""
         try:
@@ -1042,6 +1057,61 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             }
             self.send_json_response(health, status=503)
     
+    def handle_mock_reload(self):
+        """Handle /api/mock/reload endpoint (POST only)
+        
+        Re-reads mock_data.json and atomically replaces STATE contents.
+        Only works when server is running in mock mode.
+        """
+        try:
+            # Check if server is in mock mode
+            if not MOCK_MODE_ENABLED:
+                self.send_json_response({
+                    'error': 'Mock reload endpoint only available in mock mode',
+                    'hint': 'Set USE_MOCK_DATA=true or use_mock_data: true in config.json'
+                }, status=400)
+                return
+            
+            # Re-load mock data from file
+            mock_data = load_mock_data()
+            if mock_data is None:
+                self.send_json_response({
+                    'error': 'Failed to load mock_data.json',
+                    'details': 'Check server logs for details'
+                }, status=500)
+                return
+            
+            # Atomically update STATE with new mock data
+            update_state_atomic({
+                'projects': mock_data['repositories'],
+                'pipelines': mock_data['pipelines'],
+                'summary': mock_data['summary']
+            })
+            
+            # Get the timestamp that was just set
+            status_info = get_state_status()
+            timestamp_iso = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated'])
+            
+            logger.info("Mock data reloaded successfully via API")
+            logger.info(f"  Repositories: {len(mock_data['repositories'])}")
+            logger.info(f"  Pipelines: {len(mock_data['pipelines'])}")
+            
+            self.send_json_response({
+                'reloaded': True,
+                'timestamp': timestamp_iso,
+                'summary': {
+                    'repositories': len(mock_data['repositories']),
+                    'pipelines': len(mock_data['pipelines'])
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error in handle_mock_reload: {e}")
+            self.send_json_response({
+                'error': str(e),
+                'reloaded': False
+            }, status=500)
+    
     def send_json_response(self, data, status=200):
         """Send JSON response"""
         self.send_response(status)
@@ -1200,6 +1270,8 @@ def load_mock_data():
 
 def main():
     """Main entry point"""
+    global MOCK_MODE_ENABLED
+    
     logger.info("Starting GitLab Dashboard Server...")
     
     # Load configuration
@@ -1207,6 +1279,7 @@ def main():
     
     # Check if mock mode is enabled
     if config['use_mock_data']:
+        MOCK_MODE_ENABLED = True
         logger.info("=" * 70)
         logger.info("MOCK DATA MODE ENABLED")
         logger.info("Server will use mock_data.json instead of GitLab API")
