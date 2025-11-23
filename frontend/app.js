@@ -134,6 +134,20 @@ class DashboardApp {
         if (successPipelines) successPipelines.textContent = data.successful_pipelines || 0;
         if (failedPipelines) failedPipelines.textContent = data.failed_pipelines || 0;
         if (runningPipelines) runningPipelines.textContent = data.running_pipelines || 0;
+
+        // Update mock data badge visibility
+        this.updateMockBadge(data.is_mock);
+    }
+
+    updateMockBadge(isMock) {
+        const badge = document.getElementById('mockBadge');
+        if (badge) {
+            if (isMock === true) {
+                badge.style.display = 'inline-flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
     }
 
     async loadRepositories() {

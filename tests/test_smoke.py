@@ -339,6 +339,66 @@ class TestMockDataMode(unittest.TestCase):
             with patch('builtins.open', unittest.mock.mock_open(read_data='invalid json {')):
                 result = server.load_mock_data()
                 self.assertIsNone(result)
+    
+    def test_summary_includes_is_mock_field_when_mock_enabled(self):
+        """Test that /api/summary includes is_mock=true when MOCK_MODE_ENABLED is True"""
+        # Set mock mode to enabled
+        original_mock_mode = server.MOCK_MODE_ENABLED
+        server.MOCK_MODE_ENABLED = True
+        
+        try:
+            # Set up mock state data
+            mock_summary = {
+                'total_repositories': 5,
+                'successful_pipelines': 10
+            }
+            server.update_state('summary', mock_summary)
+            
+            # Create a mock request handler
+            handler = MagicMock(spec=server.DashboardRequestHandler)
+            handler.send_json_response = MagicMock()
+            
+            # Call handle_summary
+            server.DashboardRequestHandler.handle_summary(handler)
+            
+            # Verify response includes is_mock=True
+            handler.send_json_response.assert_called_once()
+            response_data = handler.send_json_response.call_args[0][0]
+            self.assertIn('is_mock', response_data)
+            self.assertTrue(response_data['is_mock'])
+        finally:
+            # Restore original mock mode
+            server.MOCK_MODE_ENABLED = original_mock_mode
+    
+    def test_summary_includes_is_mock_field_when_mock_disabled(self):
+        """Test that /api/summary includes is_mock=false when MOCK_MODE_ENABLED is False"""
+        # Ensure mock mode is disabled
+        original_mock_mode = server.MOCK_MODE_ENABLED
+        server.MOCK_MODE_ENABLED = False
+        
+        try:
+            # Set up mock state data
+            mock_summary = {
+                'total_repositories': 5,
+                'successful_pipelines': 10
+            }
+            server.update_state('summary', mock_summary)
+            
+            # Create a mock request handler
+            handler = MagicMock(spec=server.DashboardRequestHandler)
+            handler.send_json_response = MagicMock()
+            
+            # Call handle_summary
+            server.DashboardRequestHandler.handle_summary(handler)
+            
+            # Verify response includes is_mock=False
+            handler.send_json_response.assert_called_once()
+            response_data = handler.send_json_response.call_args[0][0]
+            self.assertIn('is_mock', response_data)
+            self.assertFalse(response_data['is_mock'])
+        finally:
+            # Restore original mock mode
+            server.MOCK_MODE_ENABLED = original_mock_mode
 
 
 if __name__ == '__main__':
