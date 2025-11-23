@@ -756,16 +756,9 @@ body.compact {
     font-size: 0.9rem;
 }
 
-body.compact :root {
-    /* Reduce spacing variables */
-    --spacing-xs: 0.4rem;
-    --spacing-sm: 0.75rem;
-    --spacing-md: 1rem;
-}
-
 body.compact .header {
-    padding: var(--spacing-md);
-    margin-bottom: var(--spacing-md);
+    padding: 1rem;
+    margin-bottom: 1rem;
 }
 
 body.compact .header-title {
@@ -788,12 +781,12 @@ body.compact .tv-toggle-icon {
 }
 
 body.compact .kpi-section {
-    gap: var(--spacing-sm);
-    margin-bottom: var(--spacing-md);
+    gap: 0.75rem;
+    margin-bottom: 1rem;
 }
 
 body.compact .kpi-card {
-    padding: var(--spacing-md);
+    padding: 1rem;
 }
 
 body.compact .kpi-icon {
@@ -812,22 +805,22 @@ body.compact .kpi-label {
 }
 
 body.compact .section {
-    margin-bottom: var(--spacing-lg);
+    margin-bottom: 2rem;
 }
 
 body.compact .section-title {
     font-size: 1.25rem;
-    margin-bottom: var(--spacing-sm);
+    margin-bottom: 0.75rem;
 }
 
 body.compact .repo-grid {
     /* More columns with tighter minimum width */
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-    gap: var(--spacing-sm);
+    gap: 0.75rem;
 }
 
 body.compact .repo-card {
-    padding: var(--spacing-md);
+    padding: 1rem;
 }
 
 body.compact .repo-name {
@@ -837,7 +830,7 @@ body.compact .repo-name {
 
 body.compact .repo-description {
     font-size: 0.8rem;
-    margin-bottom: var(--spacing-sm);
+    margin-bottom: 0.75rem;
     min-height: 2em;
 }
 
@@ -847,7 +840,7 @@ body.compact .repo-visibility {
 }
 
 body.compact .repo-stats {
-    gap: var(--spacing-sm);
+    gap: 0.75rem;
     padding-top: 0.5rem;
 }
 
@@ -856,7 +849,7 @@ body.compact .repo-stat {
 }
 
 body.compact .repo-pipeline {
-    margin: var(--spacing-sm) 0;
+    margin: 0.75rem 0;
     padding-top: 0.5rem;
 }
 
@@ -888,7 +881,7 @@ body.compact .repo-link {
 }
 
 body.compact .table-container {
-    padding: var(--spacing-sm);
+    padding: 0.75rem;
 }
 
 body.compact .pipeline-table {
@@ -921,7 +914,7 @@ body.compact .pipeline-link {
 
 body.compact .footer {
     font-size: 0.8rem;
-    padding: var(--spacing-md);
+    padding: 1rem;
 }
 
 /* Combined TV + Compact mode - Large display with more data visible */
