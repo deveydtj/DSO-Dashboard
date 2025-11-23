@@ -8,5 +8,7 @@
   "per_page": 100,
   "insecure_skip_verify": false,
   "comment": "group_ids and project_ids can be numeric (e.g., [123, 456]) or strings (e.g., ['proj-1', 'proj-2'])",
-  "note": "Environment variables override config.json. Set GITLAB_GROUP_IDS='' (empty) to clear configured scope at runtime."
+  "note1": "Environment variables override config.json values when explicitly set.",
+  "note2": "Set GITLAB_GROUP_IDS='' (empty) to clear configured scope at runtime.",
+  "note3": "Set INSECURE_SKIP_VERIFY=false to re-enable certificate verification."
 }

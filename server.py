@@ -858,7 +858,12 @@ def load_config():
     config['cache_ttl_sec'] = parse_int_config(os.environ.get('CACHE_TTL'), config.get('cache_ttl_sec', 300), 'CACHE_TTL')
     config['poll_interval_sec'] = parse_int_config(os.environ.get('POLL_INTERVAL'), config.get('poll_interval_sec', 60), 'POLL_INTERVAL')
     config['per_page'] = parse_int_config(os.environ.get('PER_PAGE'), config.get('per_page', 100), 'PER_PAGE')
-    config['insecure_skip_verify'] = os.environ.get('INSECURE_SKIP_VERIFY', '').lower() in ['true', '1', 'yes'] or config.get('insecure_skip_verify', False)
+    
+    # For insecure_skip_verify, check if env var is explicitly set to allow overriding
+    if 'INSECURE_SKIP_VERIFY' in os.environ:
+        config['insecure_skip_verify'] = os.environ['INSECURE_SKIP_VERIFY'].lower() in ['true', '1', 'yes']
+    else:
+        config['insecure_skip_verify'] = config.get('insecure_skip_verify', False)
     
     # Ensure lists are clean (filter config.json values that might have empty strings or numeric IDs)
     if isinstance(config['group_ids'], list):
