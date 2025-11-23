@@ -836,6 +836,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             last_updated_iso = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
             response['last_updated'] = last_updated_iso
             response['last_updated_iso'] = last_updated_iso  # Explicit field as requested in requirements
+            response['is_mock'] = MOCK_MODE_ENABLED  # Indicate if data is from mock source
             
             self.send_json_response(response)
             

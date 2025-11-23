@@ -83,6 +83,24 @@ body {
     font-size: 0.9rem;
 }
 
+.mock-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.4rem 0.75rem;
+    background: var(--bg-card);
+    color: var(--accent-warning);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-radius: var(--radius-sm);
+    box-shadow: 
+        inset 2px 2px 4px var(--shadow-inset-dark),
+        inset -2px -2px 4px var(--shadow-inset-light),
+        0 0 8px rgba(245, 158, 11, 0.3);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
 .status-indicator {
     font-size: 1.2rem;
     animation: pulse 2s ease-in-out infinite;
@@ -687,6 +705,11 @@ body.tv .header-title {
 
 body.tv .header-info {
     font-size: 1.3rem;
+}
+
+body.tv .mock-badge {
+    font-size: 1rem;
+    padding: 0.6rem 1.2rem;
 }
 
 body.tv .status-indicator {
