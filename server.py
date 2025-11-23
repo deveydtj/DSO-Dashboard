@@ -26,7 +26,17 @@ logger = logging.getLogger(__name__)
 # Pipeline fetching configuration constants
 MAX_PROJECTS_FOR_PIPELINES = 20  # Max projects to fetch pipelines from
 PIPELINES_PER_PROJECT = 10       # Pipelines to fetch per project
-MAX_TOTAL_PIPELINES = 50         # Max total pipelines to return
+MAX_TOTAL_PIPELINES = 50         # Default max for /api/pipelines response (deprecated in storage)
+
+# API query parameter constants
+DEFAULT_PIPELINE_LIMIT = 50      # Default limit for /api/pipelines endpoint
+MAX_PIPELINE_LIMIT = 1000        # Maximum limit for /api/pipelines endpoint
+
+# Timestamp fallback constants
+EPOCH_TIMESTAMP = '1970-01-01T00:00:00Z'  # Fallback for missing timestamps
+
+# Default branch constant
+DEFAULT_BRANCH_NAME = 'main'     # Default branch name fallback
 
 
 class GitLabAPIClient:
@@ -264,6 +274,7 @@ class GitLabAPIClient:
                 for pipeline in pipelines:
                     pipeline['project_name'] = project['name']
                     pipeline['project_id'] = project['id']
+                    pipeline['project_path'] = project.get('path_with_namespace', '')
                     all_pipelines.append(pipeline)
         
         # Sort by created_at descending
@@ -407,25 +418,29 @@ class BackgroundPoller(threading.Thread):
             return
         
         # Fetch pipelines (pass projects to respect configured scope)
-        pipelines = self._fetch_pipelines(projects)
-        if pipelines is None:
+        # Returns dict with 'all_pipelines' (for /api/pipelines) and 'per_project' (for enrichment)
+        pipeline_data = self._fetch_pipelines(projects)
+        if pipeline_data is None:
             logger.error("Failed to fetch pipelines - API error")
             # Set error state so health endpoint reflects the failure
             set_state_error("Failed to fetch data from GitLab API")
             logger.error("Data poll completed with failures - state marked as ERROR")
             return
         
+        # Enrich projects with per-project pipeline health data
+        enriched_projects = self._enrich_projects_with_pipelines(projects, pipeline_data['per_project'])
+        
         # Both fetches succeeded - calculate summary and update STATE atomically
-        summary = self._calculate_summary(projects, pipelines)
+        summary = self._calculate_summary(enriched_projects, pipeline_data['all_pipelines'])
         
         # Update all keys atomically with single timestamp and status
         update_state_atomic({
-            'projects': projects,
-            'pipelines': pipelines,
+            'projects': enriched_projects,
+            'pipelines': pipeline_data['all_pipelines'],
             'summary': summary
         })
         
-        logger.info(f"Updated STATE atomically: {len(projects)} projects, {len(pipelines)} pipelines")
+        logger.info(f"Updated STATE atomically: {len(enriched_projects)} projects, {len(pipeline_data['all_pipelines'])} pipelines")
         logger.info("Data poll completed successfully")
     
     def _fetch_projects(self):
@@ -521,7 +536,10 @@ class BackgroundPoller(threading.Thread):
                      Empty list means no projects found in configured scope.
         
         Returns:
-            list: List of pipelines (may be empty if no pipelines found)
+            dict: {
+                'all_pipelines': List sorted and limited for /api/pipelines endpoint,
+                'per_project': Dict mapping project_id -> list of pipelines for enrichment
+            }
             None: Only if API error occurred
         """
         # Check if we have a configured scope (group_ids or project_ids set)
@@ -537,10 +555,11 @@ class BackgroundPoller(threading.Thread):
             # projects is empty list means configured scope has no projects
             if not projects:
                 logger.info("No projects in configured scope, returning empty pipelines")
-                return []
+                return {'all_pipelines': [], 'per_project': {}}
             
             logger.info(f"Fetching pipelines for {len(projects)} configured projects")
             all_pipelines = []
+            per_project_pipelines = {}
             api_errors = 0
             
             # Limit to reasonable number of projects to avoid too many API calls
@@ -549,6 +568,7 @@ class BackgroundPoller(threading.Thread):
             for project in projects_to_check:
                 project_id = project.get('id')
                 project_name = project.get('name', f'Project {project_id}')
+                project_path = project.get('path_with_namespace', '')
                 
                 # Fetch recent pipelines for this project
                 pipelines = self.gitlab_client.get_pipelines(project_id, per_page=PIPELINES_PER_PROJECT)
@@ -558,11 +578,17 @@ class BackgroundPoller(threading.Thread):
                     logger.warning(f"Failed to fetch pipelines for project {project_name} (ID: {project_id})")
                     api_errors += 1
                 elif pipelines:
+                    # Store per-project pipelines for enrichment (before global limit)
+                    per_project_pipelines[project_id] = []
+                    
                     # Add project info to each pipeline
                     for pipeline in pipelines:
                         pipeline['project_name'] = project_name
                         pipeline['project_id'] = project_id
+                        pipeline['project_path'] = project_path
                         all_pipelines.append(pipeline)
+                        # Also store in per-project dict
+                        per_project_pipelines[project_id].append(pipeline)
             
             # Handle partial failures
             if api_errors > 0:
@@ -572,19 +598,24 @@ class BackgroundPoller(threading.Thread):
                     logger.error("All pipeline fetches failed")
                     return None
             
-            # Sort by created_at descending and limit to max
+            # Sort by created_at descending for /api/pipelines
             # ISO 8601 string sorting works correctly; empty values sort to bottom
             all_pipelines.sort(key=lambda x: x.get('created_at') or '', reverse=True)
-            result = all_pipelines[:MAX_TOTAL_PIPELINES]
             
-            if not result:
+            # Store all pipelines in STATE (up to what we fetched) to support filtering
+            # The limit will be applied at the API response level in handle_pipelines
+            if not all_pipelines:
                 logger.info("No pipelines found in configured projects")
             
-            return result
+            return {
+                'all_pipelines': all_pipelines,  # Store all fetched pipelines
+                'per_project': per_project_pipelines
+            }
         else:
             # No scope configured: fallback to arbitrary membership sample
+            # Fetch enough pipelines to support filtering and higher limits
             logger.info("No scope configured, using membership sample for pipelines")
-            pipelines = self.gitlab_client.get_all_pipelines(per_page=MAX_TOTAL_PIPELINES)
+            pipelines = self.gitlab_client.get_all_pipelines(per_page=MAX_PROJECTS_FOR_PIPELINES * PIPELINES_PER_PROJECT)
             
             # Return None for API errors, empty list is valid
             if pipelines is None:
@@ -593,7 +624,94 @@ class BackgroundPoller(threading.Thread):
             if not pipelines:
                 logger.info("No pipelines found")
             
-            return pipelines
+            # Build per-project map from the fetched pipelines
+            per_project_pipelines = {}
+            for pipeline in pipelines:
+                project_id = pipeline.get('project_id')
+                if project_id:
+                    if project_id not in per_project_pipelines:
+                        per_project_pipelines[project_id] = []
+                    per_project_pipelines[project_id].append(pipeline)
+            
+            return {
+                'all_pipelines': pipelines,
+                'per_project': per_project_pipelines
+            }
+    
+    def _enrich_projects_with_pipelines(self, projects, per_project_pipelines):
+        """Enrich project data with pipeline health metrics
+        
+        Args:
+            projects: List of project dicts
+            per_project_pipelines: Dict mapping project_id -> list of pipelines for that project
+        
+        Returns:
+            List of enriched project dicts with pipeline health data
+        """
+        if not projects:
+            return []
+        
+        # Sort pipelines by created_at for each project (newest first)
+        # ISO 8601 timestamps sort correctly lexicographically
+        for project_id in per_project_pipelines:
+            per_project_pipelines[project_id].sort(
+                key=lambda p: p.get('created_at') or EPOCH_TIMESTAMP, 
+                reverse=True
+            )
+        
+        # Enrich each project with pipeline data
+        enriched_projects = []
+        for project in projects:
+            project_id = project.get('id')
+            enriched = dict(project)  # Create a copy
+            
+            # Get pipelines for this project
+            pipelines_for_project = per_project_pipelines.get(project_id, [])
+            
+            if pipelines_for_project:
+                # Last pipeline info
+                last_pipeline = pipelines_for_project[0]
+                enriched['last_pipeline_status'] = last_pipeline.get('status')
+                enriched['last_pipeline_ref'] = last_pipeline.get('ref')
+                enriched['last_pipeline_duration'] = last_pipeline.get('duration')
+                enriched['last_pipeline_updated_at'] = last_pipeline.get('updated_at')
+                
+                # Calculate recent success rate (last 10 pipelines on default branch only)
+                default_branch = project.get('default_branch', DEFAULT_BRANCH_NAME)
+                default_branch_pipelines = [
+                    p for p in pipelines_for_project 
+                    if p.get('ref') == default_branch
+                ]
+                
+                if default_branch_pipelines:
+                    recent_default_pipelines = default_branch_pipelines[:10]
+                    success_count = sum(1 for p in recent_default_pipelines if p.get('status') == 'success')
+                    enriched['recent_success_rate'] = success_count / len(recent_default_pipelines)
+                else:
+                    # No default branch pipelines found
+                    enriched['recent_success_rate'] = None
+                
+                # Calculate consecutive failures on default branch
+                consecutive_failures = 0
+                for pipeline in default_branch_pipelines:
+                    if pipeline.get('status') == 'failed':
+                        consecutive_failures += 1
+                    else:
+                        # Stop counting at first non-failure
+                        break
+                enriched['consecutive_default_branch_failures'] = consecutive_failures
+            else:
+                # No pipelines for this project
+                enriched['last_pipeline_status'] = None
+                enriched['last_pipeline_ref'] = None
+                enriched['last_pipeline_duration'] = None
+                enriched['last_pipeline_updated_at'] = None
+                enriched['recent_success_rate'] = None
+                enriched['consecutive_default_branch_failures'] = 0
+            
+            enriched_projects.append(enriched)
+        
+        return enriched_projects
     
     def _calculate_summary(self, projects, pipelines):
         """Calculate summary statistics
@@ -621,13 +739,20 @@ class BackgroundPoller(threading.Thread):
             status = pipeline.get('status', 'unknown')
             pipeline_statuses[status] = pipeline_statuses.get(status, 0) + 1
         
+        # Calculate success rate
+        total_pipelines = len(pipelines)
+        successful_pipelines = pipeline_statuses.get('success', 0)
+        pipeline_success_rate = successful_pipelines / total_pipelines if total_pipelines > 0 else 0.0
+        
         return {
             'total_repositories': total_repos,
             'active_repositories': active_repos,
-            'total_pipelines': len(pipelines),
-            'successful_pipelines': pipeline_statuses.get('success', 0),
+            'total_pipelines': total_pipelines,
+            'successful_pipelines': successful_pipelines,
             'failed_pipelines': pipeline_statuses.get('failed', 0),
             'running_pipelines': pipeline_statuses.get('running', 0),
+            'pending_pipelines': pipeline_statuses.get('pending', 0),
+            'pipeline_success_rate': pipeline_success_rate,
             'pipeline_statuses': pipeline_statuses
         }
     
@@ -693,7 +818,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             
             # Add timestamp from STATE to summary
             response = dict(summary)
-            response['last_updated'] = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
+            last_updated_iso = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
+            response['last_updated'] = last_updated_iso
+            response['last_updated_iso'] = last_updated_iso  # Explicit field as requested in requirements
             
             self.send_json_response(response)
             
@@ -734,6 +861,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 repo = {
                     'id': project.get('id'),
                     'name': project.get('name'),
+                    'path_with_namespace': project.get('path_with_namespace'),
                     'description': project.get('description', ''),
                     'web_url': project.get('web_url'),
                     'last_activity_at': project.get('last_activity_at'),
@@ -741,7 +869,14 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     'forks_count': project.get('forks_count', 0),
                     'open_issues_count': project.get('open_issues_count', 0),
                     'default_branch': project.get('default_branch', 'main'),
-                    'visibility': project.get('visibility', 'private')
+                    'visibility': project.get('visibility', 'private'),
+                    # Pipeline health metrics
+                    'last_pipeline_status': project.get('last_pipeline_status'),
+                    'last_pipeline_ref': project.get('last_pipeline_ref'),
+                    'last_pipeline_duration': project.get('last_pipeline_duration'),
+                    'last_pipeline_updated_at': project.get('last_pipeline_updated_at'),
+                    'recent_success_rate': project.get('recent_success_rate'),
+                    'consecutive_default_branch_failures': project.get('consecutive_default_branch_failures', 0)
                 }
                 repos.append(repo)
             
@@ -761,6 +896,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         """Handle /api/pipelines endpoint"""
         try:
             pipelines = get_state('pipelines')
+            projects = get_state('projects')
             status_info = get_state_status()
             
             if pipelines is None:
@@ -784,26 +920,78 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 }, status=503)
                 return
             
-            # Format pipeline data (pipelines can be empty list, which is valid)
-            formatted_pipelines = []
+            # Parse query parameters
+            parsed_path = urlparse(self.path)
+            query_params = parse_qs(parsed_path.query)
+            
+            # Get query parameter values (parse_qs returns lists)
+            try:
+                limit = int(query_params.get('limit', [str(DEFAULT_PIPELINE_LIMIT)])[0])
+                if limit < 1:
+                    raise ValueError("limit must be a positive integer (>= 1)")
+                if limit > MAX_PIPELINE_LIMIT:
+                    raise ValueError(f"limit must not exceed {MAX_PIPELINE_LIMIT}")
+            except (ValueError, IndexError) as e:
+                logger.error(f"Invalid limit parameter: {e}")
+                self.send_json_response({'error': f'Invalid limit parameter: {str(e)}'}, status=400)
+                return
+            
+            # Get optional filter parameters
+            status_filter = query_params.get('status', [None])[0] if query_params.get('status') else None
+            ref_filter = query_params.get('ref', [None])[0] if query_params.get('ref') else None
+            project_filter = query_params.get('project', [None])[0] if query_params.get('project') else None
+            
+            # Build project_id to path_with_namespace map
+            project_path_map = {}
+            if projects:
+                for project in projects:
+                    project_id = project.get('id')
+                    path_with_namespace = project.get('path_with_namespace', '')
+                    if project_id:
+                        project_path_map[project_id] = path_with_namespace
+            
+            # Format and filter pipeline data
+            filtered_pipelines = []
             for pipeline in pipelines:
+                # Apply filters
+                if status_filter and pipeline.get('status') != status_filter:
+                    continue
+                if ref_filter and pipeline.get('ref') != ref_filter:
+                    continue
+                
+                project_name = pipeline.get('project_name', 'Unknown')
+                project_id = pipeline.get('project_id')
+                project_path = project_path_map.get(project_id, '')
+                
+                # Apply project filter (substring match on name or path)
+                if project_filter:
+                    project_filter_lower = project_filter.lower()
+                    if (project_filter_lower not in project_name.lower() and 
+                        project_filter_lower not in project_path.lower()):
+                        continue
+                
                 formatted = {
                     'id': pipeline.get('id'),
-                    'project_id': pipeline.get('project_id'),
-                    'project_name': pipeline.get('project_name', 'Unknown'),
+                    'project_id': project_id,
+                    'project_name': project_name,
+                    'project_path': project_path,
                     'status': pipeline.get('status'),
                     'ref': pipeline.get('ref'),
-                    'sha': pipeline.get('sha', '')[:8],  # Short SHA
+                    'sha': (pipeline.get('sha') or '')[:8],  # Short SHA (safe slicing)
                     'web_url': pipeline.get('web_url'),
                     'created_at': pipeline.get('created_at'),
                     'updated_at': pipeline.get('updated_at'),
                     'duration': pipeline.get('duration')
                 }
-                formatted_pipelines.append(formatted)
+                filtered_pipelines.append(formatted)
+            
+            # Apply limit
+            limited_pipelines = filtered_pipelines[:limit]
             
             response = {
-                'pipelines': formatted_pipelines,
-                'total': len(formatted_pipelines),
+                'pipelines': limited_pipelines,
+                'total': len(limited_pipelines),
+                'total_before_limit': len(filtered_pipelines),  # For pagination context
                 'last_updated': status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
             }
             
