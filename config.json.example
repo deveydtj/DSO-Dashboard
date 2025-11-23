@@ -6,5 +6,6 @@
   "poll_interval_sec": 60,
   "cache_ttl_sec": 300,
   "per_page": 100,
-  "insecure_skip_verify": false
+  "insecure_skip_verify": false,
+  "comment": "group_ids and project_ids can be numeric (e.g., [123, 456]) or strings (e.g., ['proj-1', 'proj-2'])"
 }

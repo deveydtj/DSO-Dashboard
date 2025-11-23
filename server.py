@@ -844,11 +844,11 @@ def load_config():
     config['per_page'] = parse_int_config(os.environ.get('PER_PAGE'), config.get('per_page', 100), 'PER_PAGE')
     config['insecure_skip_verify'] = os.environ.get('INSECURE_SKIP_VERIFY', '').lower() in ['true', '1', 'yes'] or config.get('insecure_skip_verify', False)
     
-    # Ensure lists are clean (filter config.json values that might have empty strings)
+    # Ensure lists are clean (filter config.json values that might have empty strings or numeric IDs)
     if isinstance(config['group_ids'], list):
-        config['group_ids'] = [gid.strip() for gid in config['group_ids'] if gid and str(gid).strip()]
+        config['group_ids'] = [str(gid).strip() for gid in config['group_ids'] if gid and str(gid).strip()]
     if isinstance(config['project_ids'], list):
-        config['project_ids'] = [pid.strip() for pid in config['project_ids'] if pid and str(pid).strip()]
+        config['project_ids'] = [str(pid).strip() for pid in config['project_ids'] if pid and str(pid).strip()]
     
     # Validate required fields
     if not config['api_token']:
