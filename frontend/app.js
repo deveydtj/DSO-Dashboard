@@ -17,6 +17,7 @@ class DashboardApp {
     init() {
         console.log('🚀 Initializing GitLab DSO Dashboard...');
         this.checkTVMode();
+        this.setupTVToggle();
         this.checkHealth();
         this.loadAllData();
         this.startAutoRefresh();
@@ -29,6 +30,46 @@ class DashboardApp {
             document.body.classList.add('tv');
             console.log('📺 TV mode enabled');
         }
+    }
+
+    setupTVToggle() {
+        const toggle = document.getElementById('tvToggle');
+        if (!toggle) return;
+
+        // Read current mode from body class
+        const isTVMode = document.body.classList.contains('tv');
+        
+        // Set toggle UI state
+        if (isTVMode) {
+            toggle.classList.add('active');
+        }
+
+        // Add click handler
+        toggle.addEventListener('click', () => {
+            const isCurrentlyTV = document.body.classList.contains('tv');
+            
+            if (isCurrentlyTV) {
+                // Disable TV mode
+                document.body.classList.remove('tv');
+                toggle.classList.remove('active');
+                console.log('📺 TV mode disabled');
+                
+                // Remove tv parameter from URL
+                const url = new URL(window.location);
+                url.searchParams.delete('tv');
+                window.history.replaceState({}, '', url);
+            } else {
+                // Enable TV mode
+                document.body.classList.add('tv');
+                toggle.classList.add('active');
+                console.log('📺 TV mode enabled');
+                
+                // Add tv=1 parameter to URL
+                const url = new URL(window.location);
+                url.searchParams.set('tv', '1');
+                window.history.replaceState({}, '', url);
+            }
+        });
     }
 
     async checkHealth() {
