@@ -624,9 +624,10 @@ class BackgroundPoller(threading.Thread):
                 project_pipelines[project_id].append(pipeline)
         
         # Sort pipelines by created_at for each project (newest first)
+        # Use epoch timestamp as fallback for pipelines without created_at
         for project_id in project_pipelines:
             project_pipelines[project_id].sort(
-                key=lambda p: p.get('created_at') or '', 
+                key=lambda p: p.get('created_at') or '1970-01-01T00:00:00Z', 
                 reverse=True
             )
         
@@ -891,10 +892,10 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             try:
                 limit = int(query_params.get('limit', ['50'])[0])
                 if limit < 1:
-                    raise ValueError("limit must be positive")
+                    raise ValueError("limit must be a positive integer (>= 1)")
             except (ValueError, IndexError) as e:
                 logger.error(f"Invalid limit parameter: {e}")
-                self.send_json_response({'error': f'Invalid limit parameter: must be a positive integer'}, status=400)
+                self.send_json_response({'error': f'Invalid limit parameter: {str(e)}'}, status=400)
                 return
             
             status_filter = query_params.get('status', [None])[0]
@@ -957,9 +958,6 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             
             self.send_json_response(response)
             
-        except ValueError as e:
-            logger.error(f"Invalid query parameter in handle_pipelines: {e}")
-            self.send_json_response({'error': f'Invalid query parameter: {str(e)}'}, status=400)
         except Exception as e:
             logger.error(f"Error in handle_pipelines: {e}")
             self.send_json_response({'error': str(e)}, status=500)
