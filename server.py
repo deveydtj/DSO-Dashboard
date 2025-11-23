@@ -625,6 +625,7 @@ class BackgroundPoller(threading.Thread):
         
         # Sort pipelines by created_at for each project (newest first)
         # Use epoch timestamp as fallback for pipelines without created_at
+        # ISO 8601 timestamps sort correctly lexicographically
         for project_id in project_pipelines:
             project_pipelines[project_id].sort(
                 key=lambda p: p.get('created_at') or '1970-01-01T00:00:00Z', 
@@ -784,7 +785,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             response = dict(summary)
             last_updated_iso = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
             response['last_updated'] = last_updated_iso
-            response['last_updated_iso'] = last_updated_iso  # Explicit field as requested
+            response['last_updated_iso'] = last_updated_iso  # Explicit field as requested in requirements
             
             self.send_json_response(response)
             
@@ -893,6 +894,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 limit = int(query_params.get('limit', ['50'])[0])
                 if limit < 1:
                     raise ValueError("limit must be a positive integer (>= 1)")
+                if limit > 1000:
+                    raise ValueError("limit must not exceed 1000")
             except (ValueError, IndexError) as e:
                 logger.error(f"Invalid limit parameter: {e}")
                 self.send_json_response({'error': f'Invalid limit parameter: {str(e)}'}, status=400)
