@@ -51,7 +51,7 @@ DSO-Dashboard is a lightweight, portable GitLab monitoring dashboard designed fo
 ┌─────────────────────────────────────┐
 │   Background Poller Thread          │
 │   - Polls every N seconds           │
-│   - Retries with exponential back   │
+│   - Retries with exponential backoff│
 │   - Handles rate limiting (429)     │
 │   - Full pagination support         │
 └────────┬────────────────────────────┘

@@ -43,15 +43,15 @@ jobs:
       run: |
         echo "Checking for forbidden imports..."
         # Check for common external dependencies that should not be present
-        if grep -r "import requests" server.py tests/*.py 2>/dev/null; then
+        if find . -name "*.py" ! -path "./.git/*" -exec grep -l "import requests" {} \; 2>/dev/null | grep -q .; then
           echo "❌ ERROR: 'requests' library found - use urllib instead"
           exit 1
         fi
-        if grep -r "from flask import" server.py tests/*.py 2>/dev/null; then
+        if find . -name "*.py" ! -path "./.git/*" -exec grep -l "from flask import" {} \; 2>/dev/null | grep -q .; then
           echo "❌ ERROR: 'flask' library found - use http.server instead"
           exit 1
         fi
-        if grep -r "import aiohttp" server.py tests/*.py 2>/dev/null; then
+        if find . -name "*.py" ! -path "./.git/*" -exec grep -l "import aiohttp" {} \; 2>/dev/null | grep -q .; then
           echo "❌ ERROR: 'aiohttp' library found - use urllib instead"
           exit 1
         fi

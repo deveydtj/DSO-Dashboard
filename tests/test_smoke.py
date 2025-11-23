@@ -225,7 +225,7 @@ class TestHelperFunctions(unittest.TestCase):
         # Negative
         self.assertEqual(server.parse_int_config('-5', 100, 'test'), -5)
         
-        # Float string (should convert to int)
+        # Float string (invalid format, falls back to default)
         self.assertEqual(server.parse_int_config('42.7', 100, 'test'), 100)
         
         # Empty string
