@@ -156,9 +156,9 @@ class DashboardApp {
             
             pipelineInfo = `
                 <div class="repo-pipeline">
-                    <div class="pipeline-status-chip ${pipelineStatus}">
+                    <div class="pipeline-status-chip ${this.escapeHtml(pipelineStatus)}">
                         <span class="status-dot"></span>
-                        <span>${pipelineStatus}</span>
+                        <span>${this.escapeHtml(pipelineStatus)}</span>
                     </div>
                     <div class="pipeline-details">
                         <span class="pipeline-ref">${this.escapeHtml(ref)}</span>

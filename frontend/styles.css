@@ -522,13 +522,15 @@ body {
 }
 
 .pipeline-duration::before {
-    content: '⏱️';
+    content: '⏱';
     margin-right: 0.3rem;
+    font-size: 0.9em;
 }
 
 .pipeline-time::before {
     content: '🕒';
     margin-right: 0.3rem;
+    font-size: 0.9em;
 }
 
 /* Success Rate Section */
