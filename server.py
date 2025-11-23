@@ -418,28 +418,29 @@ class BackgroundPoller(threading.Thread):
             return
         
         # Fetch pipelines (pass projects to respect configured scope)
-        pipelines = self._fetch_pipelines(projects)
-        if pipelines is None:
+        # Returns dict with 'all_pipelines' (for /api/pipelines) and 'per_project' (for enrichment)
+        pipeline_data = self._fetch_pipelines(projects)
+        if pipeline_data is None:
             logger.error("Failed to fetch pipelines - API error")
             # Set error state so health endpoint reflects the failure
             set_state_error("Failed to fetch data from GitLab API")
             logger.error("Data poll completed with failures - state marked as ERROR")
             return
         
-        # Enrich projects with pipeline health data
-        enriched_projects = self._enrich_projects_with_pipelines(projects, pipelines)
+        # Enrich projects with per-project pipeline health data
+        enriched_projects = self._enrich_projects_with_pipelines(projects, pipeline_data['per_project'])
         
         # Both fetches succeeded - calculate summary and update STATE atomically
-        summary = self._calculate_summary(enriched_projects, pipelines)
+        summary = self._calculate_summary(enriched_projects, pipeline_data['all_pipelines'])
         
         # Update all keys atomically with single timestamp and status
         update_state_atomic({
             'projects': enriched_projects,
-            'pipelines': pipelines,
+            'pipelines': pipeline_data['all_pipelines'],
             'summary': summary
         })
         
-        logger.info(f"Updated STATE atomically: {len(enriched_projects)} projects, {len(pipelines)} pipelines")
+        logger.info(f"Updated STATE atomically: {len(enriched_projects)} projects, {len(pipeline_data['all_pipelines'])} pipelines")
         logger.info("Data poll completed successfully")
     
     def _fetch_projects(self):
@@ -535,7 +536,10 @@ class BackgroundPoller(threading.Thread):
                      Empty list means no projects found in configured scope.
         
         Returns:
-            list: List of pipelines (may be empty if no pipelines found)
+            dict: {
+                'all_pipelines': List sorted and limited for /api/pipelines endpoint,
+                'per_project': Dict mapping project_id -> list of pipelines for enrichment
+            }
             None: Only if API error occurred
         """
         # Check if we have a configured scope (group_ids or project_ids set)
@@ -551,10 +555,11 @@ class BackgroundPoller(threading.Thread):
             # projects is empty list means configured scope has no projects
             if not projects:
                 logger.info("No projects in configured scope, returning empty pipelines")
-                return []
+                return {'all_pipelines': [], 'per_project': {}}
             
             logger.info(f"Fetching pipelines for {len(projects)} configured projects")
             all_pipelines = []
+            per_project_pipelines = {}
             api_errors = 0
             
             # Limit to reasonable number of projects to avoid too many API calls
@@ -573,12 +578,17 @@ class BackgroundPoller(threading.Thread):
                     logger.warning(f"Failed to fetch pipelines for project {project_name} (ID: {project_id})")
                     api_errors += 1
                 elif pipelines:
+                    # Store per-project pipelines for enrichment (before global limit)
+                    per_project_pipelines[project_id] = []
+                    
                     # Add project info to each pipeline
                     for pipeline in pipelines:
                         pipeline['project_name'] = project_name
                         pipeline['project_id'] = project_id
                         pipeline['project_path'] = project_path
                         all_pipelines.append(pipeline)
+                        # Also store in per-project dict
+                        per_project_pipelines[project_id].append(pipeline)
             
             # Handle partial failures
             if api_errors > 0:
@@ -588,15 +598,18 @@ class BackgroundPoller(threading.Thread):
                     logger.error("All pipeline fetches failed")
                     return None
             
-            # Sort by created_at descending and limit to max
+            # Sort by created_at descending and limit to max for /api/pipelines
             # ISO 8601 string sorting works correctly; empty values sort to bottom
             all_pipelines.sort(key=lambda x: x.get('created_at') or '', reverse=True)
-            result = all_pipelines[:MAX_TOTAL_PIPELINES]
+            limited_pipelines = all_pipelines[:MAX_TOTAL_PIPELINES]
             
-            if not result:
+            if not limited_pipelines:
                 logger.info("No pipelines found in configured projects")
             
-            return result
+            return {
+                'all_pipelines': limited_pipelines,
+                'per_project': per_project_pipelines
+            }
         else:
             # No scope configured: fallback to arbitrary membership sample
             logger.info("No scope configured, using membership sample for pipelines")
@@ -609,14 +622,26 @@ class BackgroundPoller(threading.Thread):
             if not pipelines:
                 logger.info("No pipelines found")
             
-            return pipelines
+            # Build per-project map from the fetched pipelines
+            per_project_pipelines = {}
+            for pipeline in pipelines:
+                project_id = pipeline.get('project_id')
+                if project_id:
+                    if project_id not in per_project_pipelines:
+                        per_project_pipelines[project_id] = []
+                    per_project_pipelines[project_id].append(pipeline)
+            
+            return {
+                'all_pipelines': pipelines,
+                'per_project': per_project_pipelines
+            }
     
-    def _enrich_projects_with_pipelines(self, projects, pipelines):
+    def _enrich_projects_with_pipelines(self, projects, per_project_pipelines):
         """Enrich project data with pipeline health metrics
         
         Args:
             projects: List of project dicts
-            pipelines: List of all pipeline dicts (with project_id attached)
+            per_project_pipelines: Dict mapping project_id -> list of pipelines for that project
         
         Returns:
             List of enriched project dicts with pipeline health data
@@ -624,19 +649,10 @@ class BackgroundPoller(threading.Thread):
         if not projects:
             return []
         
-        # Build a map of project_id -> list of pipelines for that project
-        project_pipelines = {}
-        for pipeline in pipelines:
-            project_id = pipeline.get('project_id')
-            if project_id:
-                if project_id not in project_pipelines:
-                    project_pipelines[project_id] = []
-                project_pipelines[project_id].append(pipeline)
-        
         # Sort pipelines by created_at for each project (newest first)
         # ISO 8601 timestamps sort correctly lexicographically
-        for project_id in project_pipelines:
-            project_pipelines[project_id].sort(
+        for project_id in per_project_pipelines:
+            per_project_pipelines[project_id].sort(
                 key=lambda p: p.get('created_at') or EPOCH_TIMESTAMP, 
                 reverse=True
             )
@@ -648,7 +664,7 @@ class BackgroundPoller(threading.Thread):
             enriched = dict(project)  # Create a copy
             
             # Get pipelines for this project
-            pipelines_for_project = project_pipelines.get(project_id, [])
+            pipelines_for_project = per_project_pipelines.get(project_id, [])
             
             if pipelines_for_project:
                 # Last pipeline info
