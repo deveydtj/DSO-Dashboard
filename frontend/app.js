@@ -71,11 +71,17 @@ class DashboardApp {
 
     async loadAllData() {
         console.log('📊 Loading dashboard data...');
-        // Load each endpoint independently instead of Promise.all
-        // This ensures that if one fails, others can still succeed
-        const summarySuccess = await this.loadSummary();
-        const reposSuccess = await this.loadRepositories();
-        const pipelinesSuccess = await this.loadPipelines();
+        // Load endpoints concurrently using Promise.allSettled
+        // This fetches in parallel while handling individual failures gracefully
+        const results = await Promise.allSettled([
+            this.loadSummary(),
+            this.loadRepositories(),
+            this.loadPipelines()
+        ]);
+        
+        const summarySuccess = results[0].status === 'fulfilled' && results[0].value;
+        const reposSuccess = results[1].status === 'fulfilled' && results[1].value;
+        const pipelinesSuccess = results[2].status === 'fulfilled' && results[2].value;
         
         const anySuccess = summarySuccess || reposSuccess || pipelinesSuccess;
         const anyFailure = !summarySuccess || !reposSuccess || !pipelinesSuccess;
@@ -88,8 +94,10 @@ class DashboardApp {
             // Partial success - show warning about mixed data
             this.updateLastUpdated();
             this.showPartialStaleWarning();
+        } else if (!anySuccess) {
+            // All endpoints failed - show stale data warning even if health check passed
+            this.showAllStaleWarning();
         }
-        // If all failed (no success), keep the cached-data warning from updateStatusIndicator
     }
 
     async loadSummary() {
@@ -352,6 +360,23 @@ class DashboardApp {
         if (element) {
             const now = new Date();
             element.textContent = `⚠️ Partially stale (updated: ${now.toLocaleTimeString()})`;
+        }
+    }
+
+    showAllStaleWarning() {
+        const element = document.getElementById('lastUpdated');
+        const indicator = document.getElementById('statusIndicator');
+        if (element) {
+            const hasCache = this.cachedData.summary || this.cachedData.repos || this.cachedData.pipelines;
+            if (hasCache) {
+                element.textContent = '⚠️ All data stale (using cache)';
+            } else {
+                element.textContent = '❌ Failed to load data';
+            }
+        }
+        // Update indicator to offline when all endpoints fail
+        if (indicator) {
+            indicator.className = 'status-indicator offline';
         }
     }
 
