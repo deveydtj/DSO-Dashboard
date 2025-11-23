@@ -6,14 +6,29 @@ class DashboardApp {
         this.apiBase = window.location.origin;
         this.refreshInterval = 60000; // 60 seconds
         this.updateTimer = null;
+        this.cachedData = {
+            summary: null,
+            repos: null,
+            pipelines: null
+        };
         this.init();
     }
 
     init() {
         console.log('🚀 Initializing GitLab DSO Dashboard...');
+        this.checkTVMode();
         this.checkHealth();
         this.loadAllData();
         this.startAutoRefresh();
+    }
+
+    checkTVMode() {
+        // Check for ?tv=1 URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('tv') === '1') {
+            document.body.classList.add('tv');
+            console.log('📺 TV mode enabled');
+        }
     }
 
     async checkHealth() {
@@ -38,19 +53,52 @@ class DashboardApp {
 
     updateStatusIndicator(isOnline) {
         const indicator = document.getElementById('statusIndicator');
+        const lastUpdated = document.getElementById('lastUpdated');
         if (indicator) {
             indicator.className = `status-indicator ${isOnline ? 'online' : 'offline'}`;
+        }
+        // Show stale data notice when offline
+        if (!isOnline && lastUpdated) {
+            const hasCache = this.cachedData.summary || this.cachedData.repos || this.cachedData.pipelines;
+            if (hasCache) {
+                lastUpdated.textContent = '⚠️ Showing cached data (backend offline)';
+            }
+        } else if (isOnline && lastUpdated) {
+            // Clear any partial stale warning when back online
+            // (will be updated by loadAllData if needed)
         }
     }
 
     async loadAllData() {
         console.log('📊 Loading dashboard data...');
-        await Promise.all([
+        // Load endpoints concurrently using Promise.allSettled
+        // This fetches in parallel while handling individual failures gracefully
+        const [summaryResult, reposResult, pipelinesResult] = await Promise.allSettled([
             this.loadSummary(),
             this.loadRepositories(),
             this.loadPipelines()
         ]);
-        this.updateLastUpdated();
+        
+        // Extract success status from each result
+        const summarySuccess = summaryResult.status === 'fulfilled' && summaryResult.value === true;
+        const reposSuccess = reposResult.status === 'fulfilled' && reposResult.value === true;
+        const pipelinesSuccess = pipelinesResult.status === 'fulfilled' && pipelinesResult.value === true;
+        
+        const anySuccess = summarySuccess || reposSuccess || pipelinesSuccess;
+        const anyFailure = !summarySuccess || !reposSuccess || !pipelinesSuccess;
+        
+        // Update timestamp and status based on results
+        if (anySuccess && !anyFailure) {
+            // All endpoints succeeded - show fresh data
+            this.updateLastUpdated();
+        } else if (anySuccess && anyFailure) {
+            // Partial success - show warning about mixed data
+            this.updateLastUpdated();
+            this.showPartialStaleWarning();
+        } else if (!anySuccess) {
+            // All endpoints failed - show stale data warning even if health check passed
+            this.showAllStaleWarning();
+        }
     }
 
     async loadSummary() {
@@ -59,11 +107,20 @@ class DashboardApp {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
+            this.cachedData.summary = data;
             this.updateSummaryKPIs(data);
             console.log('✅ Summary data loaded', data);
+            return true;
         } catch (error) {
             console.error('❌ Error loading summary:', error);
-            this.showError('Failed to load summary data');
+            // Try to use cached data
+            if (this.cachedData.summary) {
+                console.log('📦 Using cached summary data');
+                this.updateSummaryKPIs(this.cachedData.summary);
+            } else {
+                this.showError('Failed to load summary data');
+            }
+            return false;
         }
     }
 
@@ -85,11 +142,20 @@ class DashboardApp {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
+            this.cachedData.repos = data.repositories;
             this.renderRepositories(data.repositories || []);
             console.log(`✅ Loaded ${data.repositories?.length || 0} repositories`);
+            return true;
         } catch (error) {
             console.error('❌ Error loading repositories:', error);
-            this.showError('Failed to load repositories', 'repoGrid');
+            // Try to use cached data
+            if (this.cachedData.repos) {
+                console.log('📦 Using cached repositories data');
+                this.renderRepositories(this.cachedData.repos);
+            } else {
+                this.showError('Failed to load repositories', 'repoGrid');
+            }
+            return false;
         }
     }
 
@@ -222,11 +288,20 @@ class DashboardApp {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
+            this.cachedData.pipelines = data.pipelines;
             this.renderPipelines(data.pipelines || []);
             console.log(`✅ Loaded ${data.pipelines?.length || 0} pipelines`);
+            return true;
         } catch (error) {
             console.error('❌ Error loading pipelines:', error);
-            this.showError('Failed to load pipelines', 'pipelineTableBody');
+            // Try to use cached data
+            if (this.cachedData.pipelines) {
+                console.log('📦 Using cached pipelines data');
+                this.renderPipelines(this.cachedData.pipelines);
+            } else {
+                this.showError('Failed to load pipelines', 'pipelineTableBody');
+            }
+            return false;
         }
     }
 
@@ -250,9 +325,10 @@ class DashboardApp {
         const createdAt = pipeline.created_at 
             ? this.formatDate(pipeline.created_at) 
             : '--';
+        const fullTimestamp = pipeline.created_at || '';
 
         return `
-            <tr>
+            <tr class="row-status-${status}">
                 <td>
                     <span class="pipeline-status ${status}">${status}</span>
                 </td>
@@ -262,7 +338,7 @@ class DashboardApp {
                     <span class="commit-sha">${this.escapeHtml(pipeline.sha || '--')}</span>
                 </td>
                 <td>${duration}</td>
-                <td>${createdAt}</td>
+                <td title="${this.escapeHtml(fullTimestamp)}">${createdAt}</td>
                 <td>
                     ${pipeline.web_url 
                         ? `<a href="${pipeline.web_url}" target="_blank" class="pipeline-link">View →</a>` 
@@ -277,6 +353,31 @@ class DashboardApp {
         if (element) {
             const now = new Date();
             element.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+        }
+    }
+
+    showPartialStaleWarning() {
+        const element = document.getElementById('lastUpdated');
+        if (element) {
+            const now = new Date();
+            element.textContent = `⚠️ Partially stale (updated: ${now.toLocaleTimeString()})`;
+        }
+    }
+
+    showAllStaleWarning() {
+        const element = document.getElementById('lastUpdated');
+        const indicator = document.getElementById('statusIndicator');
+        if (element) {
+            const hasCache = this.cachedData.summary || this.cachedData.repos || this.cachedData.pipelines;
+            if (hasCache) {
+                element.textContent = '⚠️ All data stale (using cache)';
+            } else {
+                element.textContent = '❌ Failed to load data';
+            }
+        }
+        // Update indicator to offline when all endpoints fail
+        if (indicator) {
+            indicator.className = 'status-indicator offline';
         }
     }
 

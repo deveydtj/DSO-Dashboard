@@ -324,6 +324,33 @@ body {
     transition: background-color 0.2s ease;
 }
 
+/* Row-level status styling */
+.pipeline-table tbody tr.row-status-success {
+    background: rgba(16, 185, 129, 0.05);
+    border-left: 3px solid var(--accent-success);
+}
+
+.pipeline-table tbody tr.row-status-failed {
+    background: rgba(239, 68, 68, 0.05);
+    border-left: 3px solid var(--accent-error);
+}
+
+.pipeline-table tbody tr.row-status-running {
+    background: rgba(59, 130, 246, 0.05);
+    border-left: 3px solid var(--accent-info);
+}
+
+.pipeline-table tbody tr.row-status-pending {
+    background: rgba(245, 158, 11, 0.05);
+    border-left: 3px solid var(--accent-warning);
+}
+
+.pipeline-table tbody tr.row-status-canceled,
+.pipeline-table tbody tr.row-status-cancelled {
+    background: rgba(160, 160, 176, 0.03);
+    border-left: 3px solid var(--text-secondary);
+}
+
 .pipeline-table tbody tr:hover {
     background-color: rgba(255, 255, 255, 0.02);
 }
@@ -641,4 +668,131 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.15);
+}
+
+/* TV Mode - Monitor-friendly viewing */
+body.tv {
+    /* Larger base font size for readability from distance */
+    font-size: 1.3rem;
+}
+
+body.tv .container {
+    max-width: 100%;
+    padding: var(--spacing-xl);
+}
+
+body.tv .header-title {
+    font-size: 3rem;
+}
+
+body.tv .header-info {
+    font-size: 1.3rem;
+}
+
+body.tv .status-indicator {
+    font-size: 1.8rem;
+}
+
+body.tv .kpi-card {
+    padding: var(--spacing-xl);
+}
+
+body.tv .kpi-icon {
+    font-size: 3.5rem;
+    width: 80px;
+    height: 80px;
+}
+
+body.tv .kpi-value {
+    font-size: 3rem;
+}
+
+body.tv .kpi-label {
+    font-size: 1.2rem;
+}
+
+body.tv .section-title {
+    font-size: 2.5rem;
+    margin-bottom: var(--spacing-lg);
+}
+
+body.tv .repo-card {
+    padding: var(--spacing-xl);
+}
+
+body.tv .repo-name {
+    font-size: 1.8rem;
+}
+
+body.tv .repo-description {
+    font-size: 1.2rem;
+}
+
+body.tv .repo-stat {
+    font-size: 1.2rem;
+}
+
+body.tv .pipeline-status-chip {
+    font-size: 1.2rem;
+    padding: 0.6rem 1.2rem;
+}
+
+body.tv .pipeline-details {
+    font-size: 1.1rem;
+}
+
+body.tv .pipeline-table {
+    font-size: 1.2rem;
+}
+
+body.tv .pipeline-table th,
+body.tv .pipeline-table td {
+    padding: var(--spacing-md);
+}
+
+body.tv .pipeline-table thead th {
+    font-size: 1.1rem;
+}
+
+body.tv .pipeline-status {
+    font-size: 1.1rem;
+    padding: 0.5rem 1rem;
+}
+
+body.tv .commit-sha {
+    font-size: 1.1rem;
+    padding: 0.4rem 0.8rem;
+}
+
+body.tv .pipeline-link {
+    font-size: 1.1rem;
+}
+
+body.tv .footer {
+    font-size: 1rem;
+    margin-top: var(--spacing-xl);
+    padding: var(--spacing-md);
+    opacity: 0.6;
+}
+
+/* Increase contrast in TV mode */
+body.tv .pipeline-table tbody tr.row-status-success {
+    background: rgba(16, 185, 129, 0.1);
+}
+
+body.tv .pipeline-table tbody tr.row-status-failed {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+body.tv .pipeline-table tbody tr.row-status-running {
+    background: rgba(59, 130, 246, 0.1);
+}
+
+body.tv .pipeline-table tbody tr.row-status-pending {
+    background: rgba(245, 158, 11, 0.1);
+}
+
+/* Hide less important elements in TV mode for cleaner display */
+body.tv .repo-visibility {
+    display: none;
 }
