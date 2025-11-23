@@ -17,7 +17,9 @@ class DashboardApp {
     init() {
         console.log('🚀 Initializing GitLab DSO Dashboard...');
         this.checkTVMode();
+        this.checkDensityMode();
         this.setupTVToggle();
+        this.setupDensityToggle();
         this.checkHealth();
         this.loadAllData();
         this.startAutoRefresh();
@@ -29,6 +31,15 @@ class DashboardApp {
         if (urlParams.get('tv') === '1') {
             document.body.classList.add('tv');
             console.log('📺 TV mode enabled');
+        }
+    }
+
+    checkDensityMode() {
+        // Check for ?density=compact URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('density') === 'compact') {
+            document.body.classList.add('compact');
+            console.log('📏 Compact mode enabled');
         }
     }
 
@@ -67,6 +78,46 @@ class DashboardApp {
                 // Add tv=1 parameter to URL
                 const url = new URL(window.location);
                 url.searchParams.set('tv', '1');
+                window.history.replaceState({}, '', url);
+            }
+        });
+    }
+
+    setupDensityToggle() {
+        const toggle = document.getElementById('densityToggle');
+        if (!toggle) return;
+
+        // Read current mode from body class
+        const isCompactMode = document.body.classList.contains('compact');
+        
+        // Set toggle UI state
+        if (isCompactMode) {
+            toggle.classList.add('active');
+        }
+
+        // Add click handler
+        toggle.addEventListener('click', () => {
+            const isCurrentlyCompact = document.body.classList.contains('compact');
+            
+            if (isCurrentlyCompact) {
+                // Disable compact mode
+                document.body.classList.remove('compact');
+                toggle.classList.remove('active');
+                console.log('📏 Compact mode disabled');
+                
+                // Remove density parameter from URL
+                const url = new URL(window.location);
+                url.searchParams.delete('density');
+                window.history.replaceState({}, '', url);
+            } else {
+                // Enable compact mode
+                document.body.classList.add('compact');
+                toggle.classList.add('active');
+                console.log('📏 Compact mode enabled');
+                
+                // Add density=compact parameter to URL (preserving other params like tv)
+                const url = new URL(window.location);
+                url.searchParams.set('density', 'compact');
                 window.history.replaceState({}, '', url);
             }
         });
