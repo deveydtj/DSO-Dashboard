@@ -264,6 +264,7 @@ class GitLabAPIClient:
                 for pipeline in pipelines:
                     pipeline['project_name'] = project['name']
                     pipeline['project_id'] = project['id']
+                    pipeline['project_path'] = project.get('path_with_namespace', '')
                     all_pipelines.append(pipeline)
         
         # Sort by created_at descending
@@ -415,17 +416,20 @@ class BackgroundPoller(threading.Thread):
             logger.error("Data poll completed with failures - state marked as ERROR")
             return
         
+        # Enrich projects with pipeline health data
+        enriched_projects = self._enrich_projects_with_pipelines(projects, pipelines)
+        
         # Both fetches succeeded - calculate summary and update STATE atomically
-        summary = self._calculate_summary(projects, pipelines)
+        summary = self._calculate_summary(enriched_projects, pipelines)
         
         # Update all keys atomically with single timestamp and status
         update_state_atomic({
-            'projects': projects,
+            'projects': enriched_projects,
             'pipelines': pipelines,
             'summary': summary
         })
         
-        logger.info(f"Updated STATE atomically: {len(projects)} projects, {len(pipelines)} pipelines")
+        logger.info(f"Updated STATE atomically: {len(enriched_projects)} projects, {len(pipelines)} pipelines")
         logger.info("Data poll completed successfully")
     
     def _fetch_projects(self):
@@ -549,6 +553,7 @@ class BackgroundPoller(threading.Thread):
             for project in projects_to_check:
                 project_id = project.get('id')
                 project_name = project.get('name', f'Project {project_id}')
+                project_path = project.get('path_with_namespace', '')
                 
                 # Fetch recent pipelines for this project
                 pipelines = self.gitlab_client.get_pipelines(project_id, per_page=PIPELINES_PER_PROJECT)
@@ -562,6 +567,7 @@ class BackgroundPoller(threading.Thread):
                     for pipeline in pipelines:
                         pipeline['project_name'] = project_name
                         pipeline['project_id'] = project_id
+                        pipeline['project_path'] = project_path
                         all_pipelines.append(pipeline)
             
             # Handle partial failures
@@ -595,6 +601,84 @@ class BackgroundPoller(threading.Thread):
             
             return pipelines
     
+    def _enrich_projects_with_pipelines(self, projects, pipelines):
+        """Enrich project data with pipeline health metrics
+        
+        Args:
+            projects: List of project dicts
+            pipelines: List of all pipeline dicts (with project_id attached)
+        
+        Returns:
+            List of enriched project dicts with pipeline health data
+        """
+        if not projects:
+            return []
+        
+        # Build a map of project_id -> list of pipelines for that project
+        project_pipelines = {}
+        for pipeline in pipelines:
+            project_id = pipeline.get('project_id')
+            if project_id:
+                if project_id not in project_pipelines:
+                    project_pipelines[project_id] = []
+                project_pipelines[project_id].append(pipeline)
+        
+        # Sort pipelines by created_at for each project (newest first)
+        for project_id in project_pipelines:
+            project_pipelines[project_id].sort(
+                key=lambda p: p.get('created_at') or '', 
+                reverse=True
+            )
+        
+        # Enrich each project with pipeline data
+        enriched_projects = []
+        for project in projects:
+            project_id = project.get('id')
+            enriched = dict(project)  # Create a copy
+            
+            # Get pipelines for this project
+            pipelines_for_project = project_pipelines.get(project_id, [])
+            
+            if pipelines_for_project:
+                # Last pipeline info
+                last_pipeline = pipelines_for_project[0]
+                enriched['last_pipeline_status'] = last_pipeline.get('status')
+                enriched['last_pipeline_ref'] = last_pipeline.get('ref')
+                enriched['last_pipeline_duration'] = last_pipeline.get('duration')
+                enriched['last_pipeline_updated_at'] = last_pipeline.get('updated_at')
+                
+                # Calculate recent success rate (last 10 pipelines)
+                recent_pipelines = pipelines_for_project[:10]
+                if recent_pipelines:
+                    success_count = sum(1 for p in recent_pipelines if p.get('status') == 'success')
+                    enriched['recent_success_rate'] = success_count / len(recent_pipelines)
+                else:
+                    enriched['recent_success_rate'] = None
+                
+                # Calculate consecutive failures on default branch
+                default_branch = project.get('default_branch', 'main')
+                consecutive_failures = 0
+                for pipeline in pipelines_for_project:
+                    if pipeline.get('ref') == default_branch:
+                        if pipeline.get('status') == 'failed':
+                            consecutive_failures += 1
+                        else:
+                            # Stop counting at first non-failure
+                            break
+                enriched['consecutive_default_branch_failures'] = consecutive_failures
+            else:
+                # No pipelines for this project
+                enriched['last_pipeline_status'] = None
+                enriched['last_pipeline_ref'] = None
+                enriched['last_pipeline_duration'] = None
+                enriched['last_pipeline_updated_at'] = None
+                enriched['recent_success_rate'] = None
+                enriched['consecutive_default_branch_failures'] = 0
+            
+            enriched_projects.append(enriched)
+        
+        return enriched_projects
+    
     def _calculate_summary(self, projects, pipelines):
         """Calculate summary statistics
         
@@ -621,13 +705,20 @@ class BackgroundPoller(threading.Thread):
             status = pipeline.get('status', 'unknown')
             pipeline_statuses[status] = pipeline_statuses.get(status, 0) + 1
         
+        # Calculate success rate
+        total_pipelines = len(pipelines)
+        successful_pipelines = pipeline_statuses.get('success', 0)
+        pipeline_success_rate = successful_pipelines / total_pipelines if total_pipelines > 0 else 0.0
+        
         return {
             'total_repositories': total_repos,
             'active_repositories': active_repos,
-            'total_pipelines': len(pipelines),
-            'successful_pipelines': pipeline_statuses.get('success', 0),
+            'total_pipelines': total_pipelines,
+            'successful_pipelines': successful_pipelines,
             'failed_pipelines': pipeline_statuses.get('failed', 0),
             'running_pipelines': pipeline_statuses.get('running', 0),
+            'pending_pipelines': pipeline_statuses.get('pending', 0),
+            'pipeline_success_rate': pipeline_success_rate,
             'pipeline_statuses': pipeline_statuses
         }
     
@@ -693,7 +784,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             
             # Add timestamp from STATE to summary
             response = dict(summary)
-            response['last_updated'] = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
+            last_updated_iso = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
+            response['last_updated'] = last_updated_iso
+            response['last_updated_iso'] = last_updated_iso  # Explicit field as requested
             
             self.send_json_response(response)
             
@@ -734,6 +827,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 repo = {
                     'id': project.get('id'),
                     'name': project.get('name'),
+                    'path_with_namespace': project.get('path_with_namespace'),
                     'description': project.get('description', ''),
                     'web_url': project.get('web_url'),
                     'last_activity_at': project.get('last_activity_at'),
@@ -741,7 +835,14 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     'forks_count': project.get('forks_count', 0),
                     'open_issues_count': project.get('open_issues_count', 0),
                     'default_branch': project.get('default_branch', 'main'),
-                    'visibility': project.get('visibility', 'private')
+                    'visibility': project.get('visibility', 'private'),
+                    # Pipeline health metrics
+                    'last_pipeline_status': project.get('last_pipeline_status'),
+                    'last_pipeline_ref': project.get('last_pipeline_ref'),
+                    'last_pipeline_duration': project.get('last_pipeline_duration'),
+                    'last_pipeline_updated_at': project.get('last_pipeline_updated_at'),
+                    'recent_success_rate': project.get('recent_success_rate'),
+                    'consecutive_default_branch_failures': project.get('consecutive_default_branch_failures', 0)
                 }
                 repos.append(repo)
             
@@ -761,6 +862,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         """Handle /api/pipelines endpoint"""
         try:
             pipelines = get_state('pipelines')
+            projects = get_state('projects')
             status_info = get_state_status()
             
             if pipelines is None:
@@ -784,13 +886,50 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 }, status=503)
                 return
             
-            # Format pipeline data (pipelines can be empty list, which is valid)
-            formatted_pipelines = []
+            # Parse query parameters
+            parsed_path = urlparse(self.path)
+            query_params = parse_qs(parsed_path.query)
+            
+            # Get query parameter values (parse_qs returns lists)
+            limit = int(query_params.get('limit', ['50'])[0])
+            status_filter = query_params.get('status', [None])[0]
+            ref_filter = query_params.get('ref', [None])[0]
+            project_filter = query_params.get('project', [None])[0]
+            
+            # Build project_id to path_with_namespace map
+            project_path_map = {}
+            if projects:
+                for project in projects:
+                    project_id = project.get('id')
+                    path_with_namespace = project.get('path_with_namespace', '')
+                    if project_id:
+                        project_path_map[project_id] = path_with_namespace
+            
+            # Format and filter pipeline data
+            filtered_pipelines = []
             for pipeline in pipelines:
+                # Apply filters
+                if status_filter and pipeline.get('status') != status_filter:
+                    continue
+                if ref_filter and pipeline.get('ref') != ref_filter:
+                    continue
+                
+                project_name = pipeline.get('project_name', 'Unknown')
+                project_id = pipeline.get('project_id')
+                project_path = project_path_map.get(project_id, '')
+                
+                # Apply project filter (substring match on name or path)
+                if project_filter:
+                    project_filter_lower = project_filter.lower()
+                    if (project_filter_lower not in project_name.lower() and 
+                        project_filter_lower not in project_path.lower()):
+                        continue
+                
                 formatted = {
                     'id': pipeline.get('id'),
-                    'project_id': pipeline.get('project_id'),
-                    'project_name': pipeline.get('project_name', 'Unknown'),
+                    'project_id': project_id,
+                    'project_name': project_name,
+                    'project_path': project_path,
                     'status': pipeline.get('status'),
                     'ref': pipeline.get('ref'),
                     'sha': pipeline.get('sha', '')[:8],  # Short SHA
@@ -799,16 +938,22 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     'updated_at': pipeline.get('updated_at'),
                     'duration': pipeline.get('duration')
                 }
-                formatted_pipelines.append(formatted)
+                filtered_pipelines.append(formatted)
+            
+            # Apply limit
+            limited_pipelines = filtered_pipelines[:limit]
             
             response = {
-                'pipelines': formatted_pipelines,
-                'total': len(formatted_pipelines),
+                'pipelines': limited_pipelines,
+                'total': len(limited_pipelines),
                 'last_updated': status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
             }
             
             self.send_json_response(response)
             
+        except ValueError as e:
+            logger.error(f"Invalid query parameter in handle_pipelines: {e}")
+            self.send_json_response({'error': f'Invalid query parameter: {str(e)}'}, status=400)
         except Exception as e:
             logger.error(f"Error in handle_pipelines: {e}")
             self.send_json_response({'error': str(e)}, status=500)
