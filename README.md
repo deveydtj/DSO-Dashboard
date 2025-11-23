@@ -257,9 +257,9 @@ DSO-Dashboard includes pre-built mock scenarios for testing different edge cases
 | Scenario | File | Description | Use Case |
 |----------|------|-------------|----------|
 | **Default** | `mock_data.json` | Mixed status with moderate activity | General development |
-| **healthy** | `data/mock_scenarios/healthy.json` | Mostly successful pipelines (95% success rate) | Demo healthy CI/CD state |
-| **failing** | `data/mock_scenarios/failing.json` | Multiple repos with consecutive failures | Test failure handling, alerts |
-| **running** | `data/mock_scenarios/running.json` | Many running and pending pipelines | Test active build visualization |
+| **healthy** | `data/mock_scenarios/healthy.json` | Mostly successful pipelines (80% success rate) | Demo healthy CI/CD state |
+| **failing** | `data/mock_scenarios/failing.json` | Multiple repos with consecutive failures (23% success rate) | Test failure handling, alerts |
+| **running** | `data/mock_scenarios/running.json` | Many running and pending pipelines (50% in progress) | Test active build visualization |
 
 **Switching Scenarios:**
 
@@ -294,9 +294,9 @@ python3 server.py
 
 **Scenario Details:**
 
-- **healthy**: 10 repositories, 95% pipeline success rate, minimal failures
-- **failing**: 10 repositories, multiple with 3-10 consecutive failures on main branch, 46% success rate
-- **running**: 12 repositories, 18 running pipelines, 12 pending pipelines, high activity
+- **healthy**: 10 repositories, 10 pipelines, 80% success rate, minimal failures
+- **failing**: 10 repositories, 22 pipelines, multiple with 3-10 consecutive failures on main branch, 23% success rate
+- **running**: 12 repositories, 24 pipelines, 12 running + 10 pending (high activity)
 
 #### Mock Data File Structure
 

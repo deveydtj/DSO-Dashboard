@@ -2,17 +2,17 @@
   "summary": {
     "total_repositories": 10,
     "active_repositories": 10,
-    "total_pipelines": 60,
-    "successful_pipelines": 57,
+    "total_pipelines": 10,
+    "successful_pipelines": 8,
     "failed_pipelines": 1,
     "running_pipelines": 1,
-    "pending_pipelines": 1,
-    "pipeline_success_rate": 0.95,
+    "pending_pipelines": 0,
+    "pipeline_success_rate": 0.8,
     "pipeline_statuses": {
-      "success": 57,
+      "success": 8,
       "failed": 1,
       "running": 1,
-      "pending": 1
+      "pending": 0
     }
   },
   "repositories": [
