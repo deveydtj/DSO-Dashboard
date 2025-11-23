@@ -681,6 +681,16 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     self.send_json_response({'error': 'Failed to fetch data from GitLab API'}, status=502)
                 return
             
+            # Check if backend is in ERROR state (stale data)
+            if status_info['status'] == 'ERROR':
+                last_updated = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
+                self.send_json_response({
+                    'error': 'Backend is currently in ERROR state - GitLab API unavailable',
+                    'last_successful_poll': last_updated,
+                    'status': 'ERROR'
+                }, status=503)
+                return
+            
             # Add timestamp from STATE to summary
             response = dict(summary)
             response['last_updated'] = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
@@ -706,6 +716,16 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 else:
                     # Projects is None means API error, not empty results
                     self.send_json_response({'error': 'Failed to fetch projects from GitLab API'}, status=502)
+                return
+            
+            # Check if backend is in ERROR state (stale data)
+            if status_info['status'] == 'ERROR':
+                last_updated = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
+                self.send_json_response({
+                    'error': 'Backend is currently in ERROR state - GitLab API unavailable',
+                    'last_successful_poll': last_updated,
+                    'status': 'ERROR'
+                }, status=503)
                 return
             
             # Format repository data (projects can be empty list, which is valid)
@@ -752,6 +772,16 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 else:
                     # Pipelines is None means API error, not empty results
                     self.send_json_response({'error': 'Failed to fetch pipelines from GitLab API'}, status=502)
+                return
+            
+            # Check if backend is in ERROR state (stale data)
+            if status_info['status'] == 'ERROR':
+                last_updated = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
+                self.send_json_response({
+                    'error': 'Backend is currently in ERROR state - GitLab API unavailable',
+                    'last_successful_poll': last_updated,
+                    'status': 'ERROR'
+                }, status=503)
                 return
             
             # Format pipeline data (pipelines can be empty list, which is valid)
