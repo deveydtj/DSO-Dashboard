@@ -474,14 +474,13 @@ class BackgroundPoller(threading.Thread):
         
         return all_projects
     
-    def _fetch_pipelines(self, projects=None):
+    def _fetch_pipelines(self, projects):
         """Fetch pipelines for configured projects
         
         Args:
             projects: List of project dicts from _fetch_projects(). 
                      None means API error occurred.
                      Empty list means no projects found in configured scope.
-                     If not provided, indicates no scope configured.
         
         Returns:
             list: List of pipelines (may be empty if no pipelines found)
