@@ -328,6 +328,9 @@ STATE_LOCK = threading.Lock()
 # Global flag to track if server is running in mock mode
 MOCK_MODE_ENABLED = False
 
+# Global variable to track which mock scenario is being used
+MOCK_SCENARIO = ''
+
 
 def update_state(key, value):
     """Thread-safe update of global STATE (single key)
@@ -1061,8 +1064,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
     def handle_mock_reload(self):
         """Handle /api/mock/reload endpoint (POST only)
         
-        Re-reads mock_data.json and atomically replaces STATE contents.
+        Re-reads mock data file and atomically replaces STATE contents.
         Only works when server is running in mock mode.
+        Reloads from the same scenario that was initially configured.
         """
         try:
             # Check if server is in mock mode
@@ -1073,11 +1077,12 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 }, status=400)
                 return
             
-            # Re-load mock data from file
-            mock_data = load_mock_data()
+            # Re-load mock data from file (using the configured scenario)
+            mock_data = load_mock_data(MOCK_SCENARIO)
             if mock_data is None:
                 self.send_json_response({
-                    'error': 'Failed to load mock_data.json',
+                    'error': f'Failed to load mock data file',
+                    'scenario': MOCK_SCENARIO if MOCK_SCENARIO else 'default (mock_data.json)',
                     'details': 'Check server logs for details'
                 }, status=500)
                 return
@@ -1100,6 +1105,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             self.send_json_response({
                 'reloaded': True,
                 'timestamp': timestamp_iso,
+                'scenario': MOCK_SCENARIO if MOCK_SCENARIO else 'default',
                 'summary': {
                     'repositories': len(mock_data['repositories']),
                     'pipelines': len(mock_data['pipelines'])
@@ -1204,6 +1210,9 @@ def load_config():
     else:
         config['use_mock_data'] = config.get('use_mock_data', False)
     
+    # Mock scenario selection - which mock file to load
+    config['mock_scenario'] = os.environ.get('MOCK_SCENARIO', config.get('mock_scenario', ''))
+    
     # Ensure lists are clean (filter config.json values that might have empty strings or numeric IDs)
     if isinstance(config['group_ids'], list):
         config['group_ids'] = [str(gid).strip() for gid in config['group_ids'] if gid and str(gid).strip()]
@@ -1226,22 +1235,37 @@ def load_config():
     logger.info(f"  Project IDs: {config['project_ids'] if config['project_ids'] else 'None'}")
     logger.info(f"  Insecure skip verify: {config['insecure_skip_verify']}")
     logger.info(f"  Use mock data: {config['use_mock_data']}")
+    if config['use_mock_data']:
+        logger.info(f"  Mock scenario: {config['mock_scenario'] if config['mock_scenario'] else 'default (mock_data.json)'}")
     logger.info(f"  API token: {'***' if config['api_token'] else 'NOT SET'}")
     
     return config
 
 
-def load_mock_data():
-    """Load mock data from mock_data.json file
+def load_mock_data(scenario=''):
+    """Load mock data from mock_data.json file or a specific scenario file
+    
+    Args:
+        scenario: Optional scenario name (e.g., 'healthy', 'failing', 'running').
+                  If provided, loads from data/mock_scenarios/{scenario}.json
+                  If empty, loads from mock_data.json in root directory.
     
     Returns:
         dict: Mock data with 'summary', 'repositories', and 'pipelines' keys
         None: If file not found or JSON parsing fails
     """
-    mock_data_file = 'mock_data.json'
+    if scenario:
+        # Load from scenario file in data/mock_scenarios/
+        mock_data_file = f'data/mock_scenarios/{scenario}.json'
+    else:
+        # Load from default mock_data.json
+        mock_data_file = 'mock_data.json'
     
     if not os.path.exists(mock_data_file):
         logger.error(f"Mock data file not found: {mock_data_file}")
+        if scenario:
+            logger.error(f"Available scenarios: healthy, failing, running")
+            logger.error(f"Check that the file exists in data/mock_scenarios/ directory")
         return None
     
     try:
@@ -1271,7 +1295,7 @@ def load_mock_data():
 
 def main():
     """Main entry point"""
-    global MOCK_MODE_ENABLED
+    global MOCK_MODE_ENABLED, MOCK_SCENARIO
     
     logger.info("Starting GitLab Dashboard Server...")
     
@@ -1281,14 +1305,20 @@ def main():
     # Check if mock mode is enabled
     if config['use_mock_data']:
         MOCK_MODE_ENABLED = True
+        MOCK_SCENARIO = config['mock_scenario']
+        
         logger.info("=" * 70)
         logger.info("MOCK DATA MODE ENABLED")
-        logger.info("Server will use mock_data.json instead of GitLab API")
+        if MOCK_SCENARIO:
+            logger.info(f"Server will use mock scenario: {MOCK_SCENARIO}")
+            logger.info(f"Loading from: data/mock_scenarios/{MOCK_SCENARIO}.json")
+        else:
+            logger.info("Server will use default mock_data.json")
         logger.info("GitLab polling is DISABLED in this mode")
         logger.info("=" * 70)
         
-        # Load mock data
-        mock_data = load_mock_data()
+        # Load mock data with scenario
+        mock_data = load_mock_data(MOCK_SCENARIO)
         if mock_data is None:
             logger.error("Failed to load mock data. Exiting.")
             return
