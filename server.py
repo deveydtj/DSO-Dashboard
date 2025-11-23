@@ -910,9 +910,10 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 self.send_json_response({'error': f'Invalid limit parameter: {str(e)}'}, status=400)
                 return
             
-            status_filter = query_params.get('status', [None])[0]
-            ref_filter = query_params.get('ref', [None])[0]
-            project_filter = query_params.get('project', [None])[0]
+            # Get optional filter parameters
+            status_filter = query_params.get('status', [None])[0] if query_params.get('status') else None
+            ref_filter = query_params.get('ref', [None])[0] if query_params.get('ref') else None
+            project_filter = query_params.get('project', [None])[0] if query_params.get('project') else None
             
             # Build project_id to path_with_namespace map
             project_path_map = {}
@@ -950,7 +951,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     'project_path': project_path,
                     'status': pipeline.get('status'),
                     'ref': pipeline.get('ref'),
-                    'sha': pipeline.get('sha', '')[:8],  # Short SHA
+                    'sha': (pipeline.get('sha') or '')[:8],  # Short SHA (safe slicing)
                     'web_url': pipeline.get('web_url'),
                     'created_at': pipeline.get('created_at'),
                     'updated_at': pipeline.get('updated_at'),
