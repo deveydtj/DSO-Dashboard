@@ -478,15 +478,30 @@ class BackgroundPoller(threading.Thread):
         """Fetch pipelines for configured projects
         
         Args:
-            projects: List of project dicts from _fetch_projects(). If None or empty,
-                     falls back to arbitrary membership sample.
+            projects: List of project dicts from _fetch_projects(). 
+                     None means API error occurred.
+                     Empty list means no projects found in configured scope.
+                     If not provided, indicates no scope configured.
         
         Returns:
             list: List of pipelines (may be empty if no pipelines found)
             None: Only if API error occurred
         """
-        # If we have projects from configured scope, fetch pipelines for those
-        if projects:
+        # Check if we have a configured scope (group_ids or project_ids set)
+        has_configured_scope = bool(self.group_ids or self.project_ids)
+        
+        # If we have a configured scope, only fetch from those projects
+        if has_configured_scope:
+            # projects is None means API error
+            if projects is None:
+                logger.error("Cannot fetch pipelines: project fetch failed")
+                return None
+            
+            # projects is empty list means configured scope has no projects
+            if not projects:
+                logger.info("No projects in configured scope, returning empty pipelines")
+                return []
+            
             logger.info(f"Fetching pipelines for {len(projects)} configured projects")
             all_pipelines = []
             api_errors = 0
@@ -530,8 +545,8 @@ class BackgroundPoller(threading.Thread):
             
             return result
         else:
-            # Fallback to arbitrary membership sample if no projects configured
-            logger.info("No projects provided, using membership sample for pipelines")
+            # No scope configured: fallback to arbitrary membership sample
+            logger.info("No scope configured, using membership sample for pipelines")
             pipelines = self.gitlab_client.get_all_pipelines(per_page=MAX_TOTAL_PIPELINES)
             
             # Return None for API errors, empty list is valid
