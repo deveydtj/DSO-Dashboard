@@ -676,21 +676,29 @@ class BackgroundPoller(threading.Thread):
                 enriched['last_pipeline_duration'] = last_pipeline.get('duration')
                 enriched['last_pipeline_updated_at'] = last_pipeline.get('updated_at')
                 
-                # Calculate recent success rate (last 10 pipelines)
-                recent_pipelines = pipelines_for_project[:10]
-                success_count = sum(1 for p in recent_pipelines if p.get('status') == 'success')
-                enriched['recent_success_rate'] = success_count / len(recent_pipelines)
+                # Calculate recent success rate (last 10 pipelines on default branch only)
+                default_branch = project.get('default_branch', DEFAULT_BRANCH_NAME)
+                default_branch_pipelines = [
+                    p for p in pipelines_for_project 
+                    if p.get('ref') == default_branch
+                ]
+                
+                if default_branch_pipelines:
+                    recent_default_pipelines = default_branch_pipelines[:10]
+                    success_count = sum(1 for p in recent_default_pipelines if p.get('status') == 'success')
+                    enriched['recent_success_rate'] = success_count / len(recent_default_pipelines)
+                else:
+                    # No default branch pipelines found
+                    enriched['recent_success_rate'] = None
                 
                 # Calculate consecutive failures on default branch
-                default_branch = project.get('default_branch', DEFAULT_BRANCH_NAME)
                 consecutive_failures = 0
-                for pipeline in pipelines_for_project:
-                    if pipeline.get('ref') == default_branch:
-                        if pipeline.get('status') == 'failed':
-                            consecutive_failures += 1
-                        else:
-                            # Stop counting at first non-failure
-                            break
+                for pipeline in default_branch_pipelines:
+                    if pipeline.get('status') == 'failed':
+                        consecutive_failures += 1
+                    else:
+                        # Stop counting at first non-failure
+                        break
                 enriched['consecutive_default_branch_failures'] = consecutive_failures
             else:
                 # No pipelines for this project
