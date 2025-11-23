@@ -826,17 +826,23 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 else:
                     last_poll = str(status_info['last_updated'])
             
+            # Determine health status
+            # ONLINE = healthy (working connection to GitLab)
+            # INITIALIZING = not ready (no successful GitLab connection yet)
+            # ERROR = unhealthy (GitLab connection failed)
+            is_healthy = status_info['status'] == 'ONLINE'
+            
             health = {
-                'status': 'healthy' if status_info['status'] in ['ONLINE', 'INITIALIZING'] else 'unhealthy',
+                'status': 'healthy' if is_healthy else 'unhealthy',
                 'backend_status': status_info['status'],
                 'timestamp': datetime.now().isoformat(),
                 'last_poll': last_poll,
                 'error': status_info['error']
             }
             
-            # Return 200 OK for ONLINE and INITIALIZING (system is working)
-            # Return 503 only for ERROR state
-            status_code = 200 if status_info['status'] in ['ONLINE', 'INITIALIZING'] else 503
+            # Return 200 OK only for ONLINE (proven GitLab connectivity)
+            # Return 503 for INITIALIZING (not ready) and ERROR (failed)
+            status_code = 200 if is_healthy else 503
             self.send_json_response(health, status=status_code)
             
         except Exception as e:
