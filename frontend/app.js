@@ -73,15 +73,16 @@ class DashboardApp {
         console.log('📊 Loading dashboard data...');
         // Load endpoints concurrently using Promise.allSettled
         // This fetches in parallel while handling individual failures gracefully
-        const results = await Promise.allSettled([
+        const [summaryResult, reposResult, pipelinesResult] = await Promise.allSettled([
             this.loadSummary(),
             this.loadRepositories(),
             this.loadPipelines()
         ]);
         
-        const summarySuccess = results[0].status === 'fulfilled' && results[0].value;
-        const reposSuccess = results[1].status === 'fulfilled' && results[1].value;
-        const pipelinesSuccess = results[2].status === 'fulfilled' && results[2].value;
+        // Extract success status from each result
+        const summarySuccess = summaryResult.status === 'fulfilled' && summaryResult.value === true;
+        const reposSuccess = reposResult.status === 'fulfilled' && reposResult.value === true;
+        const pipelinesSuccess = pipelinesResult.status === 'fulfilled' && pipelinesResult.value === true;
         
         const anySuccess = summarySuccess || reposSuccess || pipelinesSuccess;
         const anyFailure = !summarySuccess || !reposSuccess || !pipelinesSuccess;
