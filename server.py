@@ -466,6 +466,24 @@ class BackgroundPoller(threading.Thread):
                 # Non-empty list, use it as our results
                 all_projects = projects
         
+        # Deduplicate projects by ID (project may appear in multiple groups)
+        if all_projects:
+            seen_ids = set()
+            unique_projects = []
+            duplicates = 0
+            for project in all_projects:
+                project_id = project.get('id')
+                if project_id not in seen_ids:
+                    seen_ids.add(project_id)
+                    unique_projects.append(project)
+                else:
+                    duplicates += 1
+            
+            if duplicates > 0:
+                logger.info(f"Deduplicated {duplicates} duplicate projects (found in multiple groups/sources)")
+            
+            all_projects = unique_projects
+        
         # Handle partial failures
         if api_errors > 0:
             if all_projects:
@@ -568,6 +586,8 @@ class BackgroundPoller(threading.Thread):
         Note: This should only be called when both projects and pipelines
         were successfully fetched (not None). The caller is responsible for
         ensuring valid data.
+        
+        Returns summary dict without timestamp (caller adds it from STATE).
         """
         # Use empty lists if None (should not happen in normal flow)
         if projects is None:
@@ -593,8 +613,7 @@ class BackgroundPoller(threading.Thread):
             'successful_pipelines': pipeline_statuses.get('success', 0),
             'failed_pipelines': pipeline_statuses.get('failed', 0),
             'running_pipelines': pipeline_statuses.get('running', 0),
-            'pipeline_statuses': pipeline_statuses,
-            'last_updated': datetime.now().isoformat()
+            'pipeline_statuses': pipeline_statuses
         }
     
     def stop(self):
@@ -633,10 +652,10 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         """Handle /api/summary endpoint"""
         try:
             summary = get_state('summary')
+            status_info = get_state_status()
             
             if summary is None:
                 # If no data yet, return initializing or error status
-                status_info = get_state_status()
                 if status_info['status'] == 'INITIALIZING':
                     self.send_json_response({
                         'status': 'initializing',
@@ -647,7 +666,11 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     self.send_json_response({'error': 'Failed to fetch data from GitLab API'}, status=502)
                 return
             
-            self.send_json_response(summary)
+            # Add timestamp from STATE to summary
+            response = dict(summary)
+            response['last_updated'] = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
+            
+            self.send_json_response(response)
             
         except Exception as e:
             logger.error(f"Error in handle_summary: {e}")
@@ -657,9 +680,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         """Handle /api/repos endpoint"""
         try:
             projects = get_state('projects')
+            status_info = get_state_status()
             
             if projects is None:
-                status_info = get_state_status()
                 if status_info['status'] == 'INITIALIZING':
                     self.send_json_response({
                         'status': 'initializing',
@@ -690,7 +713,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             response = {
                 'repositories': repos,
                 'total': len(repos),
-                'last_updated': datetime.now().isoformat()
+                'last_updated': status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
             }
             
             self.send_json_response(response)
@@ -703,9 +726,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         """Handle /api/pipelines endpoint"""
         try:
             pipelines = get_state('pipelines')
+            status_info = get_state_status()
             
             if pipelines is None:
-                status_info = get_state_status()
                 if status_info['status'] == 'INITIALIZING':
                     self.send_json_response({
                         'status': 'initializing',
@@ -736,7 +759,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             response = {
                 'pipelines': formatted_pipelines,
                 'total': len(formatted_pipelines),
-                'last_updated': datetime.now().isoformat()
+                'last_updated': status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
             }
             
             self.send_json_response(response)
