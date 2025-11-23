@@ -63,6 +63,9 @@ class DashboardApp {
             if (hasCache) {
                 lastUpdated.innerHTML = '⚠️ Showing cached data (backend offline)';
             }
+        } else if (isOnline && lastUpdated) {
+            // Clear any partial stale warning when back online
+            // (will be updated by loadAllData if needed)
         }
     }
 
@@ -74,10 +77,19 @@ class DashboardApp {
         const reposSuccess = await this.loadRepositories();
         const pipelinesSuccess = await this.loadPipelines();
         
-        // Only update timestamp if at least one endpoint succeeded
-        if (summarySuccess || reposSuccess || pipelinesSuccess) {
+        const anySuccess = summarySuccess || reposSuccess || pipelinesSuccess;
+        const anyFailure = !summarySuccess || !reposSuccess || !pipelinesSuccess;
+        
+        // Update timestamp and status based on results
+        if (anySuccess && !anyFailure) {
+            // All endpoints succeeded - show fresh data
             this.updateLastUpdated();
+        } else if (anySuccess && anyFailure) {
+            // Partial success - show warning about mixed data
+            this.updateLastUpdated();
+            this.showPartialStaleWarning();
         }
+        // If all failed (no success), keep the cached-data warning from updateStatusIndicator
     }
 
     async loadSummary() {
@@ -332,6 +344,14 @@ class DashboardApp {
         if (element) {
             const now = new Date();
             element.textContent = `Last updated: ${now.toLocaleTimeString()}`;
+        }
+    }
+
+    showPartialStaleWarning() {
+        const element = document.getElementById('lastUpdated');
+        if (element) {
+            const now = new Date();
+            element.innerHTML = `⚠️ Partially stale (updated: ${now.toLocaleTimeString()})`;
         }
     }
 
