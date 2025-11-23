@@ -841,8 +841,19 @@ def load_config():
     # Environment variables take precedence over config.json
     config['gitlab_url'] = os.environ.get('GITLAB_URL', config.get('gitlab_url', 'https://gitlab.com'))
     config['api_token'] = os.environ.get('GITLAB_API_TOKEN', config.get('api_token', ''))
-    config['group_ids'] = parse_csv_list(os.environ.get('GITLAB_GROUP_IDS', '')) or config.get('group_ids', [])
-    config['project_ids'] = parse_csv_list(os.environ.get('GITLAB_PROJECT_IDS', '')) or config.get('project_ids', [])
+    
+    # For group_ids and project_ids, check if env var is explicitly set (even if empty)
+    # to allow overriding config.json with empty scope
+    if 'GITLAB_GROUP_IDS' in os.environ:
+        config['group_ids'] = parse_csv_list(os.environ['GITLAB_GROUP_IDS'])
+    else:
+        config['group_ids'] = config.get('group_ids', [])
+    
+    if 'GITLAB_PROJECT_IDS' in os.environ:
+        config['project_ids'] = parse_csv_list(os.environ['GITLAB_PROJECT_IDS'])
+    else:
+        config['project_ids'] = config.get('project_ids', [])
+    
     config['port'] = parse_int_config(os.environ.get('PORT'), config.get('port', 8080), 'PORT')
     config['cache_ttl_sec'] = parse_int_config(os.environ.get('CACHE_TTL'), config.get('cache_ttl_sec', 300), 'CACHE_TTL')
     config['poll_interval_sec'] = parse_int_config(os.environ.get('POLL_INTERVAL'), config.get('poll_interval_sec', 60), 'POLL_INTERVAL')
