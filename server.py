@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Pipeline fetching configuration constants
 MAX_PROJECTS_FOR_PIPELINES = 20  # Max projects to fetch pipelines from
 PIPELINES_PER_PROJECT = 10       # Pipelines to fetch per project
-MAX_TOTAL_PIPELINES = 50         # Max total pipelines to return
+MAX_TOTAL_PIPELINES = 50         # Default max for /api/pipelines response (deprecated in storage)
 
 # API query parameter constants
 DEFAULT_PIPELINE_LIMIT = 50      # Default limit for /api/pipelines endpoint
@@ -598,22 +598,24 @@ class BackgroundPoller(threading.Thread):
                     logger.error("All pipeline fetches failed")
                     return None
             
-            # Sort by created_at descending and limit to max for /api/pipelines
+            # Sort by created_at descending for /api/pipelines
             # ISO 8601 string sorting works correctly; empty values sort to bottom
             all_pipelines.sort(key=lambda x: x.get('created_at') or '', reverse=True)
-            limited_pipelines = all_pipelines[:MAX_TOTAL_PIPELINES]
             
-            if not limited_pipelines:
+            # Store all pipelines in STATE (up to what we fetched) to support filtering
+            # The limit will be applied at the API response level in handle_pipelines
+            if not all_pipelines:
                 logger.info("No pipelines found in configured projects")
             
             return {
-                'all_pipelines': limited_pipelines,
+                'all_pipelines': all_pipelines,  # Store all fetched pipelines
                 'per_project': per_project_pipelines
             }
         else:
             # No scope configured: fallback to arbitrary membership sample
+            # Fetch enough pipelines to support filtering and higher limits
             logger.info("No scope configured, using membership sample for pipelines")
-            pipelines = self.gitlab_client.get_all_pipelines(per_page=MAX_TOTAL_PIPELINES)
+            pipelines = self.gitlab_client.get_all_pipelines(per_page=MAX_PROJECTS_FOR_PIPELINES * PIPELINES_PER_PROJECT)
             
             # Return None for API errors, empty list is valid
             if pipelines is None:
