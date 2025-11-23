@@ -70,10 +70,14 @@ class DashboardApp {
         console.log('📊 Loading dashboard data...');
         // Load each endpoint independently instead of Promise.all
         // This ensures that if one fails, others can still succeed
-        await this.loadSummary();
-        await this.loadRepositories();
-        await this.loadPipelines();
-        this.updateLastUpdated();
+        const summarySuccess = await this.loadSummary();
+        const reposSuccess = await this.loadRepositories();
+        const pipelinesSuccess = await this.loadPipelines();
+        
+        // Only update timestamp if at least one endpoint succeeded
+        if (summarySuccess || reposSuccess || pipelinesSuccess) {
+            this.updateLastUpdated();
+        }
     }
 
     async loadSummary() {
@@ -85,6 +89,7 @@ class DashboardApp {
             this.cachedData.summary = data;
             this.updateSummaryKPIs(data);
             console.log('✅ Summary data loaded', data);
+            return true;
         } catch (error) {
             console.error('❌ Error loading summary:', error);
             // Try to use cached data
@@ -94,6 +99,7 @@ class DashboardApp {
             } else {
                 this.showError('Failed to load summary data');
             }
+            return false;
         }
     }
 
@@ -118,6 +124,7 @@ class DashboardApp {
             this.cachedData.repos = data.repositories;
             this.renderRepositories(data.repositories || []);
             console.log(`✅ Loaded ${data.repositories?.length || 0} repositories`);
+            return true;
         } catch (error) {
             console.error('❌ Error loading repositories:', error);
             // Try to use cached data
@@ -127,6 +134,7 @@ class DashboardApp {
             } else {
                 this.showError('Failed to load repositories', 'repoGrid');
             }
+            return false;
         }
     }
 
@@ -262,6 +270,7 @@ class DashboardApp {
             this.cachedData.pipelines = data.pipelines;
             this.renderPipelines(data.pipelines || []);
             console.log(`✅ Loaded ${data.pipelines?.length || 0} pipelines`);
+            return true;
         } catch (error) {
             console.error('❌ Error loading pipelines:', error);
             // Try to use cached data
@@ -271,6 +280,7 @@ class DashboardApp {
             } else {
                 this.showError('Failed to load pipelines', 'pipelineTableBody');
             }
+            return false;
         }
     }
 
