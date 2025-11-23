@@ -316,9 +316,26 @@ STATE_LOCK = threading.Lock()
 
 
 def update_state(key, value):
-    """Thread-safe update of global STATE"""
+    """Thread-safe update of global STATE (single key)
+    
+    Note: For atomic updates of multiple keys, use update_state_atomic() instead
+    """
     with STATE_LOCK:
         STATE['data'][key] = value
+        STATE['last_updated'] = datetime.now()
+        STATE['status'] = 'ONLINE'
+        STATE['error'] = None
+
+
+def update_state_atomic(updates):
+    """Thread-safe atomic update of multiple STATE keys with single timestamp
+    
+    Args:
+        updates: dict mapping keys to values (e.g., {'projects': [...], 'pipelines': [...]})
+    """
+    with STATE_LOCK:
+        for key, value in updates.items():
+            STATE['data'][key] = value
         STATE['last_updated'] = datetime.now()
         STATE['status'] = 'ONLINE'
         STATE['error'] = None
@@ -398,17 +415,17 @@ class BackgroundPoller(threading.Thread):
             logger.error("Data poll completed with failures - state marked as ERROR")
             return
         
-        # Both fetches succeeded - now update STATE atomically with fresh timestamp
-        update_state('projects', projects)
-        logger.info(f"Updated projects in STATE: {len(projects)} projects")
-        
-        update_state('pipelines', pipelines)
-        logger.info(f"Updated pipelines in STATE: {len(pipelines)} pipelines")
-        
-        # Calculate summary
+        # Both fetches succeeded - calculate summary and update STATE atomically
         summary = self._calculate_summary(projects, pipelines)
-        update_state('summary', summary)
-        logger.info("Updated summary in STATE")
+        
+        # Update all keys atomically with single timestamp and status
+        update_state_atomic({
+            'projects': projects,
+            'pipelines': pipelines,
+            'summary': summary
+        })
+        
+        logger.info(f"Updated STATE atomically: {len(projects)} projects, {len(pipelines)} pipelines")
         logger.info("Data poll completed successfully")
     
     def _fetch_projects(self):
