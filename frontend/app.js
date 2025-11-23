@@ -6,14 +6,29 @@ class DashboardApp {
         this.apiBase = window.location.origin;
         this.refreshInterval = 60000; // 60 seconds
         this.updateTimer = null;
+        this.cachedData = {
+            summary: null,
+            repos: null,
+            pipelines: null
+        };
         this.init();
     }
 
     init() {
         console.log('🚀 Initializing GitLab DSO Dashboard...');
+        this.checkTVMode();
         this.checkHealth();
         this.loadAllData();
         this.startAutoRefresh();
+    }
+
+    checkTVMode() {
+        // Check for ?tv=1 URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('tv') === '1') {
+            document.body.classList.add('tv');
+            console.log('📺 TV mode enabled');
+        }
     }
 
     async checkHealth() {
@@ -38,18 +53,26 @@ class DashboardApp {
 
     updateStatusIndicator(isOnline) {
         const indicator = document.getElementById('statusIndicator');
+        const lastUpdated = document.getElementById('lastUpdated');
         if (indicator) {
             indicator.className = `status-indicator ${isOnline ? 'online' : 'offline'}`;
+        }
+        // Show stale data notice when offline
+        if (!isOnline && lastUpdated) {
+            const hasCache = this.cachedData.summary || this.cachedData.repos || this.cachedData.pipelines;
+            if (hasCache) {
+                lastUpdated.innerHTML = '⚠️ Showing cached data (backend offline)';
+            }
         }
     }
 
     async loadAllData() {
         console.log('📊 Loading dashboard data...');
-        await Promise.all([
-            this.loadSummary(),
-            this.loadRepositories(),
-            this.loadPipelines()
-        ]);
+        // Load each endpoint independently instead of Promise.all
+        // This ensures that if one fails, others can still succeed
+        await this.loadSummary();
+        await this.loadRepositories();
+        await this.loadPipelines();
         this.updateLastUpdated();
     }
 
@@ -59,11 +82,18 @@ class DashboardApp {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
+            this.cachedData.summary = data;
             this.updateSummaryKPIs(data);
             console.log('✅ Summary data loaded', data);
         } catch (error) {
             console.error('❌ Error loading summary:', error);
-            this.showError('Failed to load summary data');
+            // Try to use cached data
+            if (this.cachedData.summary) {
+                console.log('📦 Using cached summary data');
+                this.updateSummaryKPIs(this.cachedData.summary);
+            } else {
+                this.showError('Failed to load summary data');
+            }
         }
     }
 
@@ -85,11 +115,18 @@ class DashboardApp {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
+            this.cachedData.repos = data.repositories;
             this.renderRepositories(data.repositories || []);
             console.log(`✅ Loaded ${data.repositories?.length || 0} repositories`);
         } catch (error) {
             console.error('❌ Error loading repositories:', error);
-            this.showError('Failed to load repositories', 'repoGrid');
+            // Try to use cached data
+            if (this.cachedData.repos) {
+                console.log('📦 Using cached repositories data');
+                this.renderRepositories(this.cachedData.repos);
+            } else {
+                this.showError('Failed to load repositories', 'repoGrid');
+            }
         }
     }
 
@@ -222,11 +259,18 @@ class DashboardApp {
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
+            this.cachedData.pipelines = data.pipelines;
             this.renderPipelines(data.pipelines || []);
             console.log(`✅ Loaded ${data.pipelines?.length || 0} pipelines`);
         } catch (error) {
             console.error('❌ Error loading pipelines:', error);
-            this.showError('Failed to load pipelines', 'pipelineTableBody');
+            // Try to use cached data
+            if (this.cachedData.pipelines) {
+                console.log('📦 Using cached pipelines data');
+                this.renderPipelines(this.cachedData.pipelines);
+            } else {
+                this.showError('Failed to load pipelines', 'pipelineTableBody');
+            }
         }
     }
 
@@ -250,9 +294,10 @@ class DashboardApp {
         const createdAt = pipeline.created_at 
             ? this.formatDate(pipeline.created_at) 
             : '--';
+        const fullTimestamp = pipeline.created_at || '';
 
         return `
-            <tr>
+            <tr class="row-status-${status}">
                 <td>
                     <span class="pipeline-status ${status}">${status}</span>
                 </td>
@@ -262,7 +307,7 @@ class DashboardApp {
                     <span class="commit-sha">${this.escapeHtml(pipeline.sha || '--')}</span>
                 </td>
                 <td>${duration}</td>
-                <td>${createdAt}</td>
+                <td title="${this.escapeHtml(fullTimestamp)}">${createdAt}</td>
                 <td>
                     ${pipeline.web_url 
                         ? `<a href="${pipeline.web_url}" target="_blank" class="pipeline-link">View →</a>` 
