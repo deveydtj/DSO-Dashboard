@@ -28,6 +28,16 @@ MAX_PROJECTS_FOR_PIPELINES = 20  # Max projects to fetch pipelines from
 PIPELINES_PER_PROJECT = 10       # Pipelines to fetch per project
 MAX_TOTAL_PIPELINES = 50         # Max total pipelines to return
 
+# API query parameter constants
+DEFAULT_PIPELINE_LIMIT = 50      # Default limit for /api/pipelines endpoint
+MAX_PIPELINE_LIMIT = 1000        # Maximum limit for /api/pipelines endpoint
+
+# Timestamp fallback constants
+EPOCH_TIMESTAMP = '1970-01-01T00:00:00Z'  # Fallback for missing timestamps
+
+# Default branch constant
+DEFAULT_BRANCH_NAME = 'main'     # Default branch name fallback
+
 
 class GitLabAPIClient:
     """GitLab API client using urllib with retry, rate limiting, and pagination support"""
@@ -624,11 +634,10 @@ class BackgroundPoller(threading.Thread):
                 project_pipelines[project_id].append(pipeline)
         
         # Sort pipelines by created_at for each project (newest first)
-        # Use epoch timestamp as fallback for pipelines without created_at
         # ISO 8601 timestamps sort correctly lexicographically
         for project_id in project_pipelines:
             project_pipelines[project_id].sort(
-                key=lambda p: p.get('created_at') or '1970-01-01T00:00:00Z', 
+                key=lambda p: p.get('created_at') or EPOCH_TIMESTAMP, 
                 reverse=True
             )
         
@@ -655,7 +664,7 @@ class BackgroundPoller(threading.Thread):
                 enriched['recent_success_rate'] = success_count / len(recent_pipelines)
                 
                 # Calculate consecutive failures on default branch
-                default_branch = project.get('default_branch', 'main')
+                default_branch = project.get('default_branch', DEFAULT_BRANCH_NAME)
                 consecutive_failures = 0
                 for pipeline in pipelines_for_project:
                     if pipeline.get('ref') == default_branch:
@@ -891,11 +900,11 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             
             # Get query parameter values (parse_qs returns lists)
             try:
-                limit = int(query_params.get('limit', ['50'])[0])
+                limit = int(query_params.get('limit', [str(DEFAULT_PIPELINE_LIMIT)])[0])
                 if limit < 1:
                     raise ValueError("limit must be a positive integer (>= 1)")
-                if limit > 1000:
-                    raise ValueError("limit must not exceed 1000")
+                if limit > MAX_PIPELINE_LIMIT:
+                    raise ValueError(f"limit must not exceed {MAX_PIPELINE_LIMIT}")
             except (ValueError, IndexError) as e:
                 logger.error(f"Invalid limit parameter: {e}")
                 self.send_json_response({'error': f'Invalid limit parameter: {str(e)}'}, status=400)
