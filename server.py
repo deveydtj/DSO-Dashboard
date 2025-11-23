@@ -649,11 +649,8 @@ class BackgroundPoller(threading.Thread):
                 
                 # Calculate recent success rate (last 10 pipelines)
                 recent_pipelines = pipelines_for_project[:10]
-                if recent_pipelines:
-                    success_count = sum(1 for p in recent_pipelines if p.get('status') == 'success')
-                    enriched['recent_success_rate'] = success_count / len(recent_pipelines)
-                else:
-                    enriched['recent_success_rate'] = None
+                success_count = sum(1 for p in recent_pipelines if p.get('status') == 'success')
+                enriched['recent_success_rate'] = success_count / len(recent_pipelines)
                 
                 # Calculate consecutive failures on default branch
                 default_branch = project.get('default_branch', 'main')
