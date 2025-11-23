@@ -380,38 +380,36 @@ class BackgroundPoller(threading.Thread):
         """Poll GitLab API and update STATE"""
         logger.info("Starting data poll...")
         
-        # Track if we had any failures during this poll
-        had_failures = False
-        
-        # Fetch projects
+        # Fetch projects and pipelines FIRST (don't update STATE yet)
         projects = self._fetch_projects()
         if projects is None:
             logger.error("Failed to fetch projects - API error")
-            had_failures = True
-        else:
-            update_state('projects', projects)
-            logger.info(f"Updated projects in STATE: {len(projects)} projects")
+            # Set error state so health endpoint reflects the failure
+            set_state_error("Failed to fetch data from GitLab API")
+            logger.error("Data poll completed with failures - state marked as ERROR")
+            return
         
         # Fetch pipelines (pass projects to respect configured scope)
         pipelines = self._fetch_pipelines(projects)
         if pipelines is None:
             logger.error("Failed to fetch pipelines - API error")
-            had_failures = True
-        else:
-            update_state('pipelines', pipelines)
-            logger.info(f"Updated pipelines in STATE: {len(pipelines)} pipelines")
-        
-        # Only update summary and mark as ONLINE if we successfully fetched data
-        if not had_failures:
-            # Calculate summary
-            summary = self._calculate_summary(projects, pipelines)
-            update_state('summary', summary)
-            logger.info("Updated summary in STATE")
-            logger.info("Data poll completed successfully")
-        else:
             # Set error state so health endpoint reflects the failure
             set_state_error("Failed to fetch data from GitLab API")
             logger.error("Data poll completed with failures - state marked as ERROR")
+            return
+        
+        # Both fetches succeeded - now update STATE atomically with fresh timestamp
+        update_state('projects', projects)
+        logger.info(f"Updated projects in STATE: {len(projects)} projects")
+        
+        update_state('pipelines', pipelines)
+        logger.info(f"Updated pipelines in STATE: {len(pipelines)} pipelines")
+        
+        # Calculate summary
+        summary = self._calculate_summary(projects, pipelines)
+        update_state('summary', summary)
+        logger.info("Updated summary in STATE")
+        logger.info("Data poll completed successfully")
     
     def _fetch_projects(self):
         """Fetch projects from configured sources
