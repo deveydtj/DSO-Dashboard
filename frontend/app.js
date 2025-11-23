@@ -61,7 +61,7 @@ class DashboardApp {
         if (!isOnline && lastUpdated) {
             const hasCache = this.cachedData.summary || this.cachedData.repos || this.cachedData.pipelines;
             if (hasCache) {
-                lastUpdated.innerHTML = '⚠️ Showing cached data (backend offline)';
+                lastUpdated.textContent = '⚠️ Showing cached data (backend offline)';
             }
         } else if (isOnline && lastUpdated) {
             // Clear any partial stale warning when back online
@@ -351,7 +351,7 @@ class DashboardApp {
         const element = document.getElementById('lastUpdated');
         if (element) {
             const now = new Date();
-            element.innerHTML = `⚠️ Partially stale (updated: ${now.toLocaleTimeString()})`;
+            element.textContent = `⚠️ Partially stale (updated: ${now.toLocaleTimeString()})`;
         }
     }
 
