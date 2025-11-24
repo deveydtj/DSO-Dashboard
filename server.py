@@ -173,16 +173,40 @@ class GitLabAPIClient:
         # Parse Link header for rel="next"
         for link in link_header.split(','):
             link = link.strip()
-            if 'rel="next"' in link or "rel='next'" in link:
+            # Check for rel="next" or rel='next' (case-insensitive, handle whitespace)
+            if 'rel' in link.lower():
+                # Split by semicolon to separate URL from rel parameter
+                parts = link.split(';')
+                if len(parts) < 2:
+                    continue
+                
+                # Check if this is the "next" link
+                rel_part = parts[1].strip().lower()
+                if 'next' not in rel_part:
+                    continue
+                
                 # Extract URL from <URL>
-                url_match = link.split(';')[0].strip()
-                if url_match.startswith('<') and '>' in url_match:
-                    url = url_match[1:url_match.index('>')]
-                    # Extract page number from URL query params
+                url_part = parts[0].strip()
+                if not (url_part.startswith('<') and '>' in url_part):
+                    continue
+                
+                # Find the first '>' to handle URLs with query params
+                end_bracket = url_part.index('>')
+                url = url_part[1:end_bracket]
+                
+                # Extract page number from URL query params
+                try:
                     parsed = urlparse(url)
                     query_params = parse_qs(parsed.query)
-                    if 'page' in query_params:
-                        return query_params['page'][0]
+                    if 'page' in query_params and query_params['page']:
+                        page_value = query_params['page'][0]
+                        # Validate that page is numeric
+                        if page_value.isdigit():
+                            return page_value
+                except Exception as e:
+                    logger.debug(f"Failed to parse Link header URL: {e}")
+                    continue
+        
         return None
     
     def _process_response(self, response):

@@ -26,7 +26,7 @@ class TestPaginationHelpers(unittest.TestCase):
         )
     
     def test_parse_link_header_with_next(self):
-        """Test parsing Link header with rel="next" """
+        """Test parsing Link header with rel="next"""""
         link_header = '<https://gitlab.com/api/v4/projects?page=2&per_page=10>; rel="next", <https://gitlab.com/api/v4/projects?page=10&per_page=10>; rel="last"'
         result = self.client._parse_link_header(link_header)
         self.assertEqual(result, '2')
@@ -49,6 +49,24 @@ class TestPaginationHelpers(unittest.TestCase):
         link_header = "<https://gitlab.com/api/v4/projects?page=3&per_page=10>; rel='next'"
         result = self.client._parse_link_header(link_header)
         self.assertEqual(result, '3')
+    
+    def test_parse_link_header_with_spaces(self):
+        """Test parsing Link header with extra spaces"""
+        link_header = "<https://gitlab.com/api/v4/projects?page=4&per_page=10> ; rel = \"next\""
+        result = self.client._parse_link_header(link_header)
+        self.assertEqual(result, '4')
+    
+    def test_parse_link_header_malformed_url(self):
+        """Test parsing Link header with malformed URL"""
+        link_header = "<https://gitlab.com/api/v4/projects?page=bad>; rel=\"next\""
+        result = self.client._parse_link_header(link_header)
+        self.assertIsNone(result)  # Should return None for non-numeric page
+    
+    def test_parse_link_header_missing_brackets(self):
+        """Test parsing Link header with missing brackets"""
+        link_header = "https://gitlab.com/api/v4/projects?page=2; rel=\"next\""
+        result = self.client._parse_link_header(link_header)
+        self.assertIsNone(result)
     
     def test_gitlab_get_all_pages_alias(self):
         """Test that gitlab_get_all_pages is a working alias"""
