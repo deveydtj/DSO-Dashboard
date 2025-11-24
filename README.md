@@ -113,6 +113,70 @@ DSO-Dashboard is a lightweight, portable GitLab monitoring dashboard designed fo
   - Responsive grid layout
   - Soft shadows for depth effect
 
+### Snapshot Caching Architecture
+
+**Key Principle: Single Data Source**
+
+DSO-Dashboard uses a **snapshot caching** architecture to ensure scalability and consistent performance:
+
+- **GitLab API is polled ONLY by the background thread** - never per-request
+- **All API endpoints serve from in-memory STATE** - fast, non-blocking reads
+- **Multiple concurrent clients do NOT multiply GitLab traffic** - they all read the same cached snapshot
+
+**Benefits:**
+- ✅ **No request storms**: 100 clients = same GitLab load as 1 client
+- ✅ **Predictable performance**: API response time independent of GitLab latency
+- ✅ **Rate limit friendly**: Controlled polling interval prevents GitLab 429 errors
+- ✅ **Graceful degradation**: Stale data served when GitLab is temporarily unavailable
+
+**Data Freshness:**
+- Data refreshes every `poll_interval_sec` (default: 60 seconds)
+- Responses include `last_updated` timestamp for staleness detection
+- Responses include `backend_status` field: `INITIALIZING` (no data yet), `ONLINE` (fresh), `ERROR` (GitLab unreachable)
+- Frontend shows visual indicators when data is stale or initializing
+
+**Stable Response Shapes:**
+
+All API endpoints return consistent JSON shapes, even when empty or during initialization:
+
+```json
+// /api/summary - always has these keys
+{
+  "total_repositories": 0,      // zero when empty
+  "total_pipelines": 0,         // zero when empty
+  "successful_pipelines": 0,
+  "failed_pipelines": 0,
+  "running_pipelines": 0,
+  "pending_pipelines": 0,
+  "pipeline_success_rate": 0.0,
+  "pipeline_statuses": {},
+  "last_updated": "2024-01-15T12:00:00.000000",  // null when INITIALIZING
+  "backend_status": "ONLINE"    // INITIALIZING, ONLINE, or ERROR
+}
+
+// /api/repos - always returns object with 'repositories' array
+{
+  "repositories": [],  // empty array when no repos
+  "total": 0,
+  "last_updated": "...",
+  "backend_status": "ONLINE"
+}
+
+// /api/pipelines - always returns object with 'pipelines' array
+{
+  "pipelines": [],  // empty array when no pipelines
+  "total": 0,
+  "total_before_limit": 0,
+  "last_updated": "...",
+  "backend_status": "ONLINE"
+}
+```
+
+**Never returns:**
+- ❌ Bare arrays (`[...]`) - always wrapped in object
+- ❌ Missing keys - all required fields always present
+- ❌ `null` for collections - empty arrays used instead
+
 ## Quick Start
 
 ### Prerequisites
@@ -417,7 +481,7 @@ Health check endpoint for monitoring and load balancers.
 
 ### GET `/api/summary`
 
-Overall statistics and KPIs.
+Overall statistics and KPIs. **Always returns consistent shape, even when empty or initializing.**
 
 **Response:**
 ```json
@@ -437,13 +501,21 @@ Overall statistics and KPIs.
     "pending": 2
   },
   "last_updated": "2024-01-15T12:00:00.000000",
-  "last_updated_iso": "2024-01-15T12:00:00.000000"
+  "last_updated_iso": "2024-01-15T12:00:00.000000",
+  "backend_status": "ONLINE",
+  "is_mock": false
 }
 ```
 
+**Response Fields:**
+- `backend_status`: Backend state - `INITIALIZING` (first poll), `ONLINE` (healthy), `ERROR` (GitLab unavailable)
+- `last_updated`: ISO timestamp of last successful poll (null when INITIALIZING)
+- `is_mock`: Boolean indicating if data is from mock mode
+- All count fields default to `0` when no data available
+
 ### GET `/api/repos`
 
-List of repositories with enriched pipeline health data.
+List of repositories with enriched pipeline health data. **Always returns consistent shape with `repositories` array, even when empty.**
 
 **Response:**
 ```json
@@ -470,9 +542,16 @@ List of repositories with enriched pipeline health data.
     }
   ],
   "total": 42,
-  "last_updated": "2024-01-15T12:00:00.000000"
+  "last_updated": "2024-01-15T12:00:00.000000",
+  "backend_status": "ONLINE"
 }
 ```
+
+**Response Fields:**
+- `repositories`: Array of repository objects (empty array `[]` when no repos)
+- `total`: Count of repositories returned
+- `backend_status`: Backend state - `INITIALIZING`, `ONLINE`, or `ERROR`
+- `last_updated`: ISO timestamp of last successful poll (null when INITIALIZING)
 
 **Pipeline Health Fields:**
 - `last_pipeline_status`: Most recent pipeline status (any branch)
@@ -532,9 +611,17 @@ GET /api/pipelines?project=my-app
   ],
   "total": 50,
   "total_before_limit": 150,
-  "last_updated": "2024-01-15T12:00:00.000000"
+  "last_updated": "2024-01-15T12:00:00.000000",
+  "backend_status": "ONLINE"
 }
 ```
+
+**Response Fields:**
+- `pipelines`: Array of pipeline objects (empty array `[]` when no pipelines)
+- `total`: Count of pipelines returned after filters and limit
+- `total_before_limit`: Total pipelines matching filters (for pagination context)
+- `backend_status`: Backend state - `INITIALIZING`, `ONLINE`, or `ERROR`
+- `last_updated`: ISO timestamp of last successful poll (null when INITIALIZING)
 
 **Pipeline Status Values:**
 - `success`: Pipeline completed successfully
