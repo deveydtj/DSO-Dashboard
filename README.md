@@ -241,11 +241,13 @@ DSO-Dashboard supports two configuration methods that can be used together. **En
 | `project_ids` | `GITLAB_PROJECT_IDS` | Comma-separated project IDs to monitor | - |
 | `poll_interval_sec` | `POLL_INTERVAL` | Background polling interval (seconds) | `60` |
 | `cache_ttl_sec` | `CACHE_TTL` | Cache TTL (deprecated, kept for compatibility) | `300` |
-| `per_page` | `PER_PAGE` | API pagination size | `100` |
+| `per_page` | `PER_PAGE` | API pagination size (items per page) | `100` |
 | `insecure_skip_verify` | `INSECURE_SKIP_VERIFY` | Skip SSL verification (self-signed certs) | `false` |
 | `use_mock_data` | `USE_MOCK_DATA` | Use mock data instead of GitLab API | `false` |
 | `mock_scenario` | `MOCK_SCENARIO` | Mock scenario name: `healthy`, `failing`, or `running` | `` (uses `mock_data.json`) |
 | `port` (N/A in json) | `PORT` | Server port | `8080` |
+
+**Note on pagination:** The `per_page` parameter controls how many items are fetched per API request. The dashboard automatically fetches all pages until exhausted, so groups with hundreds of projects will load completely. GitLab's maximum `per_page` is typically 100. The dashboard supports both X-Next-Page headers and RFC 5988 Link headers for pagination.
 
 ### Configuration Examples
 
