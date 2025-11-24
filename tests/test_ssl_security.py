@@ -9,7 +9,7 @@ import unittest
 import sys
 import os
 import tempfile
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, mock_open
 from urllib.parse import urlparse
 
 # Add parent directory to path to import server module
@@ -45,7 +45,7 @@ class TestSSLConfiguration(unittest.TestCase):
         }
         
         with patch('os.path.exists', return_value=True):
-            with patch('builtins.open', unittest.mock.mock_open(read_data='{"ca_bundle_path": "/etc/ssl/certs/ca-bundle.crt"}')):
+            with patch('builtins.open', mock_open(read_data='{"ca_bundle_path": "/etc/ssl/certs/ca-bundle.crt"}')):
                 config = server.load_config()
                 self.assertEqual(config['ca_bundle_path'], '/etc/ssl/certs/ca-bundle.crt')
     
@@ -63,7 +63,7 @@ class TestSSLConfiguration(unittest.TestCase):
         
         mock_config_data = '{"ca_bundle_path": "/config/ca-bundle.crt"}'
         with patch('os.path.exists', return_value=True):
-            with patch('builtins.open', unittest.mock.mock_open(read_data=mock_config_data)):
+            with patch('builtins.open', mock_open(read_data=mock_config_data)):
                 config = server.load_config()
                 self.assertEqual(config['ca_bundle_path'], '/env/ca-bundle.crt')
     
@@ -156,62 +156,24 @@ class TestSSLConfiguration(unittest.TestCase):
 class TestConfigFileBlocking(unittest.TestCase):
     """Test that sensitive configuration files are blocked from web access"""
     
-    def test_config_json_is_blocked(self):
-        """Test that /config.json returns 403 Forbidden"""
-        handler = MagicMock(spec=server.DashboardRequestHandler)
-        handler.path = '/config.json'
-        handler.send_error = MagicMock()
+    def test_blocked_paths_return_403(self):
+        """Test that all blocked paths return 403 Forbidden"""
+        blocked_paths = ['/config.json', '/config.json.example', '/.env', '/.env.example']
         
-        # Manually parse and check path like do_GET does
-        parsed_path = urlparse(handler.path)
-        path = parsed_path.path
-        
-        if path in ['/config.json', '/config.json.example', '/.env', '/.env.example']:
-            handler.send_error(403, "Forbidden: Configuration files are not accessible")
-        
-        handler.send_error.assert_called_once_with(403, "Forbidden: Configuration files are not accessible")
-    
-    def test_config_json_example_is_blocked(self):
-        """Test that /config.json.example returns 403 Forbidden"""
-        handler = MagicMock(spec=server.DashboardRequestHandler)
-        handler.path = '/config.json.example'
-        handler.send_error = MagicMock()
-        
-        parsed_path = urlparse(handler.path)
-        path = parsed_path.path
-        
-        if path in ['/config.json', '/config.json.example', '/.env', '/.env.example']:
-            handler.send_error(403, "Forbidden: Configuration files are not accessible")
-        
-        handler.send_error.assert_called_once_with(403, "Forbidden: Configuration files are not accessible")
-    
-    def test_env_file_is_blocked(self):
-        """Test that /.env returns 403 Forbidden"""
-        handler = MagicMock(spec=server.DashboardRequestHandler)
-        handler.path = '/.env'
-        handler.send_error = MagicMock()
-        
-        parsed_path = urlparse(handler.path)
-        path = parsed_path.path
-        
-        if path in ['/config.json', '/config.json.example', '/.env', '/.env.example']:
-            handler.send_error(403, "Forbidden: Configuration files are not accessible")
-        
-        handler.send_error.assert_called_once_with(403, "Forbidden: Configuration files are not accessible")
-    
-    def test_env_example_file_is_blocked(self):
-        """Test that /.env.example returns 403 Forbidden"""
-        handler = MagicMock(spec=server.DashboardRequestHandler)
-        handler.path = '/.env.example'
-        handler.send_error = MagicMock()
-        
-        parsed_path = urlparse(handler.path)
-        path = parsed_path.path
-        
-        if path in ['/config.json', '/config.json.example', '/.env', '/.env.example']:
-            handler.send_error(403, "Forbidden: Configuration files are not accessible")
-        
-        handler.send_error.assert_called_once_with(403, "Forbidden: Configuration files are not accessible")
+        for blocked_path in blocked_paths:
+            with self.subTest(path=blocked_path):
+                handler = MagicMock(spec=server.DashboardRequestHandler)
+                handler.path = blocked_path
+                handler.send_error = MagicMock()
+                
+                # Manually parse and check path like do_GET does
+                parsed_path = urlparse(handler.path)
+                path = parsed_path.path
+                
+                if path in ['/config.json', '/config.json.example', '/.env', '/.env.example']:
+                    handler.send_error(403, "Forbidden: Configuration files are not accessible")
+                
+                handler.send_error.assert_called_once_with(403, "Forbidden: Configuration files are not accessible")
     
     def test_normal_files_not_blocked(self):
         """Test that normal files like /index.html are not blocked"""
