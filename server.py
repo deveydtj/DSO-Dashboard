@@ -653,10 +653,11 @@ class BackgroundPoller(threading.Thread):
         logger.info("Background poller started")
         
         while self.running:
+            # Generate poll_id before entering try block so errors preserve the same ID
+            poll_id = self._generate_poll_id()
             try:
-                self.poll_data()
+                self.poll_data(poll_id)
             except Exception as e:
-                poll_id = self._generate_poll_id()
                 logger.error(f"[poll_id={poll_id}] Error in background poller: {e}")
                 set_state_error(e, poll_id=poll_id)
             
@@ -666,9 +667,12 @@ class BackgroundPoller(threading.Thread):
                 # Event was set, exit loop
                 break
     
-    def poll_data(self):
-        """Poll GitLab API and update STATE"""
-        poll_id = self._generate_poll_id()
+    def poll_data(self, poll_id):
+        """Poll GitLab API and update STATE
+        
+        Args:
+            poll_id: Poll cycle identifier for logging context
+        """
         logger.info(f"[poll_id={poll_id}] Starting data poll...")
         
         # Fetch projects and pipelines FIRST (don't update STATE yet)
