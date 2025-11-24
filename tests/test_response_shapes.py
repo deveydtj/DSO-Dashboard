@@ -55,17 +55,7 @@ class TestResponseShapes(unittest.TestCase):
         server.update_state_atomic({
             'projects': [],
             'pipelines': [],
-            'summary': {
-                'total_repositories': 0,
-                'active_repositories': 0,
-                'total_pipelines': 0,
-                'successful_pipelines': 0,
-                'failed_pipelines': 0,
-                'running_pipelines': 0,
-                'pending_pipelines': 0,
-                'pipeline_success_rate': 0.0,
-                'pipeline_statuses': {}
-            }
+            'summary': dict(server.DEFAULT_SUMMARY)  # Use copy of default summary
         })
         
         handler = MagicMock(spec=server.DashboardRequestHandler)
@@ -267,17 +257,7 @@ class TestResponseShapeKeys(unittest.TestCase):
         server.update_state_atomic({
             'projects': [],
             'pipelines': [],
-            'summary': {
-                'total_repositories': 0,
-                'active_repositories': 0,
-                'total_pipelines': 0,
-                'successful_pipelines': 0,
-                'failed_pipelines': 0,
-                'running_pipelines': 0,
-                'pending_pipelines': 0,
-                'pipeline_success_rate': 0.0,
-                'pipeline_statuses': {}
-            }
+            'summary': dict(server.DEFAULT_SUMMARY)  # Use copy of default summary
         })
     
     def test_summary_has_all_required_keys(self):

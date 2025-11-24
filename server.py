@@ -38,6 +38,19 @@ EPOCH_TIMESTAMP = '1970-01-01T00:00:00Z'  # Fallback for missing timestamps
 # Default branch constant
 DEFAULT_BRANCH_NAME = 'main'     # Default branch name fallback
 
+# Default summary structure for empty/error states
+DEFAULT_SUMMARY = {
+    'total_repositories': 0,
+    'active_repositories': 0,
+    'total_pipelines': 0,
+    'successful_pipelines': 0,
+    'failed_pipelines': 0,
+    'running_pipelines': 0,
+    'pending_pipelines': 0,
+    'pipeline_success_rate': 0.0,
+    'pipeline_statuses': {}
+}
+
 
 class GitLabAPIClient:
     """GitLab API client using urllib with retry, rate limiting, and pagination support"""
@@ -322,17 +335,7 @@ STATE = {
     'data': {
         'projects': [],
         'pipelines': [],
-        'summary': {
-            'total_repositories': 0,
-            'active_repositories': 0,
-            'total_pipelines': 0,
-            'successful_pipelines': 0,
-            'failed_pipelines': 0,
-            'running_pipelines': 0,
-            'pending_pipelines': 0,
-            'pipeline_success_rate': 0.0,
-            'pipeline_statuses': {}
-        }
+        'summary': dict(DEFAULT_SUMMARY)  # Use copy of default summary
     },
     'last_updated': None,
     'status': 'INITIALIZING',
@@ -834,17 +837,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             # Build response with proper shape (never None, always has required keys)
             # If summary is None, use empty defaults (should not happen with new initialization)
             if summary is None:
-                summary = {
-                    'total_repositories': 0,
-                    'active_repositories': 0,
-                    'total_pipelines': 0,
-                    'successful_pipelines': 0,
-                    'failed_pipelines': 0,
-                    'running_pipelines': 0,
-                    'pending_pipelines': 0,
-                    'pipeline_success_rate': 0.0,
-                    'pipeline_statuses': {}
-                }
+                summary = dict(DEFAULT_SUMMARY)  # Use copy of default summary
             
             response = dict(summary)
             
@@ -862,20 +855,13 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         except Exception as e:
             logger.error(f"Error in handle_summary: {e}")
             # Even on error, return proper shape with zeros
-            self.send_json_response({
-                'total_repositories': 0,
-                'active_repositories': 0,
-                'total_pipelines': 0,
-                'successful_pipelines': 0,
-                'failed_pipelines': 0,
-                'running_pipelines': 0,
-                'pending_pipelines': 0,
-                'pipeline_success_rate': 0.0,
-                'pipeline_statuses': {},
+            response = dict(DEFAULT_SUMMARY)  # Use copy of default summary
+            response.update({
                 'last_updated': None,
                 'backend_status': 'ERROR',
                 'error': str(e)
-            }, status=500)
+            })
+            self.send_json_response(response, status=500)
     
     def handle_repos(self):
         """Handle /api/repos endpoint
