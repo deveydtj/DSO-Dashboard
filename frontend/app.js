@@ -447,7 +447,7 @@ class DashboardApp {
                     <div>
                         <h3 class="repo-name">${this.escapeHtml(repo.name)}</h3>
                     </div>
-                    <span class="repo-visibility">${repo.visibility}</span>
+                    <span class="repo-visibility">${this.escapeHtml(repo.visibility)}</span>
                 </div>
                 <p class="repo-description">${this.escapeHtml(description)}</p>
                 ${pipelineInfo}
@@ -466,7 +466,7 @@ class DashboardApp {
                         <span>${repo.open_issues_count || 0}</span>
                     </div>
                 </div>
-                ${repo.web_url ? `<a href="${repo.web_url}" target="_blank" class="repo-link">View on GitLab →</a>` : ''}
+                ${repo.web_url ? `<a href="${repo.web_url}" target="_blank" rel="noopener noreferrer" class="repo-link">View on GitLab →</a>` : ''}
             </div>
         `;
     }
@@ -531,7 +531,7 @@ class DashboardApp {
                 <td title="${this.escapeHtml(fullTimestamp)}">${createdAt}</td>
                 <td>
                     ${pipeline.web_url 
-                        ? `<a href="${pipeline.web_url}" target="_blank" class="pipeline-link">View →</a>` 
+                        ? `<a href="${pipeline.web_url}" target="_blank" rel="noopener noreferrer" class="pipeline-link">View →</a>` 
                         : '--'}
                 </td>
             </tr>
@@ -690,11 +690,52 @@ class DashboardApp {
     }
 }
 
-// Initialize the dashboard when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        window.dashboardApp = new DashboardApp();
+// Sanity check function to verify escapeHtml is properly applied
+function verifySanitization() {
+    // Create a temporary instance to test escapeHtml
+    const testApp = { 
+        escapeHtml: DashboardApp.prototype.escapeHtml 
+    };
+    
+    // Test cases for XSS prevention
+    const tests = [
+        { input: '<script>alert("xss")</script>', expected: '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;' },
+        { input: '<img src=x onerror=alert(1)>', expected: '&lt;img src=x onerror=alert(1)&gt;' },
+        { input: 'normal text', expected: 'normal text' },
+        { input: "It's a test & more", expected: 'It&#039;s a test &amp; more' }
+    ];
+    
+    let passed = 0;
+    let failed = 0;
+    
+    tests.forEach((test, index) => {
+        const result = testApp.escapeHtml(test.input);
+        if (result === test.expected) {
+            passed++;
+        } else {
+            failed++;
+            console.error(`❌ Test ${index + 1} failed:`, { input: test.input, expected: test.expected, got: result });
+        }
     });
-} else {
+    
+    console.log(`✅ Sanitization check: ${passed}/${tests.length} tests passed`);
+    
+    if (failed > 0) {
+        console.error(`⚠️ WARNING: ${failed} sanitization tests failed!`);
+        return false;
+    }
+    
+    return true;
+}
+
+// Initialize the dashboard when DOM is ready
+function initializeDashboard() {
+    verifySanitization(); // Run sanity check on startup
     window.dashboardApp = new DashboardApp();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeDashboard);
+} else {
+    initializeDashboard();
 }
