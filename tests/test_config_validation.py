@@ -120,6 +120,7 @@ class TestValidateConfig(unittest.TestCase):
         }
         # Validation should still pass (clamping is warning, not error)
         result = server.validate_config(config)
+        self.assertTrue(result)
         # Check that value was clamped
         self.assertEqual(config['cache_ttl_sec'], 0)
 

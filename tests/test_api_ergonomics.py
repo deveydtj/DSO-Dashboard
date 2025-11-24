@@ -19,21 +19,32 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import server
 
 
+def create_mock_handler_with_header_tracking():
+    """Create a mock handler that tracks headers sent.
+    
+    Returns:
+        tuple: (handler, headers_sent dict)
+    """
+    handler = MagicMock(spec=server.DashboardRequestHandler)
+    handler.wfile = BytesIO()
+    headers_sent = {}
+    
+    def track_header(name, value):
+        headers_sent[name] = value
+    
+    handler.send_response = MagicMock()
+    handler.send_header = track_header
+    handler.end_headers = MagicMock()
+    
+    return handler, headers_sent
+
+
 class TestSendJsonResponseHeaders(unittest.TestCase):
     """Test that send_json_response includes proper headers"""
     
     def test_cache_control_header(self):
         """Test that Cache-Control header is set to prevent caching"""
-        handler = MagicMock(spec=server.DashboardRequestHandler)
-        handler.wfile = BytesIO()
-        headers_sent = {}
-        
-        def track_header(name, value):
-            headers_sent[name] = value
-        
-        handler.send_response = MagicMock()
-        handler.send_header = track_header
-        handler.end_headers = MagicMock()
+        handler, headers_sent = create_mock_handler_with_header_tracking()
         
         server.DashboardRequestHandler.send_json_response(handler, {'test': 'data'})
         
@@ -42,16 +53,7 @@ class TestSendJsonResponseHeaders(unittest.TestCase):
     
     def test_x_content_type_options_header(self):
         """Test that X-Content-Type-Options: nosniff is set"""
-        handler = MagicMock(spec=server.DashboardRequestHandler)
-        handler.wfile = BytesIO()
-        headers_sent = {}
-        
-        def track_header(name, value):
-            headers_sent[name] = value
-        
-        handler.send_response = MagicMock()
-        handler.send_header = track_header
-        handler.end_headers = MagicMock()
+        handler, headers_sent = create_mock_handler_with_header_tracking()
         
         server.DashboardRequestHandler.send_json_response(handler, {'test': 'data'})
         
@@ -60,16 +62,7 @@ class TestSendJsonResponseHeaders(unittest.TestCase):
     
     def test_content_type_header(self):
         """Test that Content-Type is application/json"""
-        handler = MagicMock(spec=server.DashboardRequestHandler)
-        handler.wfile = BytesIO()
-        headers_sent = {}
-        
-        def track_header(name, value):
-            headers_sent[name] = value
-        
-        handler.send_response = MagicMock()
-        handler.send_header = track_header
-        handler.end_headers = MagicMock()
+        handler, headers_sent = create_mock_handler_with_header_tracking()
         
         server.DashboardRequestHandler.send_json_response(handler, {'test': 'data'})
         
@@ -78,16 +71,7 @@ class TestSendJsonResponseHeaders(unittest.TestCase):
     
     def test_cors_header(self):
         """Test that Access-Control-Allow-Origin is set"""
-        handler = MagicMock(spec=server.DashboardRequestHandler)
-        handler.wfile = BytesIO()
-        headers_sent = {}
-        
-        def track_header(name, value):
-            headers_sent[name] = value
-        
-        handler.send_response = MagicMock()
-        handler.send_header = track_header
-        handler.end_headers = MagicMock()
+        handler, headers_sent = create_mock_handler_with_header_tracking()
         
         server.DashboardRequestHandler.send_json_response(handler, {'test': 'data'})
         
@@ -171,16 +155,8 @@ class TestCORSOptionsHandler(unittest.TestCase):
     
     def test_options_api_route_returns_cors_headers(self):
         """Test that OPTIONS on /api/* returns CORS headers"""
-        handler = MagicMock(spec=server.DashboardRequestHandler)
+        handler, headers_sent = create_mock_handler_with_header_tracking()
         handler.path = '/api/summary'
-        headers_sent = {}
-        
-        def track_header(name, value):
-            headers_sent[name] = value
-        
-        handler.send_response = MagicMock()
-        handler.send_header = track_header
-        handler.end_headers = MagicMock()
         
         server.DashboardRequestHandler.do_OPTIONS(handler)
         
@@ -201,16 +177,8 @@ class TestCORSOptionsHandler(unittest.TestCase):
     
     def test_options_non_api_route_returns_minimal(self):
         """Test that OPTIONS on non-API paths returns minimal response"""
-        handler = MagicMock(spec=server.DashboardRequestHandler)
+        handler, headers_sent = create_mock_handler_with_header_tracking()
         handler.path = '/index.html'
-        headers_sent = {}
-        
-        def track_header(name, value):
-            headers_sent[name] = value
-        
-        handler.send_response = MagicMock()
-        handler.send_header = track_header
-        handler.end_headers = MagicMock()
         
         server.DashboardRequestHandler.do_OPTIONS(handler)
         
