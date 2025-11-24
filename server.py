@@ -514,6 +514,26 @@ def get_state_status():
         }
 
 
+def get_state_snapshot():
+    """Thread-safe atomic snapshot of entire STATE
+    
+    Returns a consistent snapshot of all STATE data under a single lock acquisition.
+    This prevents torn reads where data could change between multiple get_state() calls.
+    
+    Returns:
+        dict: Complete snapshot with 'data', 'last_updated', 'status', 'error' keys
+              The 'data' dict contains references to the actual lists/dicts (shallow copy)
+              which is safe since we rebuild these on each update
+    """
+    with STATE_LOCK:
+        return {
+            'data': dict(STATE['data']),  # Shallow copy of data dict
+            'last_updated': STATE['last_updated'],
+            'status': STATE['status'],
+            'error': STATE['error']
+        }
+
+
 def set_state_error(error):
     """Thread-safe update of STATE error"""
     with STATE_LOCK:
@@ -950,11 +970,12 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         """Handle /api/summary endpoint
         
         Always returns proper JSON shape even when data is empty or initializing.
-        Uses snapshot from in-memory STATE.
+        Uses atomic snapshot from in-memory STATE to prevent torn reads.
         """
         try:
-            summary = get_state('summary')
-            status_info = get_state_status()
+            # Get atomic snapshot of STATE (single lock acquisition)
+            snapshot = get_state_snapshot()
+            summary = snapshot['data'].get('summary')
             
             # Build response with proper shape (never None, always has required keys)
             # If summary is None, use empty defaults (should not happen with new initialization)
@@ -963,13 +984,13 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             
             response = dict(summary)
             
-            # Add timestamp from STATE
-            last_updated_iso = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
+            # Add timestamp from snapshot
+            last_updated_iso = snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated']) if snapshot['last_updated'] else None
             response['last_updated'] = last_updated_iso
             response['last_updated_iso'] = last_updated_iso  # Explicit field as requested in requirements
             
             # Add backend status for frontend to detect stale/initializing data
-            response['backend_status'] = status_info['status']
+            response['backend_status'] = snapshot['status']
             response['is_mock'] = MOCK_MODE_ENABLED  # Indicate if data is from mock source
             
             self.send_json_response(response)
@@ -989,11 +1010,12 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         """Handle /api/repos endpoint
         
         Always returns proper JSON shape even when data is empty or initializing.
-        Uses snapshot from in-memory STATE.
+        Uses atomic snapshot from in-memory STATE to prevent torn reads.
         """
         try:
-            projects = get_state('projects')
-            status_info = get_state_status()
+            # Get atomic snapshot of STATE (single lock acquisition)
+            snapshot = get_state_snapshot()
+            projects = snapshot['data'].get('projects')
             
             # Ensure projects is never None (use empty list if None)
             # This should not happen with new initialization, but defensive coding
@@ -1028,8 +1050,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             response = {
                 'repositories': repos,
                 'total': len(repos),
-                'last_updated': status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None,
-                'backend_status': status_info['status']  # Add status for frontend to detect stale data
+                'last_updated': snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated']) if snapshot['last_updated'] else None,
+                'backend_status': snapshot['status']  # Add status for frontend to detect stale data
             }
             
             self.send_json_response(response)
@@ -1049,12 +1071,13 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         """Handle /api/pipelines endpoint
         
         Always returns proper JSON shape even when data is empty or initializing.
-        Uses snapshot from in-memory STATE.
+        Uses atomic snapshot from in-memory STATE to prevent torn reads.
         """
         try:
-            pipelines = get_state('pipelines')
-            projects = get_state('projects')
-            status_info = get_state_status()
+            # Get atomic snapshot of STATE (single lock acquisition)
+            snapshot = get_state_snapshot()
+            pipelines = snapshot['data'].get('pipelines')
+            projects = snapshot['data'].get('projects')
             
             # Ensure pipelines is never None (use empty list if None)
             # This should not happen with new initialization, but defensive coding
@@ -1133,8 +1156,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'pipelines': limited_pipelines,
                 'total': len(limited_pipelines),
                 'total_before_limit': len(filtered_pipelines),  # For pagination context
-                'last_updated': status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None,
-                'backend_status': status_info['status']  # Add status for frontend to detect stale data
+                'last_updated': snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated']) if snapshot['last_updated'] else None,
+                'backend_status': snapshot['status']  # Add status for frontend to detect stale data
             }
             
             self.send_json_response(response)
@@ -1154,28 +1177,29 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
     def handle_health(self):
         """Handle /api/health endpoint"""
         try:
-            status_info = get_state_status()
+            # Get atomic snapshot of STATE (single lock acquisition)
+            snapshot = get_state_snapshot()
             
             # Safe handling of last_updated
             last_poll = None
-            if status_info['last_updated']:
-                if isinstance(status_info['last_updated'], datetime):
-                    last_poll = status_info['last_updated'].isoformat()
+            if snapshot['last_updated']:
+                if isinstance(snapshot['last_updated'], datetime):
+                    last_poll = snapshot['last_updated'].isoformat()
                 else:
-                    last_poll = str(status_info['last_updated'])
+                    last_poll = str(snapshot['last_updated'])
             
             # Determine health status
             # ONLINE = healthy (working connection to GitLab)
             # INITIALIZING = not ready (no successful GitLab connection yet)
             # ERROR = unhealthy (GitLab connection failed)
-            is_healthy = status_info['status'] == 'ONLINE'
+            is_healthy = snapshot['status'] == 'ONLINE'
             
             health = {
                 'status': 'healthy' if is_healthy else 'unhealthy',
-                'backend_status': status_info['status'],
+                'backend_status': snapshot['status'],
                 'timestamp': datetime.now().isoformat(),
                 'last_poll': last_poll,
-                'error': status_info['error']
+                'error': snapshot['error']
             }
             
             # Return 200 OK only for ONLINE (proven GitLab connectivity)
@@ -1225,9 +1249,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'summary': mock_data['summary']
             })
             
-            # Get the timestamp that was just set
-            status_info = get_state_status()
-            timestamp_iso = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated'])
+            # Get the timestamp that was just set (using atomic snapshot)
+            snapshot = get_state_snapshot()
+            timestamp_iso = snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated'])
             
             logger.info("Mock data reloaded successfully via API")
             logger.info(f"  Repositories: {len(mock_data['repositories'])}")
