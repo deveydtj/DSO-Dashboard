@@ -81,6 +81,9 @@ class DashboardApp {
                 url.searchParams.set('tv', '1');
                 window.history.replaceState({}, '', url);
             }
+            
+            // Update wallboard button state
+            this.updateWallboardButtonState();
         });
     }
 
@@ -121,21 +124,34 @@ class DashboardApp {
                 url.searchParams.set('density', 'compact');
                 window.history.replaceState({}, '', url);
             }
+            
+            // Update wallboard button state
+            this.updateWallboardButtonState();
         });
+    }
+
+    updateWallboardButtonState() {
+        const button = document.getElementById('wallboardPreset');
+        if (!button) return;
+
+        const isTVMode = document.body.classList.contains('tv');
+        const isCompactMode = document.body.classList.contains('compact');
+        const isBothEnabled = isTVMode && isCompactMode;
+
+        // Update button active state based on whether both modes are enabled
+        if (isBothEnabled) {
+            button.classList.add('active');
+        } else {
+            button.classList.remove('active');
+        }
     }
 
     setupWallboardPreset() {
         const button = document.getElementById('wallboardPreset');
         if (!button) return;
 
-        // Read current mode from body classes
-        const isTVMode = document.body.classList.contains('tv');
-        const isCompactMode = document.body.classList.contains('compact');
-        
-        // Set button UI state - active if both modes are enabled
-        if (isTVMode && isCompactMode) {
-            button.classList.add('active');
-        }
+        // Set initial button state
+        this.updateWallboardButtonState();
 
         // Add click handler
         button.addEventListener('click', () => {
@@ -147,7 +163,6 @@ class DashboardApp {
                 // Disable wallboard mode (turn off both TV and Compact)
                 document.body.classList.remove('tv');
                 document.body.classList.remove('compact');
-                button.classList.remove('active');
                 
                 // Also update individual toggle buttons
                 const tvToggle = document.getElementById('tvToggle');
@@ -166,7 +181,6 @@ class DashboardApp {
                 // Enable wallboard mode (turn on both TV and Compact)
                 document.body.classList.add('tv');
                 document.body.classList.add('compact');
-                button.classList.add('active');
                 
                 // Also update individual toggle buttons
                 const tvToggle = document.getElementById('tvToggle');
@@ -182,6 +196,9 @@ class DashboardApp {
                 url.searchParams.set('density', 'compact');
                 window.history.replaceState({}, '', url);
             }
+            
+            // Update wallboard button state
+            this.updateWallboardButtonState();
         });
     }
 
