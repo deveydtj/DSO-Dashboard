@@ -1,10 +1,36 @@
 // GitLab Dashboard Frontend Application
 // Pure JavaScript - no external dependencies
 
+/**
+ * Fetch with timeout support using AbortController
+ * @param {string} url - The URL to fetch
+ * @param {number} timeoutMs - Timeout in milliseconds (default: 8000ms)
+ * @returns {Promise<Response>} - Fetch response
+ * @throws {Error} - Throws on timeout or fetch errors
+ */
+async function fetchWithTimeout(url, timeoutMs = 8000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    
+    try {
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        return response;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        // AbortController throws an AbortError when signal is aborted
+        if (error.name === 'AbortError') {
+            throw new Error(`Request timeout after ${timeoutMs}ms`);
+        }
+        throw error;
+    }
+}
+
 class DashboardApp {
     constructor() {
         this.apiBase = window.location.origin;
         this.refreshInterval = 60000; // 60 seconds
+        this.fetchTimeout = 8000; // 8 seconds timeout for API requests
         this.updateTimer = null;
         this.cachedData = {
             summary: null,
@@ -204,7 +230,7 @@ class DashboardApp {
 
     async checkHealth() {
         try {
-            const response = await fetch(`${this.apiBase}/api/health`);
+            const response = await fetchWithTimeout(`${this.apiBase}/api/health`, this.fetchTimeout);
             
             // Check if response is successful (status 200-299)
             if (!response.ok) {
@@ -274,7 +300,7 @@ class DashboardApp {
 
     async loadSummary() {
         try {
-            const response = await fetch(`${this.apiBase}/api/summary`);
+            const response = await fetchWithTimeout(`${this.apiBase}/api/summary`, this.fetchTimeout);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
@@ -323,7 +349,7 @@ class DashboardApp {
 
     async loadRepositories() {
         try {
-            const response = await fetch(`${this.apiBase}/api/repos`);
+            const response = await fetchWithTimeout(`${this.apiBase}/api/repos`, this.fetchTimeout);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
@@ -473,7 +499,7 @@ class DashboardApp {
 
     async loadPipelines() {
         try {
-            const response = await fetch(`${this.apiBase}/api/pipelines`);
+            const response = await fetchWithTimeout(`${this.apiBase}/api/pipelines`, this.fetchTimeout);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const data = await response.json();
