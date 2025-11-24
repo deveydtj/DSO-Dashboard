@@ -322,4 +322,5 @@ class TestSuccessRateCalculation(unittest.TestCase):
 
 
 if __name__ == '__main__':
+    # Support both unittest and pytest discovery
     unittest.main()

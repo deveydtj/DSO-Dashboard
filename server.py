@@ -38,6 +38,10 @@ EPOCH_TIMESTAMP = '1970-01-01T00:00:00Z'  # Fallback for missing timestamps
 # Default branch constant
 DEFAULT_BRANCH_NAME = 'main'     # Default branch name fallback
 
+# Pipeline statuses to ignore when calculating consecutive failures and success rates
+# These statuses represent pipelines that didn't actually test the code
+IGNORED_PIPELINE_STATUSES = ('skipped', 'manual', 'canceled', 'cancelled')
+
 # Default summary structure for empty/error states
 DEFAULT_SUMMARY = {
     'total_repositories': 0,
@@ -852,10 +856,10 @@ class BackgroundPoller(threading.Thread):
                 if default_branch_pipelines:
                     # Calculate success rate on default branch, excluding skipped/manual/canceled
                     recent_default_pipelines = default_branch_pipelines[:10]
-                    # Filter out statuses that should be ignored (skipped, manual, canceled)
+                    # Filter out statuses that should be ignored
                     meaningful_pipelines = [
                         p for p in recent_default_pipelines 
-                        if p.get('status') not in ('skipped', 'manual', 'canceled', 'cancelled')
+                        if p.get('status') not in IGNORED_PIPELINE_STATUSES
                     ]
                     if meaningful_pipelines:
                         success_count = sum(1 for p in meaningful_pipelines if p.get('status') == 'success')
@@ -874,7 +878,7 @@ class BackgroundPoller(threading.Thread):
                     status = pipeline.get('status')
                     if status == 'failed':
                         consecutive_failures += 1
-                    elif status in ('skipped', 'manual', 'canceled', 'cancelled'):
+                    elif status in IGNORED_PIPELINE_STATUSES:
                         # Ignore these statuses - they don't break the consecutive failure count
                         continue
                     else:
