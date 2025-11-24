@@ -33,7 +33,7 @@
       "last_pipeline_ref": "main",
       "last_pipeline_duration": 245,
       "last_pipeline_updated_at": "2024-01-20T10:35:00.000Z",
-      "recent_success_rate": 0.9,
+      "recent_success_rate": 1.0,
       "consecutive_default_branch_failures": 0
     },
     {
@@ -52,7 +52,7 @@
       "last_pipeline_ref": "main",
       "last_pipeline_duration": 380,
       "last_pipeline_updated_at": "2024-01-20T09:20:00.000Z",
-      "recent_success_rate": 0.8,
+      "recent_success_rate": 1.0,
       "consecutive_default_branch_failures": 0
     },
     {
@@ -90,7 +90,7 @@
       "last_pipeline_ref": "main",
       "last_pipeline_duration": 520,
       "last_pipeline_updated_at": "2024-01-19T16:30:00.000Z",
-      "recent_success_rate": 0.95,
+      "recent_success_rate": 1.0,
       "consecutive_default_branch_failures": 0
     },
     {
@@ -109,7 +109,7 @@
       "last_pipeline_ref": "develop",
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-19T14:15:00.000Z",
-      "recent_success_rate": 0.85,
+      "recent_success_rate": null,
       "consecutive_default_branch_failures": 0
     },
     {
@@ -147,7 +147,7 @@
       "last_pipeline_ref": "main",
       "last_pipeline_duration": 0,
       "last_pipeline_updated_at": "2024-01-17T09:10:00.000Z",
-      "recent_success_rate": 0.75,
+      "recent_success_rate": null,
       "consecutive_default_branch_failures": 0
     },
     {
@@ -166,7 +166,7 @@
       "last_pipeline_ref": "main",
       "last_pipeline_duration": 310,
       "last_pipeline_updated_at": "2024-01-16T15:55:00.000Z",
-      "recent_success_rate": 0.88,
+      "recent_success_rate": 1.0,
       "consecutive_default_branch_failures": 0
     }
   ],
