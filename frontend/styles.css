@@ -305,6 +305,14 @@ body {
     border-left-color: var(--text-secondary);
 }
 
+.repo-card.status-manual {
+    border-left-color: #9333ea; /* Purple for manual */
+}
+
+.repo-card.status-other {
+    border-left-color: #6b7280; /* Neutral gray for unknown */
+}
+
 .repo-header {
     display: flex;
     justify-content: space-between;
@@ -426,9 +434,20 @@ body {
 }
 
 .pipeline-table tbody tr.row-status-canceled,
-.pipeline-table tbody tr.row-status-cancelled {
+.pipeline-table tbody tr.row-status-cancelled,
+.pipeline-table tbody tr.row-status-skipped {
     background: rgba(160, 160, 176, 0.03);
     border-left: 3px solid var(--text-secondary);
+}
+
+.pipeline-table tbody tr.row-status-manual {
+    background: rgba(147, 51, 234, 0.05);
+    border-left: 3px solid #9333ea;
+}
+
+.pipeline-table tbody tr.row-status-other {
+    background: rgba(107, 114, 128, 0.03);
+    border-left: 3px solid #6b7280;
 }
 
 .pipeline-table tbody tr:hover {
@@ -467,9 +486,20 @@ body {
 }
 
 .pipeline-status.canceled,
-.pipeline-status.cancelled {
+.pipeline-status.cancelled,
+.pipeline-status.skipped {
     background: rgba(160, 160, 176, 0.2);
     color: var(--text-secondary);
+}
+
+.pipeline-status.manual {
+    background: rgba(147, 51, 234, 0.2);
+    color: #9333ea;
+}
+
+.pipeline-status.other {
+    background: rgba(107, 114, 128, 0.2);
+    color: #6b7280;
 }
 
 .pipeline-status::before {
@@ -598,6 +628,24 @@ body {
 .pipeline-status-chip.cancelled .status-dot,
 .pipeline-status-chip.skipped .status-dot {
     background: var(--text-secondary);
+}
+
+.pipeline-status-chip.manual {
+    background: rgba(147, 51, 234, 0.2);
+    color: #9333ea;
+}
+
+.pipeline-status-chip.manual .status-dot {
+    background: #9333ea;
+}
+
+.pipeline-status-chip.other {
+    background: rgba(107, 114, 128, 0.2);
+    color: #6b7280;
+}
+
+.pipeline-status-chip.other .status-dot {
+    background: #6b7280;
 }
 
 @keyframes pulse-dot {
@@ -1122,6 +1170,14 @@ body.tv .pipeline-table tbody tr.row-status-running {
 
 body.tv .pipeline-table tbody tr.row-status-pending {
     background: rgba(245, 158, 11, 0.1);
+}
+
+body.tv .pipeline-table tbody tr.row-status-manual {
+    background: rgba(147, 51, 234, 0.1);
+}
+
+body.tv .pipeline-table tbody tr.row-status-other {
+    background: rgba(107, 114, 128, 0.1);
 }
 
 /* Hide less important elements in TV mode for cleaner display */

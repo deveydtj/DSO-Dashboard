@@ -362,20 +362,23 @@ class DashboardApp {
                 return failuresB - failuresA;
             }
 
-            // Second priority: failed/running pipelines first
+            // Second priority: failed/running pipelines first (using normalized status)
+            const normalizedStatusA = this.normalizeStatus(a.last_pipeline_status);
+            const normalizedStatusB = this.normalizeStatus(b.last_pipeline_status);
+            
             const statusPriorityMap = {
                 'failed': 0,
                 'running': 1,
                 'pending': 2,
-                'success': 3,
-                'canceled': 4,
-                'cancelled': 4,
-                'skipped': 5,
-                null: 6,
-                undefined: 6
+                'manual': 3,
+                'success': 4,
+                'canceled': 5,
+                'skipped': 6,
+                'other': 7
             };
-            const priorityA = statusPriorityMap[a.last_pipeline_status] ?? 6;
-            const priorityB = statusPriorityMap[b.last_pipeline_status] ?? 6;
+            
+            const priorityA = statusPriorityMap[normalizedStatusA] ?? 7;
+            const priorityB = statusPriorityMap[normalizedStatusB] ?? 7;
             if (priorityA !== priorityB) {
                 return priorityA - priorityB;
             }
@@ -392,7 +395,8 @@ class DashboardApp {
     createRepoCard(repo) {
         const description = repo.description || 'No description available';
         const pipelineStatus = repo.last_pipeline_status || null;
-        const statusClass = pipelineStatus ? `status-${pipelineStatus}` : 'status-none';
+        const normalizedStatus = this.normalizeStatus(pipelineStatus);
+        const statusClass = pipelineStatus ? `status-${normalizedStatus}` : 'status-none';
         
         // Pipeline info section
         let pipelineInfo = '';
@@ -407,7 +411,7 @@ class DashboardApp {
             
             pipelineInfo = `
                 <div class="repo-pipeline">
-                    <div class="pipeline-status-chip ${this.escapeHtml(pipelineStatus)}">
+                    <div class="pipeline-status-chip ${normalizedStatus}" title="Status: ${this.escapeHtml(pipelineStatus)}">
                         <span class="status-dot"></span>
                         <span>${this.escapeHtml(pipelineStatus)}</span>
                     </div>
@@ -504,6 +508,7 @@ class DashboardApp {
 
     createPipelineRow(pipeline) {
         const status = pipeline.status || 'unknown';
+        const normalizedStatus = this.normalizeStatus(status);
         const duration = pipeline.duration != null
             ? this.formatDuration(pipeline.duration) 
             : '--';
@@ -513,9 +518,9 @@ class DashboardApp {
         const fullTimestamp = pipeline.created_at || '';
 
         return `
-            <tr class="row-status-${status}">
+            <tr class="row-status-${normalizedStatus}">
                 <td>
-                    <span class="pipeline-status ${status}">${status}</span>
+                    <span class="pipeline-status ${normalizedStatus}" title="Raw status: ${this.escapeHtml(status)}">${this.escapeHtml(status)}</span>
                 </td>
                 <td>${this.escapeHtml(pipeline.project_name)}</td>
                 <td>${this.escapeHtml(pipeline.ref || '--')}</td>
@@ -636,6 +641,52 @@ class DashboardApp {
             "'": '&#039;'
         };
         return String(text).replace(/[&<>"']/g, char => map[char]);
+    }
+
+    normalizeStatus(rawStatus) {
+        // Normalize GitLab pipeline status to a safe whitelist for CSS classes
+        // Handles null/undefined/empty, case differences, and underscores
+        
+        if (!rawStatus) return 'other';
+        
+        // Normalize: lowercase and replace underscores/dashes with spaces for matching
+        const normalized = String(rawStatus).toLowerCase().replace(/[_-]/g, ' ').trim();
+        
+        // Map GitLab statuses to our whitelist
+        const statusMap = {
+            // Success states
+            'success': 'success',
+            'passed': 'success',
+            
+            // Failed states
+            'failed': 'failed',
+            'failure': 'failed',
+            
+            // Running states
+            'running': 'running',
+            'in progress': 'running',
+            
+            // Pending/waiting states
+            'pending': 'pending',
+            'created': 'pending',
+            'scheduled': 'pending',
+            'preparing': 'pending',
+            'waiting for resource': 'pending',
+            'waiting for callback': 'pending',
+            
+            // Canceled states
+            'canceled': 'canceled',
+            'cancelled': 'canceled',
+            
+            // Skipped states
+            'skipped': 'skipped',
+            
+            // Manual intervention needed
+            'manual': 'manual'
+        };
+        
+        // Return mapped status or 'other' for unknown statuses
+        return statusMap[normalized] || 'other';
     }
 }
 
