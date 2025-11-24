@@ -6,7 +6,7 @@ Tests for GitLab API pagination functionality
 import unittest
 import sys
 import os
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import server module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))

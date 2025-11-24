@@ -187,11 +187,14 @@ class GitLabAPIClient:
                 
                 # Extract URL from <URL>
                 url_part = parts[0].strip()
-                if not (url_part.startswith('<') and '>' in url_part):
+                if not url_part.startswith('<'):
                     continue
                 
                 # Find the first '>' to handle URLs with query params
-                end_bracket = url_part.index('>')
+                end_bracket = url_part.find('>')
+                if end_bracket == -1:
+                    continue
+                
                 url = url_part[1:end_bracket]
                 
                 # Extract page number from URL query params
