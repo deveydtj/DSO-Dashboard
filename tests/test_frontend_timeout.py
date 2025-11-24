@@ -64,6 +64,13 @@ class TestFetchTimeoutImplementation(unittest.TestCase):
             4,
             "Should have at least 4 fetchWithTimeout calls for API endpoints"
         )
+        
+        # Assert that only the helper's internal fetch remains (exactly 1)
+        self.assertEqual(
+            len(direct_fetches),
+            1,
+            f"Should have exactly 1 direct fetch() call (inside helper), found {len(direct_fetches)}"
+        )
     
     def test_fetchTimeout_property_exists(self):
         """Test that fetchTimeout property is set in constructor"""
