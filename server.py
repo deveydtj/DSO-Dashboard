@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
-from urllib.parse import urlparse, parse_qs, urlencode
+from urllib.parse import urlparse, parse_qs, urlencode, unquote
 import logging
 
 # Configure logging
@@ -60,18 +60,40 @@ class GitLabAPIClient:
     """GitLab API client using urllib with retry, rate limiting, and pagination support"""
     
     def __init__(self, gitlab_url, api_token, per_page=100, insecure_skip_verify=False, 
-                 max_retries=3, initial_retry_delay=1.0):
+                 max_retries=3, initial_retry_delay=1.0, ca_bundle_path=None):
         self.gitlab_url = gitlab_url.rstrip('/')
         self.api_token = api_token
         self.base_url = f"{self.gitlab_url}/api/v4"
         self.per_page = per_page
         self.insecure_skip_verify = insecure_skip_verify
+        self.ca_bundle_path = ca_bundle_path
         self.max_retries = max_retries
         self.initial_retry_delay = initial_retry_delay
         
-        # Create SSL context for self-signed certificates
-        if self.insecure_skip_verify:
-            # Use public API for better stability
+        # Create SSL context based on configuration
+        if self.ca_bundle_path:
+            # Use custom CA bundle (preferred for internal GitLab)
+            try:
+                logger.info("=" * 70)
+                logger.info("USING CUSTOM CA BUNDLE")
+                logger.info(f"CA bundle path: {self.ca_bundle_path}")
+                logger.info("=" * 70)
+                self.ssl_context = ssl.create_default_context(cafile=self.ca_bundle_path)
+            except FileNotFoundError:
+                logger.error("=" * 70)
+                logger.error(f"CA BUNDLE FILE NOT FOUND: {self.ca_bundle_path}")
+                logger.error("Falling back to default SSL verification")
+                logger.error("=" * 70)
+                self.ssl_context = None
+            except (ssl.SSLError, OSError, IOError) as e:
+                logger.error("=" * 70)
+                logger.error(f"FAILED TO LOAD CA BUNDLE: {self.ca_bundle_path}")
+                logger.error(f"Error: {e}")
+                logger.error("Falling back to default SSL verification")
+                logger.error("=" * 70)
+                self.ssl_context = None
+        elif self.insecure_skip_verify:
+            # Disable SSL verification (use only on trusted networks)
             self.ssl_context = ssl.create_default_context()
             self.ssl_context.check_hostname = False
             self.ssl_context.verify_mode = ssl.CERT_NONE
@@ -81,6 +103,7 @@ class GitLabAPIClient:
             logger.warning("Only use this setting on trusted internal networks")
             logger.warning("=" * 70)
         else:
+            # Use default SSL verification
             self.ssl_context = None
     
     def gitlab_request(self, endpoint, params=None, retry_count=0):
@@ -955,10 +978,46 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         # Set the directory to serve static files from
         super().__init__(*args, directory='frontend', **kwargs)
     
+    def _is_blocked_path(self, path):
+        """Check if a path should be blocked for security reasons
+        
+        Args:
+            path: The request path to check
+            
+        Returns:
+            True if the path should be blocked, False otherwise
+        """
+        # Normalize path to prevent bypass via URL encoding (security)
+        # URL-decode, remove null bytes, and normalize the path before checking
+        decoded_path = unquote(path)
+        # Remove null bytes and other control characters that could be used for bypass
+        cleaned_path = decoded_path.replace('\x00', '').replace('\r', '').replace('\n', '')
+        normalized_path = os.path.normpath(cleaned_path)
+        
+        # Block access to configuration files (security)
+        # Check both the original path and normalized path to catch encoding tricks
+        # Also check if normalized path is attempting to access blocked files with trailing content
+        blocked_paths = ['/config.json', '/config.json.example', '/.env', '/.env.example']
+        
+        for blocked in blocked_paths:
+            # Exact match
+            if path == blocked or normalized_path == blocked:
+                return True
+            # Check if attempting to access blocked file with appended content (e.g., /config.json.anything)
+            if normalized_path.startswith(blocked + '.') or normalized_path.startswith(blocked + '/'):
+                return True
+        
+        return False
+    
     def do_GET(self):
         """Handle GET requests"""
         parsed_path = urlparse(self.path)
         path = parsed_path.path
+        
+        # Block access to configuration files (security)
+        if self._is_blocked_path(path):
+            self.send_error(403, "Forbidden: Configuration files are not accessible")
+            return
         
         # API endpoints
         if path == '/api/summary':
@@ -972,6 +1031,19 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         else:
             # Serve static files
             super().do_GET()
+    
+    def do_HEAD(self):
+        """Handle HEAD requests"""
+        parsed_path = urlparse(self.path)
+        path = parsed_path.path
+        
+        # Block access to configuration files (security)
+        if self._is_blocked_path(path):
+            self.send_error(403, "Forbidden: Configuration files are not accessible")
+            return
+        
+        # For non-blocked paths, delegate to parent class
+        super().do_HEAD()
     
     def do_POST(self):
         """Handle POST requests"""
@@ -1372,6 +1444,10 @@ def load_config():
     config['poll_interval_sec'] = parse_int_config(os.environ.get('POLL_INTERVAL'), config.get('poll_interval_sec', 60), 'POLL_INTERVAL')
     config['per_page'] = parse_int_config(os.environ.get('PER_PAGE'), config.get('per_page', 100), 'PER_PAGE')
     
+    # SSL/TLS Configuration
+    # CA bundle path (preferred for custom/internal CA certificates)
+    config['ca_bundle_path'] = os.environ.get('CA_BUNDLE_PATH', config.get('ca_bundle_path', None))
+    
     # For insecure_skip_verify, check if env var is explicitly set to allow overriding
     if 'INSECURE_SKIP_VERIFY' in os.environ:
         config['insecure_skip_verify'] = os.environ['INSECURE_SKIP_VERIFY'].lower() in ['true', '1', 'yes']
@@ -1407,6 +1483,7 @@ def load_config():
     logger.info(f"  Per page: {config['per_page']}")
     logger.info(f"  Group IDs: {config['group_ids'] if config['group_ids'] else 'None (using all accessible projects)'}")
     logger.info(f"  Project IDs: {config['project_ids'] if config['project_ids'] else 'None'}")
+    logger.info(f"  CA bundle path: {config['ca_bundle_path'] if config['ca_bundle_path'] else 'None (using system default)'}")
     logger.info(f"  Insecure skip verify: {config['insecure_skip_verify']}")
     logger.info(f"  Use mock data: {config['use_mock_data']}")
     if config['use_mock_data']:
@@ -1515,7 +1592,8 @@ def main():
             config['gitlab_url'], 
             config['api_token'],
             per_page=config['per_page'],
-            insecure_skip_verify=config['insecure_skip_verify']
+            insecure_skip_verify=config['insecure_skip_verify'],
+            ca_bundle_path=config.get('ca_bundle_path')
         )
         
         # Start background poller
