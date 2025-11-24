@@ -158,6 +158,33 @@ class GitLabAPIClient:
             logger.error(f"Error making request to {url}: {e}")
             return None
     
+    def _parse_link_header(self, link_header):
+        """Parse RFC 5988 Link header to extract next page URL
+        
+        Example Link header:
+        <https://gitlab.com/api/v4/projects?page=2>; rel="next", <https://gitlab.com/api/v4/projects?page=5>; rel="last"
+        
+        Returns:
+            str: Next page number or None
+        """
+        if not link_header:
+            return None
+        
+        # Parse Link header for rel="next"
+        for link in link_header.split(','):
+            link = link.strip()
+            if 'rel="next"' in link or "rel='next'" in link:
+                # Extract URL from <URL>
+                url_match = link.split(';')[0].strip()
+                if url_match.startswith('<') and '>' in url_match:
+                    url = url_match[1:url_match.index('>')]
+                    # Extract page number from URL query params
+                    parsed = urlparse(url)
+                    query_params = parse_qs(parsed.query)
+                    if 'page' in query_params:
+                        return query_params['page'][0]
+        return None
+    
     def _process_response(self, response):
         """Process HTTP response and extract data and headers"""
         try:
@@ -172,15 +199,43 @@ class GitLabAPIClient:
         
         # Extract pagination info from headers
         headers = response.headers
+        
+        # GitLab provides pagination via X-Next-Page header (preferred) or Link header (RFC 5988)
+        next_page = headers.get('X-Next-Page')
+        if not next_page:
+            # Fallback to parsing Link header
+            next_page = self._parse_link_header(headers.get('Link'))
+        
         return {
             'data': parsed_data,
-            'next_page': headers.get('X-Next-Page'),
+            'next_page': next_page,
             'total_pages': headers.get('X-Total-Pages'),
             'total': headers.get('X-Total')
         }
     
     def _make_paginated_request(self, endpoint, params=None, max_pages=None):
-        """Make paginated requests, following X-Next-Page until exhausted"""
+        """Make paginated requests, following X-Next-Page/Link headers until exhausted
+        
+        This is the core pagination helper that fetches all pages of results from a GitLab API endpoint.
+        It automatically handles:
+        - X-Next-Page header (GitLab's preferred pagination method)
+        - Link header with rel="next" (RFC 5988 standard)
+        - Exponential backoff and retry logic (via _make_request)
+        - Rate limiting (429 responses)
+        
+        Args:
+            endpoint: GitLab API endpoint path (e.g., 'projects', 'groups/123/projects')
+            params: Optional query parameters dict (e.g., {'membership': 'true'})
+            max_pages: Optional maximum number of pages to fetch (None = unlimited)
+        
+        Returns:
+            list: All items collected across all pages
+            None: If API error occurred on any page
+        
+        Logging:
+            - INFO: Page fetch progress (no secrets logged)
+            - ERROR: API failures
+        """
         if params is None:
             params = {}
         
@@ -220,6 +275,30 @@ class GitLabAPIClient:
         
         logger.info(f"Completed fetching {endpoint}: {len(all_items)} total items across {page} pages")
         return all_items
+    
+    def gitlab_get_all_pages(self, endpoint, params=None):
+        """Public helper: Get all pages of results from a GitLab API endpoint
+        
+        This is a convenience wrapper around _make_paginated_request that provides
+        a clear, public interface for fetching all pages of data. It reads X-Next-Page
+        and Link headers to iterate through all pages until exhausted.
+        
+        Args:
+            endpoint: GitLab API endpoint path (e.g., 'projects', 'groups/123/projects')
+            params: Optional query parameters dict
+        
+        Returns:
+            list: All items collected across all pages
+            None: If API error occurred
+        
+        Example:
+            # Fetch all projects
+            projects = client.gitlab_get_all_pages('projects', {'membership': 'true'})
+            
+            # Fetch all group projects
+            projects = client.gitlab_get_all_pages('groups/123/projects')
+        """
+        return self._make_paginated_request(endpoint, params)
     
     def get_projects(self, per_page=None):
         """Get list of projects with pagination support"""
