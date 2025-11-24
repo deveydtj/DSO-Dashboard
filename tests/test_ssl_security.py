@@ -324,6 +324,40 @@ class TestConfigFileBlocking(unittest.TestCase):
                 if normalized_path in blocked_paths:
                     self.assertTrue(is_blocked, 
                         f"Path {traversal_path} should be blocked (normalized to {normalized_path})")
+    
+    def test_head_requests_blocked(self):
+        """Test that HEAD requests for config files are also blocked"""
+        # HEAD requests should be blocked just like GET requests
+        blocked_paths = ['/config.json', '/config.json.example', '/.env', '/.env.example']
+        
+        for blocked_path in blocked_paths:
+            with self.subTest(path=blocked_path):
+                # Test that _is_blocked_path works for HEAD requests too
+                handler = MagicMock(spec=server.DashboardRequestHandler)
+                handler.path = blocked_path
+                
+                # Simulate calling _is_blocked_path
+                result = server.DashboardRequestHandler._is_blocked_path(handler, blocked_path)
+                
+                self.assertTrue(result, f"HEAD request to {blocked_path} should be blocked")
+    
+    def test_head_requests_with_url_encoding_blocked(self):
+        """Test that HEAD requests with URL encoding are blocked"""
+        encoded_paths = [
+            '/%2eenv',              # URL-encoded /.env
+            '/config%2ejson',       # URL-encoded /config.json
+            '/.env%00',             # Null byte
+        ]
+        
+        for encoded_path in encoded_paths:
+            with self.subTest(path=encoded_path):
+                handler = MagicMock(spec=server.DashboardRequestHandler)
+                handler.path = encoded_path
+                
+                # Simulate calling _is_blocked_path
+                result = server.DashboardRequestHandler._is_blocked_path(handler, encoded_path)
+                
+                self.assertTrue(result, f"HEAD request to {encoded_path} should be blocked")
 
 
 class TestTokenScrubbing(unittest.TestCase):

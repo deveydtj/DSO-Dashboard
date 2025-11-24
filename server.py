@@ -978,11 +978,15 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         # Set the directory to serve static files from
         super().__init__(*args, directory='frontend', **kwargs)
     
-    def do_GET(self):
-        """Handle GET requests"""
-        parsed_path = urlparse(self.path)
-        path = parsed_path.path
+    def _is_blocked_path(self, path):
+        """Check if a path should be blocked for security reasons
         
+        Args:
+            path: The request path to check
+            
+        Returns:
+            True if the path should be blocked, False otherwise
+        """
         # Normalize path to prevent bypass via URL encoding (security)
         # URL-decode, remove null bytes, and normalize the path before checking
         decoded_path = unquote(path)
@@ -998,12 +1002,22 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         for blocked in blocked_paths:
             # Exact match
             if path == blocked or normalized_path == blocked:
-                self.send_error(403, "Forbidden: Configuration files are not accessible")
-                return
+                return True
             # Check if attempting to access blocked file with appended content (e.g., /config.json.anything)
             if normalized_path.startswith(blocked + '.') or normalized_path.startswith(blocked + '/'):
-                self.send_error(403, "Forbidden: Configuration files are not accessible")
-                return
+                return True
+        
+        return False
+    
+    def do_GET(self):
+        """Handle GET requests"""
+        parsed_path = urlparse(self.path)
+        path = parsed_path.path
+        
+        # Block access to configuration files (security)
+        if self._is_blocked_path(path):
+            self.send_error(403, "Forbidden: Configuration files are not accessible")
+            return
         
         # API endpoints
         if path == '/api/summary':
@@ -1017,6 +1031,19 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         else:
             # Serve static files
             super().do_GET()
+    
+    def do_HEAD(self):
+        """Handle HEAD requests"""
+        parsed_path = urlparse(self.path)
+        path = parsed_path.path
+        
+        # Block access to configuration files (security)
+        if self._is_blocked_path(path):
+            self.send_error(403, "Forbidden: Configuration files are not accessible")
+            return
+        
+        # For non-blocked paths, delegate to parent class
+        super().do_HEAD()
     
     def do_POST(self):
         """Handle POST requests"""
