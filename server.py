@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
-from urllib.parse import urlparse, parse_qs, urlencode
+from urllib.parse import urlparse, parse_qs, urlencode, unquote
 import logging
 
 # Configure logging
@@ -983,10 +983,27 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         parsed_path = urlparse(self.path)
         path = parsed_path.path
         
+        # Normalize path to prevent bypass via URL encoding (security)
+        # URL-decode, remove null bytes, and normalize the path before checking
+        decoded_path = unquote(path)
+        # Remove null bytes and other control characters that could be used for bypass
+        cleaned_path = decoded_path.replace('\x00', '').replace('\r', '').replace('\n', '')
+        normalized_path = os.path.normpath(cleaned_path)
+        
         # Block access to configuration files (security)
-        if path in ['/config.json', '/config.json.example', '/.env', '/.env.example']:
-            self.send_error(403, "Forbidden: Configuration files are not accessible")
-            return
+        # Check both the original path and normalized path to catch encoding tricks
+        # Also check if normalized path is attempting to access blocked files with trailing content
+        blocked_paths = ['/config.json', '/config.json.example', '/.env', '/.env.example']
+        
+        for blocked in blocked_paths:
+            # Exact match
+            if path == blocked or normalized_path == blocked:
+                self.send_error(403, "Forbidden: Configuration files are not accessible")
+                return
+            # Check if attempting to access blocked file with appended content (e.g., /config.json.anything)
+            if normalized_path.startswith(blocked + '.') or normalized_path.startswith(blocked + '/'):
+                self.send_error(403, "Forbidden: Configuration files are not accessible")
+                return
         
         # API endpoints
         if path == '/api/summary':
