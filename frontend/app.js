@@ -729,12 +729,13 @@ function verifySanitization() {
 }
 
 // Initialize the dashboard when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        verifySanitization(); // Run sanity check on startup
-        window.dashboardApp = new DashboardApp();
-    });
-} else {
+function initializeDashboard() {
     verifySanitization(); // Run sanity check on startup
     window.dashboardApp = new DashboardApp();
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeDashboard);
+} else {
+    initializeDashboard();
 }
