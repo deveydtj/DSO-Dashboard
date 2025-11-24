@@ -1176,6 +1176,12 @@ body.tv .pipeline-table tbody tr.row-status-manual {
     background: rgba(147, 51, 234, 0.1);
 }
 
+body.tv .pipeline-table tbody tr.row-status-canceled,
+body.tv .pipeline-table tbody tr.row-status-cancelled,
+body.tv .pipeline-table tbody tr.row-status-skipped {
+    background: rgba(160, 160, 176, 0.06);
+}
+
 body.tv .pipeline-table tbody tr.row-status-other {
     background: rgba(107, 114, 128, 0.1);
 }
