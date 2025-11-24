@@ -6,6 +6,7 @@
   "poll_interval_sec": 60,
   "cache_ttl_sec": 300,
   "per_page": 100,
+  "log_level": "INFO",
   "ca_bundle_path": null,
   "insecure_skip_verify": false,
   "use_mock_data": false,
@@ -16,5 +17,6 @@
   "note3": "ca_bundle_path: Path to custom CA certificate bundle (preferred for internal GitLab). Set to /path/to/ca-bundle.crt or null to use system default.",
   "note4": "insecure_skip_verify: ONLY use 'true' on trusted networks for self-signed certs. Prefer ca_bundle_path instead.",
   "note5": "Set use_mock_data=true or USE_MOCK_DATA=true to run without GitLab API (uses mock_data.json).",
-  "note6": "Set mock_scenario to 'healthy', 'failing', or 'running' to load a specific scenario from data/mock_scenarios/."
+  "note6": "Set mock_scenario to 'healthy', 'failing', or 'running' to load a specific scenario from data/mock_scenarios/.",
+  "note7": "log_level: Controls logging verbosity. Options: DEBUG, INFO, WARNING, ERROR, CRITICAL. Default is INFO."
 }
