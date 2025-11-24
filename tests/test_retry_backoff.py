@@ -116,7 +116,10 @@ class TestRateLimitHandling(unittest.TestCase):
                 # Should return None after max retries
                 self.assertIsNone(result)
                 
-                # Should have tried: initial attempt (sleep 1s) + 3 retries (sleep 2s, 4s, 8s) = 4 sleeps
+                # For 429: sleep happens BEFORE checking retry_count < max_retries
+                # Sequence: fail, sleep(1s), check(0<3)✓, retry 1, fail, sleep(2s), check(1<3)✓, retry 2, 
+                #          fail, sleep(4s), check(2<3)✓, retry 3, fail, sleep(8s), check(3<3)✗, return None
+                # Total: 4 sleep calls
                 self.assertEqual(mock_sleep.call_count, 4)
                 expected_calls = [call(1.0), call(2.0), call(4.0), call(8.0)]
                 mock_sleep.assert_has_calls(expected_calls)
@@ -236,9 +239,10 @@ class TestServerErrorRetry(unittest.TestCase):
                 # Should return None
                 self.assertIsNone(result)
                 
-                # Should have retried max_retries times
                 # For 5xx: check retry_count < max_retries BEFORE sleeping
-                # So with max_retries=3, we sleep on attempts 0, 1, 2 = 3 times
+                # Sequence: fail, check(0<3)✓, sleep(1s), retry 1, fail, check(1<3)✓, sleep(2s), retry 2,
+                #          fail, check(2<3)✓, sleep(4s), retry 3, fail, check(3<3)✗, return None
+                # Total: 3 sleep calls
                 self.assertEqual(mock_sleep.call_count, 3)
                 expected_calls = [call(1.0), call(2.0), call(4.0)]
                 mock_sleep.assert_has_calls(expected_calls)
@@ -310,9 +314,9 @@ class TestTimeoutAndConnectionErrorRetry(unittest.TestCase):
                 # Should return None
                 self.assertIsNone(result)
                 
-                # Should have retried max_retries times
                 # For URLError: check retry_count < max_retries BEFORE sleeping
-                # So with max_retries=3, we sleep on attempts 0, 1, 2 = 3 times
+                # Same logic as 5xx errors - sleep happens inside the retry condition
+                # Total: 3 sleep calls for max_retries=3
                 self.assertEqual(mock_sleep.call_count, 3)
 
 
