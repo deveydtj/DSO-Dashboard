@@ -39,7 +39,7 @@ class TestConsecutiveFailureLogic(unittest.TestCase):
         
         # Call the enrichment function
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         # Verify consecutive failures count
         self.assertEqual(len(enriched), 1)
@@ -65,7 +65,7 @@ class TestConsecutiveFailureLogic(unittest.TestCase):
         per_project_pipelines = {1: pipelines}
         
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         self.assertEqual(enriched[0]['consecutive_default_branch_failures'], 2)
     
@@ -89,7 +89,7 @@ class TestConsecutiveFailureLogic(unittest.TestCase):
         per_project_pipelines = {1: pipelines}
         
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         self.assertEqual(enriched[0]['consecutive_default_branch_failures'], 2)
     
@@ -110,7 +110,7 @@ class TestConsecutiveFailureLogic(unittest.TestCase):
         per_project_pipelines = {1: pipelines}
         
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         self.assertEqual(enriched[0]['consecutive_default_branch_failures'], 2)
     
@@ -135,7 +135,7 @@ class TestConsecutiveFailureLogic(unittest.TestCase):
         per_project_pipelines = {1: pipelines}
         
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         self.assertEqual(enriched[0]['consecutive_default_branch_failures'], 2)
     
@@ -156,7 +156,7 @@ class TestConsecutiveFailureLogic(unittest.TestCase):
         per_project_pipelines = {1: pipelines}
         
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         self.assertEqual(enriched[0]['consecutive_default_branch_failures'], 1)
     
@@ -180,7 +180,7 @@ class TestConsecutiveFailureLogic(unittest.TestCase):
         per_project_pipelines = {1: pipelines}
         
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         self.assertEqual(enriched[0]['consecutive_default_branch_failures'], 2)
     
@@ -207,7 +207,7 @@ class TestConsecutiveFailureLogic(unittest.TestCase):
         per_project_pipelines = {1: pipelines}
         
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         self.assertEqual(enriched[0]['consecutive_default_branch_failures'], 3)
     
@@ -227,7 +227,7 @@ class TestConsecutiveFailureLogic(unittest.TestCase):
         per_project_pipelines = {1: pipelines}
         
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         self.assertEqual(enriched[0]['consecutive_default_branch_failures'], 0)
     
@@ -242,7 +242,7 @@ class TestConsecutiveFailureLogic(unittest.TestCase):
         per_project_pipelines = {}
         
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         self.assertEqual(enriched[0]['consecutive_default_branch_failures'], 0)
 
@@ -272,7 +272,7 @@ class TestSuccessRateCalculation(unittest.TestCase):
         per_project_pipelines = {1: pipelines}
         
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         # Should be 2 successes / 4 meaningful pipelines = 0.5
         self.assertEqual(enriched[0]['recent_success_rate'], 0.5)
@@ -294,7 +294,7 @@ class TestSuccessRateCalculation(unittest.TestCase):
         per_project_pipelines = {1: pipelines}
         
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         self.assertIsNone(enriched[0]['recent_success_rate'])
     
@@ -315,7 +315,7 @@ class TestSuccessRateCalculation(unittest.TestCase):
         per_project_pipelines = {1: pipelines}
         
         poller = server.BackgroundPoller(None, 60)
-        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines, 'test-poll')
         
         # Should be 1 success / 2 main branch pipelines = 0.5
         self.assertEqual(enriched[0]['recent_success_rate'], 0.5)

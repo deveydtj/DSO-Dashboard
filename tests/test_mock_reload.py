@@ -112,7 +112,10 @@ class TestMockReloadEndpoint(unittest.TestCase):
         response_data = json.loads(call_args.decode('utf-8'))
         
         self.assertTrue(response_data['reloaded'])
-        self.assertIn('timestamp', response_data)
+        self.assertIn('last_updated', response_data)
+        self.assertIn('backend_status', response_data)
+        self.assertIn('is_mock', response_data)
+        self.assertTrue(response_data['is_mock'])
         self.assertIn('summary', response_data)
         self.assertEqual(response_data['summary']['repositories'], 3)
         self.assertEqual(response_data['summary']['pipelines'], 2)

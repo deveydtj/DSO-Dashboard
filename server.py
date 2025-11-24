@@ -7,6 +7,7 @@ Python 3.10 stdlib-only implementation using http.server and urllib
 import json
 import os
 import ssl
+import sys
 import time
 import threading
 from datetime import datetime, timedelta
@@ -16,9 +17,33 @@ from urllib.error import URLError, HTTPError
 from urllib.parse import urlparse, parse_qs, urlencode, unquote
 import logging
 
-# Configure logging
+# Valid log level names mapped to logging constants
+LOG_LEVEL_MAP = {
+    'DEBUG': logging.DEBUG,
+    'INFO': logging.INFO,
+    'WARNING': logging.WARNING,
+    'ERROR': logging.ERROR,
+    'CRITICAL': logging.CRITICAL
+}
+
+
+def get_log_level():
+    """Get log level from LOG_LEVEL environment variable.
+    
+    Returns:
+        tuple: (log_level_int, log_level_name) - the logging level constant and its name
+    """
+    log_level_str = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    if log_level_str in LOG_LEVEL_MAP:
+        return LOG_LEVEL_MAP[log_level_str], log_level_str
+    # Invalid level - default to INFO
+    return logging.INFO, 'INFO'
+
+
+# Configure logging with level from environment
+_log_level, _log_level_name = get_log_level()
 logging.basicConfig(
-    level=logging.INFO,
+    level=_log_level,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -135,18 +160,36 @@ class GitLabAPIClient:
             'Content-Type': 'application/json'
         }
         
+        # Record start time for timing logs
+        start_time = time.time()
+        
+        # Build log-safe URL (redact token from query params if any)
+        log_safe_url = f"{self.base_url}/{endpoint}"
+        if params:
+            # Filter out sensitive params for logging
+            safe_params = {k: v for k, v in params.items() if k.lower() not in ('private_token', 'token', 'private-token')}
+            if safe_params:
+                log_safe_url = f"{log_safe_url}?{urlencode(safe_params)}"
+        
         try:
             request = Request(url, headers=headers)
             
             # Open with SSL context if configured
             if self.ssl_context:
                 with urlopen(request, timeout=30, context=self.ssl_context) as response:
-                    return self._process_response(response)
+                    result = self._process_response(response)
+                    elapsed = time.time() - start_time
+                    logger.debug(f"GET {endpoint} -> {response.status} ({elapsed:.3f}s) url={log_safe_url}")
+                    return result
             else:
                 with urlopen(request, timeout=30) as response:
-                    return self._process_response(response)
+                    result = self._process_response(response)
+                    elapsed = time.time() - start_time
+                    logger.debug(f"GET {endpoint} -> {response.status} ({elapsed:.3f}s) url={log_safe_url}")
+                    return result
                     
         except HTTPError as e:
+            elapsed = time.time() - start_time
             # Handle rate limiting (429)
             if e.code == 429:
                 retry_after = e.headers.get('Retry-After')
@@ -156,49 +199,51 @@ class GitLabAPIClient:
                     except (ValueError, TypeError):
                         # If Retry-After is not a valid integer, use exponential backoff
                         wait_time = self.initial_retry_delay * (2 ** retry_count)
-                        logger.warning(f"Invalid Retry-After header: {retry_after}. Using exponential backoff: {wait_time}s")
+                        logger.warning(f"Invalid Retry-After header: {retry_after}. Using exponential backoff: {wait_time}s ({elapsed:.3f}s elapsed)")
                     else:
-                        logger.warning(f"Rate limited (429). Waiting {wait_time}s before retry...")
+                        logger.warning(f"Rate limited (429). Waiting {wait_time}s before retry... ({elapsed:.3f}s elapsed)")
                     time.sleep(wait_time)
                 else:
                     # Exponential backoff
                     wait_time = self.initial_retry_delay * (2 ** retry_count)
-                    logger.warning(f"Rate limited (429). Using exponential backoff: {wait_time}s")
+                    logger.warning(f"Rate limited (429). Using exponential backoff: {wait_time}s ({elapsed:.3f}s elapsed)")
                     time.sleep(wait_time)
                 
                 if retry_count < self.max_retries:
                     return self.gitlab_request(endpoint, params, retry_count + 1)
                 else:
-                    logger.error(f"Max retries exceeded for rate limiting on {url}")
+                    logger.error(f"GET {endpoint} -> 429 Max retries exceeded ({elapsed:.3f}s) url={log_safe_url}")
                     return None
             
             # Handle server errors (5xx) with retry
             elif 500 <= e.code < 600:
                 if retry_count < self.max_retries:
                     wait_time = self.initial_retry_delay * (2 ** retry_count)
-                    logger.warning(f"Server error {e.code}. Retrying in {wait_time}s... (attempt {retry_count + 1}/{self.max_retries})")
+                    logger.warning(f"GET {endpoint} -> {e.code} Server error. Retrying in {wait_time}s... (attempt {retry_count + 1}/{self.max_retries}, {elapsed:.3f}s elapsed)")
                     time.sleep(wait_time)
                     return self.gitlab_request(endpoint, params, retry_count + 1)
                 else:
-                    logger.error(f"HTTP Error {e.code}: {e.reason} for {url} after {self.max_retries} retries")
+                    logger.error(f"GET {endpoint} -> {e.code}: {e.reason} after {self.max_retries} retries ({elapsed:.3f}s) url={log_safe_url}")
                     return None
             else:
-                logger.error(f"HTTP Error {e.code}: {e.reason} for {url}")
+                logger.error(f"GET {endpoint} -> {e.code}: {e.reason} ({elapsed:.3f}s) url={log_safe_url}")
                 return None
                 
         except URLError as e:
+            elapsed = time.time() - start_time
             # Handle timeout and connection errors with retry
             if retry_count < self.max_retries:
                 wait_time = self.initial_retry_delay * (2 ** retry_count)
-                logger.warning(f"URL Error: {e.reason}. Retrying in {wait_time}s... (attempt {retry_count + 1}/{self.max_retries})")
+                logger.warning(f"GET {endpoint} -> URLError: {e.reason}. Retrying in {wait_time}s... (attempt {retry_count + 1}/{self.max_retries}, {elapsed:.3f}s elapsed)")
                 time.sleep(wait_time)
                 return self.gitlab_request(endpoint, params, retry_count + 1)
             else:
-                logger.error(f"URL Error: {e.reason} for {url} after {self.max_retries} retries")
+                logger.error(f"GET {endpoint} -> URLError: {e.reason} after {self.max_retries} retries ({elapsed:.3f}s) url={log_safe_url}")
                 return None
                 
         except Exception as e:
-            logger.error(f"Error making request to {url}: {e}")
+            elapsed = time.time() - start_time
+            logger.error(f"GET {endpoint} -> Error: {e} ({elapsed:.3f}s) url={log_safe_url}")
             return None
     
     def _parse_link_header(self, link_header):
@@ -561,11 +606,18 @@ def get_state_snapshot():
         }
 
 
-def set_state_error(error):
-    """Thread-safe update of STATE error"""
+def set_state_error(error, poll_id=None):
+    """Thread-safe update of STATE error
+    
+    Args:
+        error: Error message or exception
+        poll_id: Optional poll cycle identifier for log correlation
+    """
     with STATE_LOCK:
         STATE['status'] = 'ERROR'
         STATE['error'] = str(error)
+    if poll_id:
+        logger.error(f"[{poll_id}] State marked as ERROR: {error}")
 
 
 class BackgroundPoller(threading.Thread):
@@ -579,6 +631,7 @@ class BackgroundPoller(threading.Thread):
         self.project_ids = project_ids or []
         self.running = True
         self.stop_event = threading.Event()
+        self.poll_counter = 0  # Poll cycle counter for log correlation
         
     def run(self):
         """Main polling loop"""
@@ -588,8 +641,9 @@ class BackgroundPoller(threading.Thread):
             try:
                 self.poll_data()
             except Exception as e:
-                logger.error(f"Error in background poller: {e}")
-                set_state_error(e)
+                poll_id = f"poll-{self.poll_counter}"
+                logger.error(f"[{poll_id}] Error in background poller: {e}")
+                set_state_error(e, poll_id)
             
             # Sleep for poll interval with interruptible wait
             logger.debug(f"Sleeping for {self.poll_interval}s before next poll")
@@ -599,29 +653,33 @@ class BackgroundPoller(threading.Thread):
     
     def poll_data(self):
         """Poll GitLab API and update STATE"""
-        logger.info("Starting data poll...")
+        # Increment poll counter and create poll_id for log correlation
+        self.poll_counter += 1
+        poll_id = f"poll-{self.poll_counter}"
+        
+        logger.info(f"[{poll_id}] Starting data poll...")
         
         # Fetch projects and pipelines FIRST (don't update STATE yet)
-        projects = self._fetch_projects()
+        projects = self._fetch_projects(poll_id)
         if projects is None:
-            logger.error("Failed to fetch projects - API error")
+            logger.error(f"[{poll_id}] Failed to fetch projects - API error")
             # Set error state so health endpoint reflects the failure
-            set_state_error("Failed to fetch data from GitLab API")
-            logger.error("Data poll completed with failures - state marked as ERROR")
+            set_state_error("Failed to fetch data from GitLab API", poll_id)
+            logger.error(f"[{poll_id}] Data poll completed with failures - state marked as ERROR")
             return
         
         # Fetch pipelines (pass projects to respect configured scope)
         # Returns dict with 'all_pipelines' (for /api/pipelines) and 'per_project' (for enrichment)
-        pipeline_data = self._fetch_pipelines(projects)
+        pipeline_data = self._fetch_pipelines(projects, poll_id)
         if pipeline_data is None:
-            logger.error("Failed to fetch pipelines - API error")
+            logger.error(f"[{poll_id}] Failed to fetch pipelines - API error")
             # Set error state so health endpoint reflects the failure
-            set_state_error("Failed to fetch data from GitLab API")
-            logger.error("Data poll completed with failures - state marked as ERROR")
+            set_state_error("Failed to fetch data from GitLab API", poll_id)
+            logger.error(f"[{poll_id}] Data poll completed with failures - state marked as ERROR")
             return
         
         # Enrich projects with per-project pipeline health data
-        enriched_projects = self._enrich_projects_with_pipelines(projects, pipeline_data['per_project'])
+        enriched_projects = self._enrich_projects_with_pipelines(projects, pipeline_data['per_project'], poll_id)
         
         # Both fetches succeeded - calculate summary and update STATE atomically
         summary = self._calculate_summary(enriched_projects, pipeline_data['all_pipelines'])
@@ -633,11 +691,14 @@ class BackgroundPoller(threading.Thread):
             'summary': summary
         })
         
-        logger.info(f"Updated STATE atomically: {len(enriched_projects)} projects, {len(pipeline_data['all_pipelines'])} pipelines")
-        logger.info("Data poll completed successfully")
+        logger.info(f"[{poll_id}] Updated STATE atomically: {len(enriched_projects)} projects, {len(pipeline_data['all_pipelines'])} pipelines")
+        logger.info(f"[{poll_id}] Data poll completed successfully")
     
-    def _fetch_projects(self):
+    def _fetch_projects(self, poll_id):
         """Fetch projects from configured sources
+        
+        Args:
+            poll_id: Poll cycle identifier for log correlation
         
         Returns:
             list: List of projects (may be empty if no projects found)
@@ -648,43 +709,43 @@ class BackgroundPoller(threading.Thread):
         
         # Fetch from specific project IDs if configured
         if self.project_ids:
-            logger.info(f"Fetching {len(self.project_ids)} specific projects")
+            logger.info(f"[{poll_id}] Fetching {len(self.project_ids)} specific projects")
             for project_id in self.project_ids:
                 project = self.gitlab_client.get_project(project_id)
                 if project is None:
                     # API error occurred
                     api_errors += 1
-                    logger.warning(f"Failed to fetch project {project_id}")
+                    logger.warning(f"[{poll_id}] Failed to fetch project {project_id}")
                 else:
                     # Non-None means successful API call, add the project
                     all_projects.append(project)
         
         # Fetch from groups if configured
         if self.group_ids:
-            logger.info(f"Fetching projects from {len(self.group_ids)} groups")
+            logger.info(f"[{poll_id}] Fetching projects from {len(self.group_ids)} groups")
             for group_id in self.group_ids:
-                logger.info(f"Fetching projects for group {group_id}")
+                logger.info(f"[{poll_id}] Fetching projects for group {group_id}")
                 group_projects = self.gitlab_client.get_group_projects(group_id)
                 if group_projects is None:
                     # API error occurred
                     api_errors += 1
-                    logger.warning(f"Failed to fetch projects for group {group_id}")
+                    logger.warning(f"[{poll_id}] Failed to fetch projects for group {group_id}")
                 elif group_projects:
                     # Non-empty list, extend our results
                     all_projects.extend(group_projects)
-                    logger.info(f"Added {len(group_projects)} projects from group {group_id}")
+                    logger.info(f"[{poll_id}] Added {len(group_projects)} projects from group {group_id}")
                 else:
                     # Empty list - group has no projects
-                    logger.info(f"Group {group_id} has no projects")
+                    logger.info(f"[{poll_id}] Group {group_id} has no projects")
         
         # If no specific sources configured, fetch all accessible projects
         if not self.project_ids and not self.group_ids:
-            logger.info("Fetching all accessible projects")
+            logger.info(f"[{poll_id}] Fetching all accessible projects")
             projects = self.gitlab_client.get_projects()
             if projects is None:
                 # API error occurred
                 api_errors += 1
-                logger.error("Failed to fetch all accessible projects")
+                logger.error(f"[{poll_id}] Failed to fetch all accessible projects")
             elif projects:
                 # Non-empty list, use it as our results
                 all_projects = projects
@@ -703,30 +764,31 @@ class BackgroundPoller(threading.Thread):
                     duplicates += 1
             
             if duplicates > 0:
-                logger.info(f"Deduplicated {duplicates} duplicate projects (found in multiple groups/sources)")
+                logger.info(f"[{poll_id}] Deduplicated {duplicates} duplicate projects (found in multiple groups/sources)")
             
             all_projects = unique_projects
         
         # Handle partial failures
         if api_errors > 0:
             if all_projects:
-                logger.warning(f"Partial project fetch: {api_errors} sources failed, but got {len(all_projects)} projects from others")
+                logger.warning(f"[{poll_id}] Partial project fetch: {api_errors} sources failed, but got {len(all_projects)} projects from others")
             else:
-                logger.error("All project fetches failed")
+                logger.error(f"[{poll_id}] All project fetches failed")
                 return None
         
         if not all_projects:
-            logger.info("No projects found (this may be expected for configured groups/IDs)")
+            logger.info(f"[{poll_id}] No projects found (this may be expected for configured groups/IDs)")
         
         return all_projects
     
-    def _fetch_pipelines(self, projects):
+    def _fetch_pipelines(self, projects, poll_id):
         """Fetch pipelines for configured projects
         
         Args:
             projects: List of project dicts from _fetch_projects(). 
                      None means API error occurred.
                      Empty list means no projects found in configured scope.
+            poll_id: Poll cycle identifier for log correlation
         
         Returns:
             dict: {
@@ -742,15 +804,15 @@ class BackgroundPoller(threading.Thread):
         if has_configured_scope:
             # projects is None means API error
             if projects is None:
-                logger.error("Cannot fetch pipelines: project fetch failed")
+                logger.error(f"[{poll_id}] Cannot fetch pipelines: project fetch failed")
                 return None
             
             # projects is empty list means configured scope has no projects
             if not projects:
-                logger.info("No projects in configured scope, returning empty pipelines")
+                logger.info(f"[{poll_id}] No projects in configured scope, returning empty pipelines")
                 return {'all_pipelines': [], 'per_project': {}}
             
-            logger.info(f"Fetching pipelines for {len(projects)} configured projects")
+            logger.info(f"[{poll_id}] Fetching pipelines for {len(projects)} configured projects")
             all_pipelines = []
             per_project_pipelines = {}
             api_errors = 0
@@ -768,7 +830,7 @@ class BackgroundPoller(threading.Thread):
                 
                 if pipelines is None:
                     # API error occurred
-                    logger.warning(f"Failed to fetch pipelines for project {project_name} (ID: {project_id})")
+                    logger.warning(f"[{poll_id}] Failed to fetch pipelines for project {project_name} (ID: {project_id})")
                     api_errors += 1
                 elif pipelines:
                     # Store per-project pipelines for enrichment (before global limit)
@@ -786,9 +848,9 @@ class BackgroundPoller(threading.Thread):
             # Handle partial failures
             if api_errors > 0:
                 if all_pipelines:
-                    logger.warning(f"Partial pipeline fetch: {api_errors} projects failed, but got {len(all_pipelines)} pipelines from others")
+                    logger.warning(f"[{poll_id}] Partial pipeline fetch: {api_errors} projects failed, but got {len(all_pipelines)} pipelines from others")
                 else:
-                    logger.error("All pipeline fetches failed")
+                    logger.error(f"[{poll_id}] All pipeline fetches failed")
                     return None
             
             # Sort by created_at descending for /api/pipelines
@@ -798,7 +860,7 @@ class BackgroundPoller(threading.Thread):
             # Store all pipelines in STATE (up to what we fetched) to support filtering
             # The limit will be applied at the API response level in handle_pipelines
             if not all_pipelines:
-                logger.info("No pipelines found in configured projects")
+                logger.info(f"[{poll_id}] No pipelines found in configured projects")
             
             return {
                 'all_pipelines': all_pipelines,  # Store all fetched pipelines
@@ -807,7 +869,7 @@ class BackgroundPoller(threading.Thread):
         else:
             # No scope configured: fallback to arbitrary membership sample
             # Fetch enough pipelines to support filtering and higher limits
-            logger.info("No scope configured, using membership sample for pipelines")
+            logger.info(f"[{poll_id}] No scope configured, using membership sample for pipelines")
             pipelines = self.gitlab_client.get_all_pipelines(per_page=MAX_PROJECTS_FOR_PIPELINES * PIPELINES_PER_PROJECT)
             
             # Return None for API errors, empty list is valid
@@ -815,7 +877,7 @@ class BackgroundPoller(threading.Thread):
                 return None
             
             if not pipelines:
-                logger.info("No pipelines found")
+                logger.info(f"[{poll_id}] No pipelines found")
             
             # Build per-project map from the fetched pipelines
             per_project_pipelines = {}
@@ -831,18 +893,21 @@ class BackgroundPoller(threading.Thread):
                 'per_project': per_project_pipelines
             }
     
-    def _enrich_projects_with_pipelines(self, projects, per_project_pipelines):
+    def _enrich_projects_with_pipelines(self, projects, per_project_pipelines, poll_id):
         """Enrich project data with pipeline health metrics
         
         Args:
             projects: List of project dicts
             per_project_pipelines: Dict mapping project_id -> list of pipelines for that project
+            poll_id: Poll cycle identifier for log correlation
         
         Returns:
             List of enriched project dicts with pipeline health data
         """
         if not projects:
             return []
+        
+        logger.debug(f"[{poll_id}] Enriching {len(projects)} projects with pipeline data")
         
         # Sort pipelines by created_at for each project (newest first)
         # ISO 8601 timestamps sort correctly lexicographically
@@ -919,6 +984,7 @@ class BackgroundPoller(threading.Thread):
             
             enriched_projects.append(enriched)
         
+        logger.debug(f"[{poll_id}] Enriched {len(enriched_projects)} projects with pipeline metrics")
         return enriched_projects
     
     def _calculate_summary(self, projects, pipelines):
@@ -1045,8 +1111,35 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         # For non-blocked paths, delegate to parent class
         super().do_HEAD()
     
+    def do_OPTIONS(self):
+        """Handle OPTIONS requests for CORS preflight
+        
+        Responds to CORS preflight requests for /api/* endpoints with appropriate headers.
+        For non-API paths, returns a minimal safe response.
+        """
+        parsed_path = urlparse(self.path)
+        path = parsed_path.path
+        
+        if path.startswith('/api/'):
+            # CORS preflight for API routes
+            self.send_response(204)  # No Content
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+        else:
+            # For non-API paths, return minimal response
+            self.send_response(200)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+    
     def do_POST(self):
-        """Handle POST requests"""
+        """Handle POST requests
+        
+        Note: The /api/mock/reload endpoint is intentionally restricted to mock mode.
+        When MOCK_MODE_ENABLED is False, it returns a 400 error with a helpful hint.
+        """
         parsed_path = urlparse(self.path)
         path = parsed_path.path
         
@@ -1142,7 +1235,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'repositories': repos,
                 'total': len(repos),
                 'last_updated': snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated']) if snapshot['last_updated'] else None,
-                'backend_status': snapshot['status']  # Add status for frontend to detect stale data
+                'backend_status': snapshot['status'],  # Add status for frontend to detect stale data
+                'is_mock': MOCK_MODE_ENABLED  # Indicate if data is from mock source
             }
             
             self.send_json_response(response)
@@ -1155,6 +1249,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'total': 0,
                 'last_updated': None,
                 'backend_status': 'ERROR',
+                'is_mock': MOCK_MODE_ENABLED,
                 'error': str(e)
             }, status=500)
     
@@ -1246,9 +1341,10 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             response = {
                 'pipelines': limited_pipelines,
                 'total': len(limited_pipelines),
-                'total_before_limit': len(filtered_pipelines),  # For pagination context
+                'total_before_limit': len(filtered_pipelines),  # Number of pipelines after filtering but before limit
                 'last_updated': snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated']) if snapshot['last_updated'] else None,
-                'backend_status': snapshot['status']  # Add status for frontend to detect stale data
+                'backend_status': snapshot['status'],  # Add status for frontend to detect stale data
+                'is_mock': MOCK_MODE_ENABLED  # Indicate if data is from mock source
             }
             
             self.send_json_response(response)
@@ -1262,6 +1358,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'total_before_limit': 0,
                 'last_updated': None,
                 'backend_status': 'ERROR',
+                'is_mock': MOCK_MODE_ENABLED,
                 'error': str(e)
             }, status=500)
     
@@ -1290,7 +1387,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'backend_status': snapshot['status'],
                 'timestamp': datetime.now().isoformat(),
                 'last_poll': last_poll,
-                'error': snapshot['error']
+                'error': snapshot['error'],
+                'is_mock': MOCK_MODE_ENABLED  # Indicate if running in mock mode
             }
             
             # Return 200 OK only for ONLINE (proven GitLab connectivity)
@@ -1303,7 +1401,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             health = {
                 'status': 'unhealthy',
                 'timestamp': datetime.now().isoformat(),
-                'error': str(e)
+                'error': str(e),
+                'is_mock': MOCK_MODE_ENABLED
             }
             self.send_json_response(health, status=503)
     
@@ -1340,9 +1439,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'summary': mock_data['summary']
             })
             
-            # Get the timestamp that was just set (using atomic snapshot)
+            # Get the state snapshot after update for response metadata
             snapshot = get_state_snapshot()
-            timestamp_iso = snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated'])
+            last_updated_iso = snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated'])
             
             logger.info("Mock data reloaded successfully via API")
             logger.info(f"  Repositories: {len(mock_data['repositories'])}")
@@ -1350,8 +1449,10 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             
             self.send_json_response({
                 'reloaded': True,
-                'timestamp': timestamp_iso,
                 'scenario': MOCK_SCENARIO if MOCK_SCENARIO else 'default',
+                'backend_status': snapshot['status'],
+                'last_updated': last_updated_iso,
+                'is_mock': True,
                 'summary': {
                     'repositories': len(mock_data['repositories']),
                     'pipelines': len(mock_data['pipelines'])
@@ -1362,22 +1463,37 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             logger.error(f"Error in handle_mock_reload: {e}")
             self.send_json_response({
                 'error': str(e),
-                'reloaded': False
+                'reloaded': False,
+                'is_mock': MOCK_MODE_ENABLED
             }, status=500)
     
     def send_json_response(self, data, status=200):
-        """Send JSON response"""
+        """Send JSON response with appropriate caching headers"""
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Cache-Control', 'no-store, max-age=0')
+        self.send_header('X-Content-Type-Options', 'nosniff')
         self.end_headers()
         self.wfile.write(json.dumps(data, indent=2).encode('utf-8'))
     
     def log_message(self, format, *args):
-        """Override to use logger"""
-        logger.info("%s - - [%s] %s" % (
+        """Override to use logger with enhanced request context
+        
+        Logs HTTP requests with method, path, and route type (api/static) for easier debugging.
+        """
+        # Determine route type based on path
+        path = self.path.split('?')[0] if hasattr(self, 'path') else ''
+        route_type = 'api' if path.startswith('/api/') else 'static'
+        
+        # Get HTTP method (command)
+        method = getattr(self, 'command', 'UNKNOWN')
+        
+        logger.info("%s %s %s [%s] %s" % (
             self.address_string(),
-            self.log_date_time_string(),
+            method,
+            path,
+            route_type,
             format % args
         ))
 
@@ -1476,6 +1592,7 @@ def load_config():
     
     # Log configuration (without secrets)
     logger.info(f"Configuration loaded from: {config_source}")
+    logger.info(f"  Log level: {_log_level_name}")
     logger.info(f"  GitLab URL: {config['gitlab_url']}")
     logger.info(f"  Port: {config['port']}")
     logger.info(f"  Poll interval: {config['poll_interval_sec']}s")
@@ -1491,6 +1608,65 @@ def load_config():
     logger.info(f"  API token: {'***' if config['api_token'] else 'NOT SET'}")
     
     return config
+
+
+# Minimum poll interval to prevent excessive API calls
+MIN_POLL_INTERVAL_SEC = 5
+
+
+def validate_config(config):
+    """Validate configuration and fail fast with clear errors when misconfigured.
+    
+    Args:
+        config: Configuration dict from load_config()
+    
+    Returns:
+        bool: True if configuration is valid, False otherwise
+    
+    Logs error messages for each invalid configuration with guidance on how to fix.
+    """
+    is_valid = True
+    
+    # Check API token requirement (skip if mock mode)
+    if not config.get('use_mock_data') and not config.get('api_token'):
+        logger.error("Configuration error: 'api_token' is required when not in mock mode.")
+        logger.error("  Current value: NOT SET")
+        logger.error("  Fix: Set GITLAB_API_TOKEN environment variable or add 'api_token' to config.json")
+        is_valid = False
+    
+    # Validate poll_interval_sec (must be >= MIN_POLL_INTERVAL_SEC)
+    poll_interval = config.get('poll_interval_sec', 60)
+    if not isinstance(poll_interval, int) or poll_interval < MIN_POLL_INTERVAL_SEC:
+        logger.error(f"Configuration error: 'poll_interval_sec' must be an integer >= {MIN_POLL_INTERVAL_SEC}.")
+        logger.error(f"  Current value: {poll_interval}")
+        logger.error(f"  Fix: Set POLL_INTERVAL environment variable to a value >= {MIN_POLL_INTERVAL_SEC}")
+        is_valid = False
+    
+    # Validate cache_ttl_sec (must be >= 0)
+    cache_ttl = config.get('cache_ttl_sec', 300)
+    if not isinstance(cache_ttl, int) or cache_ttl < 0:
+        logger.error("Configuration error: 'cache_ttl_sec' must be a non-negative integer.")
+        logger.error(f"  Current value: {cache_ttl}")
+        logger.error("  Fix: Set CACHE_TTL environment variable to a value >= 0")
+        # Clamp to 0 and continue (warning, not error)
+        config['cache_ttl_sec'] = max(0, cache_ttl) if isinstance(cache_ttl, int) else 0
+        logger.warning(f"  Clamped cache_ttl_sec to {config['cache_ttl_sec']}")
+    
+    # Validate per_page (must be positive integer)
+    per_page = config.get('per_page', 100)
+    if not isinstance(per_page, int) or per_page < 1:
+        logger.error("Configuration error: 'per_page' must be a positive integer (>= 1).")
+        logger.error(f"  Current value: {per_page}")
+        logger.error("  Fix: Set PER_PAGE environment variable to a positive integer")
+        is_valid = False
+    
+    # Log validation result
+    if is_valid:
+        logger.info("Configuration validation passed")
+    else:
+        logger.error("Configuration validation failed - see errors above")
+    
+    return is_valid
 
 
 def load_mock_data(scenario=''):
@@ -1553,26 +1729,33 @@ def main():
     # Load configuration
     config = load_config()
     
+    # Validate configuration - fail fast if invalid
+    if not validate_config(config):
+        logger.error("Server startup aborted due to configuration errors")
+        sys.exit(1)
+    
     # Check if mock mode is enabled
     if config['use_mock_data']:
         MOCK_MODE_ENABLED = True
         MOCK_SCENARIO = config['mock_scenario']
         
+        # Log clear banner for mock mode
         logger.info("=" * 70)
         logger.info("MOCK DATA MODE ENABLED")
         if MOCK_SCENARIO:
-            logger.info(f"Server will use mock scenario: {MOCK_SCENARIO}")
-            logger.info(f"Loading from: data/mock_scenarios/{MOCK_SCENARIO}.json")
+            logger.info(f"Scenario: {MOCK_SCENARIO}")
+            logger.info(f"File: data/mock_scenarios/{MOCK_SCENARIO}.json")
         else:
-            logger.info("Server will use default mock_data.json")
-        logger.info("GitLab polling is DISABLED in this mode")
+            logger.info("Scenario: default")
+            logger.info("File: mock_data.json")
+        logger.info("GitLab API polling is DISABLED in this mode")
         logger.info("=" * 70)
         
         # Load mock data with scenario
         mock_data = load_mock_data(MOCK_SCENARIO)
         if mock_data is None:
             logger.error("Failed to load mock data. Exiting.")
-            return
+            sys.exit(1)
         
         # Initialize STATE with mock data
         update_state_atomic({
@@ -1587,6 +1770,12 @@ def main():
         poller = None
         
     else:
+        # Normal mode: Log that live GitLab API calls will be made
+        logger.info("=" * 70)
+        logger.info("LIVE MODE - Connecting to GitLab API")
+        logger.info(f"GitLab URL: {config['gitlab_url']}")
+        logger.info("=" * 70)
+        
         # Normal mode: Initialize GitLab client and poller
         gitlab_client = GitLabAPIClient(
             config['gitlab_url'], 
