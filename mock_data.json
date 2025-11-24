@@ -2,17 +2,18 @@
   "summary": {
     "total_repositories": 8,
     "active_repositories": 7,
-    "total_pipelines": 45,
+    "total_pipelines": 18,
     "successful_pipelines": 8,
     "failed_pipelines": 5,
-    "running_pipelines": 2,
-    "pending_pipelines": 1,
-    "pipeline_success_rate": 0.8444444444444444,
+    "running_pipelines": 1,
+    "pending_pipelines": 0,
+    "pipeline_success_rate": 0.4444444444444444,
     "pipeline_statuses": {
-      "success": 38,
-      "failed": 4,
-      "running": 2,
-      "pending": 1
+      "success": 8,
+      "failed": 5,
+      "running": 1,
+      "manual": 2,
+      "skipped": 2
     }
   },
   "repositories": [
