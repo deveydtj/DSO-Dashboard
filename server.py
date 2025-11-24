@@ -139,12 +139,12 @@ class GitLabAPIClient:
             self.ssl_context = None
     
     def _mask_url(self, url):
-        """Mask sensitive query parameters in URL for logging
+        """Return URL for logging
         
-        Replaces PRIVATE-TOKEN values with '***' to prevent token exposure in logs.
+        Currently returns URL unchanged since the API token is sent in headers,
+        not in the URL query string. This helper is provided for consistency
+        and potential future use if masking becomes necessary.
         """
-        # URL doesn't contain token in query string (it's in headers), but this
-        # provides a safe helper for any future use
         return url
     
     def gitlab_request(self, endpoint, params=None, retry_count=0):
