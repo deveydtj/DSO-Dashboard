@@ -60,7 +60,7 @@ class GitLabAPIClient:
     """GitLab API client using urllib with retry, rate limiting, and pagination support"""
     
     def __init__(self, gitlab_url, api_token, per_page=100, insecure_skip_verify=False, 
-                 ca_bundle_path=None, max_retries=3, initial_retry_delay=1.0):
+                 max_retries=3, initial_retry_delay=1.0, ca_bundle_path=None):
         self.gitlab_url = gitlab_url.rstrip('/')
         self.api_token = api_token
         self.base_url = f"{self.gitlab_url}/api/v4"
