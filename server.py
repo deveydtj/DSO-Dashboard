@@ -317,8 +317,23 @@ class DataCache:
 
 
 # Global STATE for thread-safe data access
+# Initialize with empty structures to ensure endpoints always have valid shapes
 STATE = {
-    'data': {},
+    'data': {
+        'projects': [],
+        'pipelines': [],
+        'summary': {
+            'total_repositories': 0,
+            'active_repositories': 0,
+            'total_pipelines': 0,
+            'successful_pipelines': 0,
+            'failed_pipelines': 0,
+            'running_pipelines': 0,
+            'pending_pipelines': 0,
+            'pipeline_success_rate': 0.0,
+            'pipeline_statuses': {}
+        }
+    },
     'last_updated': None,
     'status': 'INITIALIZING',
     'error': None
@@ -807,72 +822,75 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             self.send_json_response({'error': 'Endpoint not found'}, status=404)
     
     def handle_summary(self):
-        """Handle /api/summary endpoint"""
+        """Handle /api/summary endpoint
+        
+        Always returns proper JSON shape even when data is empty or initializing.
+        Uses snapshot from in-memory STATE.
+        """
         try:
             summary = get_state('summary')
             status_info = get_state_status()
             
+            # Build response with proper shape (never None, always has required keys)
+            # If summary is None, use empty defaults (should not happen with new initialization)
             if summary is None:
-                # If no data yet, return initializing or error status
-                if status_info['status'] == 'INITIALIZING':
-                    self.send_json_response({
-                        'status': 'initializing',
-                        'message': 'Dashboard is initializing, please wait...'
-                    }, status=503)
-                else:
-                    # Summary is None means API error during polling
-                    self.send_json_response({'error': 'Failed to fetch data from GitLab API'}, status=502)
-                return
+                summary = {
+                    'total_repositories': 0,
+                    'active_repositories': 0,
+                    'total_pipelines': 0,
+                    'successful_pipelines': 0,
+                    'failed_pipelines': 0,
+                    'running_pipelines': 0,
+                    'pending_pipelines': 0,
+                    'pipeline_success_rate': 0.0,
+                    'pipeline_statuses': {}
+                }
             
-            # Check if backend is in ERROR state (stale data)
-            if status_info['status'] == 'ERROR':
-                last_updated = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
-                self.send_json_response({
-                    'error': 'Backend is currently in ERROR state - GitLab API unavailable',
-                    'last_successful_poll': last_updated,
-                    'status': 'ERROR'
-                }, status=503)
-                return
-            
-            # Add timestamp from STATE to summary
             response = dict(summary)
+            
+            # Add timestamp from STATE
             last_updated_iso = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
             response['last_updated'] = last_updated_iso
             response['last_updated_iso'] = last_updated_iso  # Explicit field as requested in requirements
+            
+            # Add backend status for frontend to detect stale/initializing data
+            response['backend_status'] = status_info['status']
             response['is_mock'] = MOCK_MODE_ENABLED  # Indicate if data is from mock source
             
             self.send_json_response(response)
             
         except Exception as e:
             logger.error(f"Error in handle_summary: {e}")
-            self.send_json_response({'error': str(e)}, status=500)
+            # Even on error, return proper shape with zeros
+            self.send_json_response({
+                'total_repositories': 0,
+                'active_repositories': 0,
+                'total_pipelines': 0,
+                'successful_pipelines': 0,
+                'failed_pipelines': 0,
+                'running_pipelines': 0,
+                'pending_pipelines': 0,
+                'pipeline_success_rate': 0.0,
+                'pipeline_statuses': {},
+                'last_updated': None,
+                'backend_status': 'ERROR',
+                'error': str(e)
+            }, status=500)
     
     def handle_repos(self):
-        """Handle /api/repos endpoint"""
+        """Handle /api/repos endpoint
+        
+        Always returns proper JSON shape even when data is empty or initializing.
+        Uses snapshot from in-memory STATE.
+        """
         try:
             projects = get_state('projects')
             status_info = get_state_status()
             
+            # Ensure projects is never None (use empty list if None)
+            # This should not happen with new initialization, but defensive coding
             if projects is None:
-                if status_info['status'] == 'INITIALIZING':
-                    self.send_json_response({
-                        'status': 'initializing',
-                        'message': 'Dashboard is initializing, please wait...'
-                    }, status=503)
-                else:
-                    # Projects is None means API error, not empty results
-                    self.send_json_response({'error': 'Failed to fetch projects from GitLab API'}, status=502)
-                return
-            
-            # Check if backend is in ERROR state (stale data)
-            if status_info['status'] == 'ERROR':
-                last_updated = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
-                self.send_json_response({
-                    'error': 'Backend is currently in ERROR state - GitLab API unavailable',
-                    'last_successful_poll': last_updated,
-                    'status': 'ERROR'
-                }, status=503)
-                return
+                projects = []
             
             # Format repository data (projects can be empty list, which is valid)
             repos = []
@@ -902,42 +920,38 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             response = {
                 'repositories': repos,
                 'total': len(repos),
-                'last_updated': status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
+                'last_updated': status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None,
+                'backend_status': status_info['status']  # Add status for frontend to detect stale data
             }
             
             self.send_json_response(response)
             
         except Exception as e:
             logger.error(f"Error in handle_repos: {e}")
-            self.send_json_response({'error': str(e)}, status=500)
+            # Even on error, return proper shape with empty array
+            self.send_json_response({
+                'repositories': [],
+                'total': 0,
+                'last_updated': None,
+                'backend_status': 'ERROR',
+                'error': str(e)
+            }, status=500)
     
     def handle_pipelines(self):
-        """Handle /api/pipelines endpoint"""
+        """Handle /api/pipelines endpoint
+        
+        Always returns proper JSON shape even when data is empty or initializing.
+        Uses snapshot from in-memory STATE.
+        """
         try:
             pipelines = get_state('pipelines')
             projects = get_state('projects')
             status_info = get_state_status()
             
+            # Ensure pipelines is never None (use empty list if None)
+            # This should not happen with new initialization, but defensive coding
             if pipelines is None:
-                if status_info['status'] == 'INITIALIZING':
-                    self.send_json_response({
-                        'status': 'initializing',
-                        'message': 'Dashboard is initializing, please wait...'
-                    }, status=503)
-                else:
-                    # Pipelines is None means API error, not empty results
-                    self.send_json_response({'error': 'Failed to fetch pipelines from GitLab API'}, status=502)
-                return
-            
-            # Check if backend is in ERROR state (stale data)
-            if status_info['status'] == 'ERROR':
-                last_updated = status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
-                self.send_json_response({
-                    'error': 'Backend is currently in ERROR state - GitLab API unavailable',
-                    'last_successful_poll': last_updated,
-                    'status': 'ERROR'
-                }, status=503)
-                return
+                pipelines = []
             
             # Parse query parameters
             parsed_path = urlparse(self.path)
@@ -1011,14 +1025,23 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'pipelines': limited_pipelines,
                 'total': len(limited_pipelines),
                 'total_before_limit': len(filtered_pipelines),  # For pagination context
-                'last_updated': status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None
+                'last_updated': status_info['last_updated'].isoformat() if isinstance(status_info['last_updated'], datetime) else str(status_info['last_updated']) if status_info['last_updated'] else None,
+                'backend_status': status_info['status']  # Add status for frontend to detect stale data
             }
             
             self.send_json_response(response)
             
         except Exception as e:
             logger.error(f"Error in handle_pipelines: {e}")
-            self.send_json_response({'error': str(e)}, status=500)
+            # Even on error, return proper shape with empty array
+            self.send_json_response({
+                'pipelines': [],
+                'total': 0,
+                'total_before_limit': 0,
+                'last_updated': None,
+                'backend_status': 'ERROR',
+                'error': str(e)
+            }, status=500)
     
     def handle_health(self):
         """Handle /api/health endpoint"""
