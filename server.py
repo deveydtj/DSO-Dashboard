@@ -850,20 +850,35 @@ class BackgroundPoller(threading.Thread):
                 ]
                 
                 if default_branch_pipelines:
+                    # Calculate success rate on default branch, excluding skipped/manual/canceled
                     recent_default_pipelines = default_branch_pipelines[:10]
-                    success_count = sum(1 for p in recent_default_pipelines if p.get('status') == 'success')
-                    enriched['recent_success_rate'] = success_count / len(recent_default_pipelines)
+                    # Filter out statuses that should be ignored (skipped, manual, canceled)
+                    meaningful_pipelines = [
+                        p for p in recent_default_pipelines 
+                        if p.get('status') not in ('skipped', 'manual', 'canceled', 'cancelled')
+                    ]
+                    if meaningful_pipelines:
+                        success_count = sum(1 for p in meaningful_pipelines if p.get('status') == 'success')
+                        enriched['recent_success_rate'] = success_count / len(meaningful_pipelines)
+                    else:
+                        # No meaningful pipelines (all were skipped/manual/canceled)
+                        enriched['recent_success_rate'] = None
                 else:
                     # No default branch pipelines found
                     enriched['recent_success_rate'] = None
                 
                 # Calculate consecutive failures on default branch
+                # Ignore skipped/manual/canceled statuses when counting consecutive failures
                 consecutive_failures = 0
                 for pipeline in default_branch_pipelines:
-                    if pipeline.get('status') == 'failed':
+                    status = pipeline.get('status')
+                    if status == 'failed':
                         consecutive_failures += 1
+                    elif status in ('skipped', 'manual', 'canceled', 'cancelled'):
+                        # Ignore these statuses - they don't break the consecutive failure count
+                        continue
                     else:
-                        # Stop counting at first non-failure
+                        # Stop counting at first actual success/running/pending
                         break
                 enriched['consecutive_default_branch_failures'] = consecutive_failures
             else:
