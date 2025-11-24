@@ -242,7 +242,8 @@ DSO-Dashboard supports two configuration methods that can be used together. **En
 | `poll_interval_sec` | `POLL_INTERVAL` | Background polling interval (seconds) | `60` |
 | `cache_ttl_sec` | `CACHE_TTL` | Cache TTL (deprecated, kept for compatibility) | `300` |
 | `per_page` | `PER_PAGE` | API pagination size (items per page) | `100` |
-| `insecure_skip_verify` | `INSECURE_SKIP_VERIFY` | Skip SSL verification (self-signed certs) | `false` |
+| `ca_bundle_path` | `CA_BUNDLE_PATH` | Path to custom CA certificate bundle (recommended for internal GitLab) | `null` (system default) |
+| `insecure_skip_verify` | `INSECURE_SKIP_VERIFY` | Skip SSL verification (not recommended, use `ca_bundle_path` instead) | `false` |
 | `use_mock_data` | `USE_MOCK_DATA` | Use mock data instead of GitLab API | `false` |
 | `mock_scenario` | `MOCK_SCENARIO` | Mock scenario name: `healthy`, `failing`, or `running` | `` (uses `mock_data.json`) |
 | `port` (N/A in json) | `PORT` | Server port | `8080` |
@@ -271,7 +272,16 @@ DSO-Dashboard supports two configuration methods that can be used together. **En
 }
 ```
 
-**Example 3: Self-signed certificates (use with caution)**
+**Example 3: Custom CA certificate (recommended for internal GitLab)**
+```json
+{
+  "gitlab_url": "https://internal-gitlab.corp",
+  "api_token": "glpat-xxxxxxxxxxxxx",
+  "ca_bundle_path": "/etc/ssl/certs/corporate-ca-bundle.crt"
+}
+```
+
+**Example 4: Self-signed certificates (use with caution)**
 ```json
 {
   "gitlab_url": "https://internal-gitlab.corp",
@@ -280,12 +290,95 @@ DSO-Dashboard supports two configuration methods that can be used together. **En
 }
 ```
 
-**Example 4: Environment variable override**
+**Example 5: Environment variable override**
 ```bash
 # Start with config.json but override URL temporarily
 export GITLAB_URL="https://staging-gitlab.example.com"
 python3 server.py
 ```
+
+### SSL/TLS Configuration
+
+When connecting to internal GitLab instances, you may need to configure SSL/TLS settings.
+
+#### Option 1: Custom CA Certificate Bundle (Recommended)
+
+For internal GitLab instances using corporate or custom CA certificates, use the `ca_bundle_path` option:
+
+**config.json:**
+```json
+{
+  "gitlab_url": "https://internal-gitlab.corp",
+  "api_token": "glpat-xxxxxxxxxxxxx",
+  "ca_bundle_path": "/etc/ssl/certs/ca-bundle.crt"
+}
+```
+
+**Environment Variable:**
+```bash
+export CA_BUNDLE_PATH=/etc/ssl/certs/ca-bundle.crt
+python3 server.py
+```
+
+The CA bundle should be in PEM format and contain one or more CA certificates. Common locations:
+- **Ubuntu/Debian**: `/etc/ssl/certs/ca-certificates.crt`
+- **RHEL/CentOS**: `/etc/pki/tls/certs/ca-bundle.crt`
+- **Custom**: Path to your organization's CA bundle
+
+#### Option 2: Disable SSL Verification (Not Recommended)
+
+⚠️ **Security Warning**: Only use this option on trusted internal networks as a last resort. This disables all SSL certificate verification and makes the connection vulnerable to man-in-the-middle attacks.
+
+**config.json:**
+```json
+{
+  "gitlab_url": "https://internal-gitlab.corp",
+  "api_token": "glpat-xxxxxxxxxxxxx",
+  "insecure_skip_verify": true
+}
+```
+
+**Environment Variable:**
+```bash
+export INSECURE_SKIP_VERIFY=true
+python3 server.py
+```
+
+When `insecure_skip_verify` is enabled, the server logs a prominent warning on startup.
+
+#### SSL Configuration Priority
+
+If both options are set, `ca_bundle_path` takes precedence over `insecure_skip_verify`.
+
+#### Troubleshooting SSL Issues
+
+**Error: "certificate verify failed"**
+- Solution: Use `ca_bundle_path` with your organization's CA bundle
+- Alternative: Use `insecure_skip_verify: true` (not recommended for production)
+
+**Error: "SSL: CERTIFICATE_VERIFY_FAILED"**
+- Check that the CA bundle path is correct and readable
+- Verify the CA bundle contains the correct certificates in PEM format
+- Test with: `openssl verify -CAfile /path/to/ca-bundle.crt /path/to/server-cert.crt`
+
+**Error: "hostname doesn't match certificate"**
+- Ensure GitLab URL matches the certificate's Common Name (CN) or Subject Alternative Name (SAN)
+- Check DNS resolution: `nslookup internal-gitlab.corp`
+
+### Security Best Practices
+
+1. **Never commit secrets**: Keep `config.json` in `.gitignore`, use environment variables in CI/CD
+2. **Use CA bundles**: Prefer `ca_bundle_path` over `insecure_skip_verify` for better security
+3. **Rotate tokens**: Regularly rotate GitLab API tokens
+4. **Limit token scope**: Use `read_api` scope only (no write permissions needed)
+5. **Monitor logs**: Check logs regularly for unauthorized access attempts
+6. **File permissions**: Ensure `config.json` has restricted permissions (e.g., `chmod 600 config.json`)
+
+The dashboard is designed with security in mind:
+- ✅ API tokens are **never logged** (scrubbed as `***`)
+- ✅ Configuration files are **blocked from web access** (`/config.json` returns 403 Forbidden)
+- ✅ All user input is **sanitized** on the frontend to prevent XSS attacks
+- ✅ SSL verification is **enabled by default**
 
 ### Mock Data Mode
 
@@ -914,14 +1007,28 @@ export GITLAB_API_TOKEN="your_token_here"
 
 **Problem:** Self-signed certificates or internal CA.
 
-**Solution:**
+**Recommended Solution (Option 1 - Secure):**
+```json
+{
+  "ca_bundle_path": "/etc/ssl/certs/corporate-ca-bundle.crt"
+}
+```
+
+Or via environment variable:
+```bash
+export CA_BUNDLE_PATH=/etc/ssl/certs/corporate-ca-bundle.crt
+```
+
+**Alternative Solution (Option 2 - Use with Caution):**
 ```json
 {
   "insecure_skip_verify": true
 }
 ```
 
-⚠️ **Security Warning:** Only use `insecure_skip_verify: true` on trusted internal networks. This disables TLS verification.
+⚠️ **Security Warning:** Only use `insecure_skip_verify: true` on trusted internal networks. This disables TLS verification and is vulnerable to man-in-the-middle attacks. Prefer `ca_bundle_path` for better security.
+
+For more details, see the [SSL/TLS Configuration](#ssltls-configuration) section.
 
 #### No Projects/Pipelines Showing
 
