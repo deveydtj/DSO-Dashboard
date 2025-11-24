@@ -79,8 +79,24 @@ class GitLabAPIClient:
         else:
             self.ssl_context = None
     
-    def _make_request(self, endpoint, params=None, retry_count=0):
-        """Make a request to GitLab API with retry and rate limiting"""
+    def gitlab_request(self, endpoint, params=None, retry_count=0):
+        """Make a request to GitLab API with retry and rate limiting
+        
+        This is the central retry/backoff handler for all GitLab API calls.
+        Handles:
+        - Exponential backoff for transient errors (5xx, timeouts, connection resets)
+        - Rate limiting (429) with Retry-After header support
+        - Max retry attempts (default: 3)
+        
+        Args:
+            endpoint: GitLab API endpoint path (e.g., 'projects', 'projects/123/pipelines')
+            params: Optional query parameters dict
+            retry_count: Current retry attempt (internal use)
+        
+        Returns:
+            dict: Response with 'data', 'next_page', 'total_pages', 'total' keys
+            None: If API error occurred after all retries
+        """
         url = f"{self.base_url}/{endpoint}"
         
         if params:
@@ -124,7 +140,7 @@ class GitLabAPIClient:
                     time.sleep(wait_time)
                 
                 if retry_count < self.max_retries:
-                    return self._make_request(endpoint, params, retry_count + 1)
+                    return self.gitlab_request(endpoint, params, retry_count + 1)
                 else:
                     logger.error(f"Max retries exceeded for rate limiting on {url}")
                     return None
@@ -135,7 +151,7 @@ class GitLabAPIClient:
                     wait_time = self.initial_retry_delay * (2 ** retry_count)
                     logger.warning(f"Server error {e.code}. Retrying in {wait_time}s... (attempt {retry_count + 1}/{self.max_retries})")
                     time.sleep(wait_time)
-                    return self._make_request(endpoint, params, retry_count + 1)
+                    return self.gitlab_request(endpoint, params, retry_count + 1)
                 else:
                     logger.error(f"HTTP Error {e.code}: {e.reason} for {url} after {self.max_retries} retries")
                     return None
@@ -149,7 +165,7 @@ class GitLabAPIClient:
                 wait_time = self.initial_retry_delay * (2 ** retry_count)
                 logger.warning(f"URL Error: {e.reason}. Retrying in {wait_time}s... (attempt {retry_count + 1}/{self.max_retries})")
                 time.sleep(wait_time)
-                return self._make_request(endpoint, params, retry_count + 1)
+                return self.gitlab_request(endpoint, params, retry_count + 1)
             else:
                 logger.error(f"URL Error: {e.reason} for {url} after {self.max_retries} retries")
                 return None
@@ -247,7 +263,7 @@ class GitLabAPIClient:
         It automatically handles:
         - X-Next-Page header (GitLab's preferred pagination method)
         - Link header with rel="next" (RFC 5988 standard)
-        - Exponential backoff and retry logic (via _make_request)
+        - Exponential backoff and retry logic (via gitlab_request)
         - Rate limiting (429 responses)
         
         Args:
@@ -276,7 +292,7 @@ class GitLabAPIClient:
             params['page'] = page
             logger.debug(f"Fetching {endpoint} page {page}")
             
-            result = self._make_request(endpoint, params)
+            result = self.gitlab_request(endpoint, params)
             if result is None:
                 logger.error(f"Failed to fetch {endpoint} page {page}")
                 return None
@@ -331,7 +347,7 @@ class GitLabAPIClient:
         """Get list of projects with pagination support"""
         if per_page:
             # For backward compatibility, use single page request
-            result = self._make_request('projects', {'per_page': per_page, 'membership': 'true'})
+            result = self.gitlab_request('projects', {'per_page': per_page, 'membership': 'true'})
             if result is None:
                 return None
             return result.get('data', None)
@@ -345,7 +361,7 @@ class GitLabAPIClient:
     
     def get_project(self, project_id):
         """Get single project details"""
-        result = self._make_request(f'projects/{project_id}')
+        result = self.gitlab_request(f'projects/{project_id}')
         if result is None:
             return None
         return result.get('data', None)
@@ -354,7 +370,7 @@ class GitLabAPIClient:
         """Get pipelines for a project with pagination"""
         if per_page:
             # For backward compatibility, use single page request
-            result = self._make_request(f'projects/{project_id}/pipelines', {'per_page': per_page})
+            result = self.gitlab_request(f'projects/{project_id}/pipelines', {'per_page': per_page})
             if result is None:
                 return None
             return result.get('data', None)

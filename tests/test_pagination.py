@@ -70,7 +70,7 @@ class TestPaginationHelpers(unittest.TestCase):
     
     def test_gitlab_get_all_pages_alias(self):
         """Test that gitlab_get_all_pages is a working alias"""
-        with patch.object(self.client, '_make_request') as mock_request:
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             mock_request.return_value = {
                 'data': [{'id': 1}],
                 'next_page': None,
@@ -86,8 +86,8 @@ class TestPaginationHelpers(unittest.TestCase):
     
     def test_make_paginated_request_single_page(self):
         """Test pagination with single page of results"""
-        # Mock _make_request to return single page
-        with patch.object(self.client, '_make_request') as mock_request:
+        # Mock gitlab_request to return single page
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             mock_request.return_value = {
                 'data': [{'id': 1}, {'id': 2}],
                 'next_page': None,
@@ -103,8 +103,8 @@ class TestPaginationHelpers(unittest.TestCase):
     
     def test_make_paginated_request_multiple_pages(self):
         """Test pagination across multiple pages"""
-        # Mock _make_request to return multiple pages
-        with patch.object(self.client, '_make_request') as mock_request:
+        # Mock gitlab_request to return multiple pages
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             # Page 1 has next_page
             mock_request.side_effect = [
                 {
@@ -135,7 +135,7 @@ class TestPaginationHelpers(unittest.TestCase):
     
     def test_make_paginated_request_empty_results(self):
         """Test pagination with empty results"""
-        with patch.object(self.client, '_make_request') as mock_request:
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             mock_request.return_value = {
                 'data': [],
                 'next_page': None,
@@ -150,7 +150,7 @@ class TestPaginationHelpers(unittest.TestCase):
     
     def test_make_paginated_request_api_error(self):
         """Test pagination handles API errors"""
-        with patch.object(self.client, '_make_request') as mock_request:
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             mock_request.return_value = None  # API error
             
             result = self.client._make_paginated_request('projects')
@@ -159,7 +159,7 @@ class TestPaginationHelpers(unittest.TestCase):
     
     def test_make_paginated_request_max_pages_limit(self):
         """Test pagination respects max_pages limit"""
-        with patch.object(self.client, '_make_request') as mock_request:
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             # Mock infinite pagination (always has next_page)
             mock_request.return_value = {
                 'data': [{'id': 1}],
@@ -176,7 +176,7 @@ class TestPaginationHelpers(unittest.TestCase):
     
     def test_make_paginated_request_uses_per_page(self):
         """Test pagination uses configured per_page parameter"""
-        with patch.object(self.client, '_make_request') as mock_request:
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             mock_request.return_value = {
                 'data': [{'id': 1}],
                 'next_page': None,
@@ -214,7 +214,7 @@ class TestGetProjectsPagination(unittest.TestCase):
     
     def test_get_projects_with_per_page_single_request(self):
         """Test get_projects(per_page=X) uses single page request for backward compatibility"""
-        with patch.object(self.client, '_make_request') as mock_request:
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             mock_request.return_value = {
                 'data': [{'id': 1}],
                 'next_page': '2',
@@ -252,7 +252,7 @@ class TestGetGroupProjectsPagination(unittest.TestCase):
     
     def test_get_group_projects_handles_large_groups(self):
         """Test get_group_projects() can handle groups with >100 projects"""
-        with patch.object(self.client, '_make_request') as mock_request:
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             # Simulate a large group with 250 projects across 3 pages
             mock_request.side_effect = [
                 {
@@ -309,7 +309,7 @@ class TestGetPipelinesPagination(unittest.TestCase):
     
     def test_get_pipelines_with_per_page_single_request(self):
         """Test get_pipelines(per_page=X) uses single page request for backward compatibility"""
-        with patch.object(self.client, '_make_request') as mock_request:
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             mock_request.return_value = {
                 'data': [{'id': 1}],
                 'next_page': '2',
@@ -325,7 +325,7 @@ class TestGetPipelinesPagination(unittest.TestCase):
     
     def test_get_pipelines_handles_projects_with_many_pipelines(self):
         """Test get_pipelines() can handle projects with >100 pipelines"""
-        with patch.object(self.client, '_make_request') as mock_request:
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             # Simulate a project with 150 pipelines across 2 pages
             mock_request.side_effect = [
                 {
@@ -363,7 +363,7 @@ class TestPaginationLogging(unittest.TestCase):
     
     def test_pagination_logs_no_secrets(self):
         """Test pagination logging doesn't include API tokens"""
-        with patch.object(self.client, '_make_request') as mock_request:
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             mock_request.return_value = {
                 'data': [{'id': 1}],
                 'next_page': None,
@@ -385,7 +385,7 @@ class TestPaginationLogging(unittest.TestCase):
         """Test that request logging redacts API token"""
         # The token should never appear in logs
         # This is handled by not logging the headers
-        with patch.object(self.client, '_make_request') as mock_request:
+        with patch.object(self.client, 'gitlab_request') as mock_request:
             mock_request.return_value = {
                 'data': [{'id': 1}],
                 'next_page': None,
@@ -433,7 +433,7 @@ class TestPerPageConfiguration(unittest.TestCase):
             per_page=25
         )
         
-        with patch.object(client, '_make_request') as mock_request:
+        with patch.object(client, 'gitlab_request') as mock_request:
             mock_request.return_value = {
                 'data': [{'id': 1}],
                 'next_page': None,
