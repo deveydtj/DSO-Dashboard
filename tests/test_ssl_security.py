@@ -151,6 +151,57 @@ class TestSSLConfiguration(unittest.TestCase):
         finally:
             if os.path.exists(ca_bundle_path):
                 os.unlink(ca_bundle_path)
+    
+    def test_client_with_nonexistent_ca_bundle_falls_back(self):
+        """Test that nonexistent CA bundle path falls back to default SSL"""
+        with patch('server.logger') as mock_logger:
+            client = server.GitLabAPIClient(
+                'https://gitlab.example.com',
+                'test-token',
+                ca_bundle_path='/nonexistent/path/to/ca-bundle.crt'
+            )
+            
+            # Should fall back to default SSL (None)
+            self.assertIsNone(client.ssl_context)
+            
+            # Should log error
+            error_logged = False
+            for call in mock_logger.error.call_args_list:
+                call_str = str(call)
+                if 'CA BUNDLE FILE NOT FOUND' in call_str or 'FAILED TO LOAD CA BUNDLE' in call_str:
+                    error_logged = True
+                    break
+            self.assertTrue(error_logged, "CA bundle error should be logged")
+    
+    def test_client_with_invalid_ca_bundle_falls_back(self):
+        """Test that invalid CA bundle content falls back to default SSL"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.crt', delete=False) as f:
+            # Write invalid content that will cause SSL error
+            f.write("This is not a valid certificate file")
+            ca_bundle_path = f.name
+        
+        try:
+            with patch('server.logger') as mock_logger:
+                client = server.GitLabAPIClient(
+                    'https://gitlab.example.com',
+                    'test-token',
+                    ca_bundle_path=ca_bundle_path
+                )
+                
+                # Should fall back to default SSL (None)
+                self.assertIsNone(client.ssl_context)
+                
+                # Should log error
+                error_logged = False
+                for call in mock_logger.error.call_args_list:
+                    call_str = str(call)
+                    if 'FAILED TO LOAD CA BUNDLE' in call_str:
+                        error_logged = True
+                        break
+                self.assertTrue(error_logged, "CA bundle error should be logged")
+        finally:
+            if os.path.exists(ca_bundle_path):
+                os.unlink(ca_bundle_path)
 
 
 class TestConfigFileBlocking(unittest.TestCase):

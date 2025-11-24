@@ -73,11 +73,25 @@ class GitLabAPIClient:
         # Create SSL context based on configuration
         if self.ca_bundle_path:
             # Use custom CA bundle (preferred for internal GitLab)
-            logger.info("=" * 70)
-            logger.info("USING CUSTOM CA BUNDLE")
-            logger.info(f"CA bundle path: {self.ca_bundle_path}")
-            logger.info("=" * 70)
-            self.ssl_context = ssl.create_default_context(cafile=self.ca_bundle_path)
+            try:
+                logger.info("=" * 70)
+                logger.info("USING CUSTOM CA BUNDLE")
+                logger.info(f"CA bundle path: {self.ca_bundle_path}")
+                logger.info("=" * 70)
+                self.ssl_context = ssl.create_default_context(cafile=self.ca_bundle_path)
+            except FileNotFoundError:
+                logger.error("=" * 70)
+                logger.error(f"CA BUNDLE FILE NOT FOUND: {self.ca_bundle_path}")
+                logger.error("Falling back to default SSL verification")
+                logger.error("=" * 70)
+                self.ssl_context = None
+            except (ssl.SSLError, OSError, IOError) as e:
+                logger.error("=" * 70)
+                logger.error(f"FAILED TO LOAD CA BUNDLE: {self.ca_bundle_path}")
+                logger.error(f"Error: {e}")
+                logger.error("Falling back to default SSL verification")
+                logger.error("=" * 70)
+                self.ssl_context = None
         elif self.insecure_skip_verify:
             # Disable SSL verification (use only on trusted networks)
             self.ssl_context = ssl.create_default_context()
