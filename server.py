@@ -38,6 +38,10 @@ EPOCH_TIMESTAMP = '1970-01-01T00:00:00Z'  # Fallback for missing timestamps
 # Default branch constant
 DEFAULT_BRANCH_NAME = 'main'     # Default branch name fallback
 
+# Pipeline statuses to ignore when calculating consecutive failures and success rates
+# These statuses represent pipelines that didn't actually test the code
+IGNORED_PIPELINE_STATUSES = ('skipped', 'manual', 'canceled', 'cancelled')
+
 # Default summary structure for empty/error states
 DEFAULT_SUMMARY = {
     'total_repositories': 0,
@@ -850,20 +854,35 @@ class BackgroundPoller(threading.Thread):
                 ]
                 
                 if default_branch_pipelines:
+                    # Calculate success rate on default branch, excluding skipped/manual/canceled
                     recent_default_pipelines = default_branch_pipelines[:10]
-                    success_count = sum(1 for p in recent_default_pipelines if p.get('status') == 'success')
-                    enriched['recent_success_rate'] = success_count / len(recent_default_pipelines)
+                    # Filter out statuses that should be ignored
+                    meaningful_pipelines = [
+                        p for p in recent_default_pipelines 
+                        if p.get('status') not in IGNORED_PIPELINE_STATUSES
+                    ]
+                    if meaningful_pipelines:
+                        success_count = sum(1 for p in meaningful_pipelines if p.get('status') == 'success')
+                        enriched['recent_success_rate'] = success_count / len(meaningful_pipelines)
+                    else:
+                        # No meaningful pipelines (all were skipped/manual/canceled)
+                        enriched['recent_success_rate'] = None
                 else:
                     # No default branch pipelines found
                     enriched['recent_success_rate'] = None
                 
                 # Calculate consecutive failures on default branch
+                # Ignore skipped/manual/canceled statuses when counting consecutive failures
                 consecutive_failures = 0
                 for pipeline in default_branch_pipelines:
-                    if pipeline.get('status') == 'failed':
+                    status = pipeline.get('status')
+                    if status == 'failed':
                         consecutive_failures += 1
+                    elif status in IGNORED_PIPELINE_STATUSES:
+                        # Ignore these statuses - they don't break the consecutive failure count
+                        continue
                     else:
-                        # Stop counting at first non-failure
+                        # Stop counting at first actual success/running/pending
                         break
                 enriched['consecutive_default_branch_failures'] = consecutive_failures
             else:

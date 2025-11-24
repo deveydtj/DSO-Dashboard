@@ -1,18 +1,19 @@
 {
   "summary": {
     "total_repositories": 8,
-    "active_repositories": 7,
-    "total_pipelines": 45,
-    "successful_pipelines": 38,
-    "failed_pipelines": 4,
-    "running_pipelines": 2,
-    "pending_pipelines": 1,
-    "pipeline_success_rate": 0.8444444444444444,
+    "active_repositories": 8,
+    "total_pipelines": 18,
+    "successful_pipelines": 8,
+    "failed_pipelines": 5,
+    "running_pipelines": 1,
+    "pending_pipelines": 0,
+    "pipeline_success_rate": 0.4444444444444444,
     "pipeline_statuses": {
-      "success": 38,
-      "failed": 4,
-      "running": 2,
-      "pending": 1
+      "success": 8,
+      "failed": 5,
+      "running": 1,
+      "manual": 2,
+      "skipped": 2
     }
   },
   "repositories": [
@@ -32,7 +33,7 @@
       "last_pipeline_ref": "main",
       "last_pipeline_duration": 245,
       "last_pipeline_updated_at": "2024-01-20T10:35:00.000Z",
-      "recent_success_rate": 0.9,
+      "recent_success_rate": 1.0,
       "consecutive_default_branch_failures": 0
     },
     {
@@ -51,7 +52,7 @@
       "last_pipeline_ref": "main",
       "last_pipeline_duration": 380,
       "last_pipeline_updated_at": "2024-01-20T09:20:00.000Z",
-      "recent_success_rate": 0.8,
+      "recent_success_rate": 1.0,
       "consecutive_default_branch_failures": 0
     },
     {
@@ -70,8 +71,8 @@
       "last_pipeline_ref": "main",
       "last_pipeline_duration": 156,
       "last_pipeline_updated_at": "2024-01-20T08:50:00.000Z",
-      "recent_success_rate": 0.7,
-      "consecutive_default_branch_failures": 2
+      "recent_success_rate": 0.25,
+      "consecutive_default_branch_failures": 3
     },
     {
       "id": 10004,
@@ -89,7 +90,7 @@
       "last_pipeline_ref": "main",
       "last_pipeline_duration": 520,
       "last_pipeline_updated_at": "2024-01-19T16:30:00.000Z",
-      "recent_success_rate": 0.95,
+      "recent_success_rate": 1.0,
       "consecutive_default_branch_failures": 0
     },
     {
@@ -108,7 +109,7 @@
       "last_pipeline_ref": "develop",
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-19T14:15:00.000Z",
-      "recent_success_rate": 0.85,
+      "recent_success_rate": null,
       "consecutive_default_branch_failures": 0
     },
     {
@@ -146,7 +147,7 @@
       "last_pipeline_ref": "main",
       "last_pipeline_duration": 0,
       "last_pipeline_updated_at": "2024-01-17T09:10:00.000Z",
-      "recent_success_rate": 0.75,
+      "recent_success_rate": null,
       "consecutive_default_branch_failures": 0
     },
     {
@@ -165,7 +166,7 @@
       "last_pipeline_ref": "main",
       "last_pipeline_duration": 310,
       "last_pipeline_updated_at": "2024-01-16T15:55:00.000Z",
-      "recent_success_rate": 0.88,
+      "recent_success_rate": 1.0,
       "consecutive_default_branch_failures": 0
     }
   ],
@@ -195,19 +196,6 @@
       "created_at": "2024-01-20T09:15:00.000Z",
       "updated_at": "2024-01-20T09:20:00.000Z",
       "duration": 380
-    },
-    {
-      "id": 50003,
-      "project_id": 10003,
-      "project_name": "mobile-app",
-      "project_path": "demo-group/mobile-app",
-      "status": "failed",
-      "ref": "main",
-      "sha": "i9j0k1l2",
-      "web_url": "https://gitlab.com/demo-group/mobile-app/-/pipelines/50003",
-      "created_at": "2024-01-20T08:45:00.000Z",
-      "updated_at": "2024-01-20T08:50:00.000Z",
-      "duration": 156
     },
     {
       "id": 50004,
@@ -325,6 +313,97 @@
       "created_at": "2024-01-19T18:30:00.000Z",
       "updated_at": "2024-01-19T18:36:00.000Z",
       "duration": 365
+    },
+    {
+      "id": 50003,
+      "project_id": 10003,
+      "project_name": "mobile-app",
+      "project_path": "demo-group/mobile-app",
+      "status": "failed",
+      "ref": "main",
+      "sha": "i9j0k1l2",
+      "web_url": "https://gitlab.com/demo-group/mobile-app/-/pipelines/50003",
+      "created_at": "2024-01-20T08:45:00.000Z",
+      "updated_at": "2024-01-20T08:50:00.000Z",
+      "duration": 156
+    },
+    {
+      "id": 50103,
+      "project_id": 10003,
+      "project_name": "mobile-app",
+      "project_path": "demo-group/mobile-app",
+      "status": "skipped",
+      "ref": "main",
+      "sha": "sk1pp3d1",
+      "web_url": "https://gitlab.com/demo-group/mobile-app/-/pipelines/50103",
+      "created_at": "2024-01-20T06:45:00.000Z",
+      "updated_at": "2024-01-20T06:45:00.000Z",
+      "duration": 0
+    },
+    {
+      "id": 50104,
+      "project_id": 10003,
+      "project_name": "mobile-app",
+      "project_path": "demo-group/mobile-app",
+      "status": "failed",
+      "ref": "main",
+      "sha": "fa1l3d02",
+      "web_url": "https://gitlab.com/demo-group/mobile-app/-/pipelines/50104",
+      "created_at": "2024-01-20T04:45:00.000Z",
+      "updated_at": "2024-01-20T04:50:00.000Z",
+      "duration": 145
+    },
+    {
+      "id": 50105,
+      "project_id": 10003,
+      "project_name": "mobile-app",
+      "project_path": "demo-group/mobile-app",
+      "status": "manual",
+      "ref": "main",
+      "sha": "man1al01",
+      "web_url": "https://gitlab.com/demo-group/mobile-app/-/pipelines/50105",
+      "created_at": "2024-01-20T02:45:00.000Z",
+      "updated_at": "2024-01-20T02:45:00.000Z",
+      "duration": 0
+    },
+    {
+      "id": 50106,
+      "project_id": 10003,
+      "project_name": "mobile-app",
+      "project_path": "demo-group/mobile-app",
+      "status": "failed",
+      "ref": "main",
+      "sha": "fa1l3d03",
+      "web_url": "https://gitlab.com/demo-group/mobile-app/-/pipelines/50106",
+      "created_at": "2024-01-20T00:45:00.000Z",
+      "updated_at": "2024-01-20T00:50:00.000Z",
+      "duration": 150
+    },
+    {
+      "id": 50107,
+      "project_id": 10003,
+      "project_name": "mobile-app",
+      "project_path": "demo-group/mobile-app",
+      "status": "success",
+      "ref": "main",
+      "sha": "succ3ss1",
+      "web_url": "https://gitlab.com/demo-group/mobile-app/-/pipelines/50107",
+      "created_at": "2024-01-19T22:45:00.000Z",
+      "updated_at": "2024-01-19T22:51:00.000Z",
+      "duration": 180
+    },
+    {
+      "id": 50108,
+      "project_id": 10003,
+      "project_name": "mobile-app",
+      "project_path": "demo-group/mobile-app",
+      "status": "failed",
+      "ref": "feature/new-ui",
+      "sha": "feat1234",
+      "web_url": "https://gitlab.com/demo-group/mobile-app/-/pipelines/50108",
+      "created_at": "2024-01-20T07:45:00.000Z",
+      "updated_at": "2024-01-20T07:50:00.000Z",
+      "duration": 120
     }
   ]
 }
