@@ -1188,6 +1188,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             response.update({
                 'last_updated': None,
                 'backend_status': 'ERROR',
+                'is_mock': MOCK_MODE_ENABLED,
                 'error': str(e)
             })
             self.send_json_response(response, status=500)

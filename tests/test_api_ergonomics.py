@@ -436,6 +436,22 @@ class TestIsMockInErrorResponses(unittest.TestCase):
         response_data = handler.send_json_response.call_args[0][0]
         self.assertIn('is_mock', response_data)
         self.assertTrue(response_data['is_mock'])
+    
+    def test_summary_error_includes_is_mock(self):
+        """Test /api/summary error response includes is_mock"""
+        server.MOCK_MODE_ENABLED = True
+        
+        handler = MagicMock(spec=server.DashboardRequestHandler)
+        handler.send_json_response = MagicMock()
+        
+        # Force an error by making get_state_snapshot raise an exception
+        with patch.object(server, 'get_state_snapshot', side_effect=Exception('Test error')):
+            server.DashboardRequestHandler.handle_summary(handler)
+        
+        handler.send_json_response.assert_called_once()
+        response_data = handler.send_json_response.call_args[0][0]
+        self.assertIn('is_mock', response_data)
+        self.assertTrue(response_data['is_mock'])
 
 
 if __name__ == '__main__':
