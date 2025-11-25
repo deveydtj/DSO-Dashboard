@@ -954,33 +954,31 @@ class BackgroundPoller(threading.Thread):
                 enriched['last_pipeline_duration'] = last_pipeline.get('duration')
                 enriched['last_pipeline_updated_at'] = last_pipeline.get('updated_at')
                 
-                # Calculate recent success rate (last 10 pipelines on default branch only)
+                # Calculate recent success rate using the last N pipelines across ALL branches
+                # (excluding skipped/manual/canceled). This allows noisy feature branches
+                # to drag a repo's health down, giving a more complete picture.
+                recent_pipelines = pipelines_for_project[:PIPELINES_PER_PROJECT]
+                # Filter out statuses that should be ignored
+                meaningful_pipelines = [
+                    p for p in recent_pipelines 
+                    if p.get('status') not in IGNORED_PIPELINE_STATUSES
+                ]
+                if meaningful_pipelines:
+                    success_count = sum(1 for p in meaningful_pipelines if p.get('status') == 'success')
+                    enriched['recent_success_rate'] = success_count / len(meaningful_pipelines)
+                else:
+                    # No meaningful pipelines (all were skipped/manual/canceled)
+                    enriched['recent_success_rate'] = None
+                
+                # Calculate consecutive failures on DEFAULT BRANCH ONLY
+                # This metric intentionally ignores other branches, providing a pure signal
+                # for the health of the main development branch.
+                # Ignore skipped/manual/canceled statuses when counting consecutive failures
                 default_branch = project.get('default_branch', DEFAULT_BRANCH_NAME)
                 default_branch_pipelines = [
                     p for p in pipelines_for_project 
                     if p.get('ref') == default_branch
                 ]
-                
-                if default_branch_pipelines:
-                    # Calculate success rate on default branch, excluding skipped/manual/canceled
-                    recent_default_pipelines = default_branch_pipelines[:10]
-                    # Filter out statuses that should be ignored
-                    meaningful_pipelines = [
-                        p for p in recent_default_pipelines 
-                        if p.get('status') not in IGNORED_PIPELINE_STATUSES
-                    ]
-                    if meaningful_pipelines:
-                        success_count = sum(1 for p in meaningful_pipelines if p.get('status') == 'success')
-                        enriched['recent_success_rate'] = success_count / len(meaningful_pipelines)
-                    else:
-                        # No meaningful pipelines (all were skipped/manual/canceled)
-                        enriched['recent_success_rate'] = None
-                else:
-                    # No default branch pipelines found
-                    enriched['recent_success_rate'] = None
-                
-                # Calculate consecutive failures on default branch
-                # Ignore skipped/manual/canceled statuses when counting consecutive failures
                 consecutive_failures = 0
                 for pipeline in default_branch_pipelines:
                     status = pipeline.get('status')
@@ -1013,6 +1011,10 @@ class BackgroundPoller(threading.Thread):
         Note: This should only be called when both projects and pipelines
         were successfully fetched (not None). The caller is responsible for
         ensuring valid data.
+        
+        Metrics distinction:
+        - Repo-level `recent_success_rate` is based on recent pipelines across ALL branches.
+        - Summary-level `pipeline_success_rate` is based on ALL fetched pipelines.
         
         Returns summary dict without timestamp (caller adds it from STATE).
         """

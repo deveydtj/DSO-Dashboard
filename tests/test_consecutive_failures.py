@@ -248,7 +248,7 @@ class TestConsecutiveFailureLogic(unittest.TestCase):
 
 
 class TestSuccessRateCalculation(unittest.TestCase):
-    """Test that success rate also excludes skipped/manual/canceled"""
+    """Test that success rate uses ALL branches and excludes skipped/manual/canceled"""
     
     def test_success_rate_ignores_skipped_manual_canceled(self):
         """Test that success rate calculation ignores skipped/manual/canceled"""
@@ -298,17 +298,19 @@ class TestSuccessRateCalculation(unittest.TestCase):
         
         self.assertIsNone(enriched[0]['recent_success_rate'])
     
-    def test_success_rate_only_counts_default_branch(self):
-        """Test that success rate only considers default branch pipelines"""
+    def test_success_rate_includes_all_branches(self):
+        """Test that success rate includes pipelines from ALL branches"""
         project = {
             'id': 1,
             'name': 'test-project',
             'default_branch': 'main'
         }
         
+        # Mix of main and feature branch pipelines
+        # All branches are included in success rate
         pipelines = [
             {'status': 'success', 'ref': 'main', 'created_at': '2024-01-20T10:00:00Z'},
-            {'status': 'failed', 'ref': 'feature/new', 'created_at': '2024-01-20T09:00:00Z'},  # ignored
+            {'status': 'failed', 'ref': 'feature/new', 'created_at': '2024-01-20T09:00:00Z'},  # INCLUDED
             {'status': 'failed', 'ref': 'main', 'created_at': '2024-01-20T08:00:00Z'},
         ]
         
@@ -317,8 +319,88 @@ class TestSuccessRateCalculation(unittest.TestCase):
         poller = server.BackgroundPoller(None, 60)
         enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
         
-        # Should be 1 success / 2 main branch pipelines = 0.5
-        self.assertEqual(enriched[0]['recent_success_rate'], 0.5)
+        # Should be 1 success / 3 total meaningful pipelines = 0.333...
+        self.assertAlmostEqual(enriched[0]['recent_success_rate'], 1/3)
+    
+    def test_success_rate_all_branches_noisy_feature_drags_down_health(self):
+        """Test that noisy feature branches can drag a repo's health down"""
+        project = {
+            'id': 1,
+            'name': 'test-project',
+            'default_branch': 'main'
+        }
+        
+        # Default branch is healthy (all success), but feature branch has failures
+        pipelines = [
+            {'status': 'success', 'ref': 'main', 'created_at': '2024-01-20T10:00:00Z'},
+            {'status': 'failed', 'ref': 'feature/broken', 'created_at': '2024-01-20T09:00:00Z'},
+            {'status': 'failed', 'ref': 'feature/broken', 'created_at': '2024-01-20T08:00:00Z'},
+            {'status': 'failed', 'ref': 'feature/broken', 'created_at': '2024-01-20T07:00:00Z'},
+            {'status': 'success', 'ref': 'main', 'created_at': '2024-01-20T06:00:00Z'},
+        ]
+        
+        per_project_pipelines = {1: pipelines}
+        
+        poller = server.BackgroundPoller(None, 60)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        
+        # Should be 2 successes / 5 total pipelines = 0.4
+        # Feature branch failures drag the health down
+        self.assertEqual(enriched[0]['recent_success_rate'], 0.4)
+    
+    def test_success_rate_uses_first_n_pipelines(self):
+        """Test that success rate uses first N pipelines (up to PIPELINES_PER_PROJECT)"""
+        project = {
+            'id': 1,
+            'name': 'test-project',
+            'default_branch': 'main'
+        }
+        
+        # Create more pipelines than PIPELINES_PER_PROJECT (10)
+        # First 10 are all failures, later ones are successes
+        pipelines = []
+        for i in range(15):
+            status = 'failed' if i < 10 else 'success'
+            pipelines.append({
+                'status': status,
+                'ref': 'main',
+                'created_at': f'2024-01-{20-i:02d}T10:00:00Z'
+            })
+        
+        per_project_pipelines = {1: pipelines}
+        
+        poller = server.BackgroundPoller(None, 60)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        
+        # Should only consider first 10 pipelines (all failed) = 0.0
+        self.assertEqual(enriched[0]['recent_success_rate'], 0.0)
+    
+    def test_consecutive_failures_still_default_branch_only(self):
+        """Test that consecutive failures is still default-branch-only even with all-branch success rate"""
+        project = {
+            'id': 1,
+            'name': 'test-project',
+            'default_branch': 'main'
+        }
+        
+        # Feature branch has many failures, but main branch is healthy
+        pipelines = [
+            {'status': 'success', 'ref': 'main', 'created_at': '2024-01-20T10:00:00Z'},
+            {'status': 'failed', 'ref': 'feature/broken', 'created_at': '2024-01-20T09:00:00Z'},
+            {'status': 'failed', 'ref': 'feature/broken', 'created_at': '2024-01-20T08:00:00Z'},
+            {'status': 'failed', 'ref': 'feature/broken', 'created_at': '2024-01-20T07:00:00Z'},
+        ]
+        
+        per_project_pipelines = {1: pipelines}
+        
+        poller = server.BackgroundPoller(None, 60)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        
+        # Success rate includes all branches: 1 success / 4 total = 0.25
+        self.assertEqual(enriched[0]['recent_success_rate'], 0.25)
+        
+        # But consecutive failures is 0 (main branch has success)
+        self.assertEqual(enriched[0]['consecutive_default_branch_failures'], 0)
 
 
 if __name__ == '__main__':
