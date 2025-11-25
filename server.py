@@ -1143,6 +1143,15 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             # Unsupported POST endpoint
             self.send_json_response({'error': 'Endpoint not found'}, status=404)
     
+    def do_OPTIONS(self):
+        """Handle OPTIONS requests for CORS preflight"""
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        self.send_header('Access-Control-Max-Age', '86400')  # Cache preflight for 24 hours
+        self.end_headers()
+    
     def handle_summary(self):
         """Handle /api/summary endpoint
         
@@ -1179,6 +1188,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             response.update({
                 'last_updated': None,
                 'backend_status': 'ERROR',
+                'is_mock': MOCK_MODE_ENABLED,
                 'error': str(e)
             })
             self.send_json_response(response, status=500)
@@ -1228,7 +1238,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'repositories': repos,
                 'total': len(repos),
                 'last_updated': snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated']) if snapshot['last_updated'] else None,
-                'backend_status': snapshot['status']  # Add status for frontend to detect stale data
+                'backend_status': snapshot['status'],  # Add status for frontend to detect stale data
+                'is_mock': MOCK_MODE_ENABLED  # Indicate if data is from mock source
             }
             
             self.send_json_response(response)
@@ -1241,6 +1252,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'total': 0,
                 'last_updated': None,
                 'backend_status': 'ERROR',
+                'is_mock': MOCK_MODE_ENABLED,
                 'error': str(e)
             }, status=500)
     
@@ -1274,7 +1286,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     raise ValueError(f"limit must not exceed {MAX_PIPELINE_LIMIT}")
             except (ValueError, IndexError) as e:
                 logger.error(f"Invalid limit parameter: {e}")
-                self.send_json_response({'error': f'Invalid limit parameter: {str(e)}'}, status=400)
+                self.send_json_response({'error': f'Invalid limit parameter: {str(e)}', 'is_mock': MOCK_MODE_ENABLED}, status=400)
                 return
             
             # Get optional filter parameters
@@ -1334,7 +1346,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'total': len(limited_pipelines),
                 'total_before_limit': len(filtered_pipelines),  # For pagination context
                 'last_updated': snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated']) if snapshot['last_updated'] else None,
-                'backend_status': snapshot['status']  # Add status for frontend to detect stale data
+                'backend_status': snapshot['status'],  # Add status for frontend to detect stale data
+                'is_mock': MOCK_MODE_ENABLED  # Indicate if data is from mock source
             }
             
             self.send_json_response(response)
@@ -1348,6 +1361,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'total_before_limit': 0,
                 'last_updated': None,
                 'backend_status': 'ERROR',
+                'is_mock': MOCK_MODE_ENABLED,
                 'error': str(e)
             }, status=500)
     
@@ -1376,7 +1390,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'backend_status': snapshot['status'],
                 'timestamp': datetime.now().isoformat(),
                 'last_poll': last_poll,
-                'error': snapshot['error']
+                'error': snapshot['error'],
+                'is_mock': MOCK_MODE_ENABLED  # Indicate if data is from mock source
             }
             
             # Return 200 OK only for ONLINE (proven GitLab connectivity)
@@ -1389,7 +1404,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             health = {
                 'status': 'unhealthy',
                 'timestamp': datetime.now().isoformat(),
-                'error': str(e)
+                'error': str(e),
+                'is_mock': MOCK_MODE_ENABLED
             }
             self.send_json_response(health, status=503)
     
@@ -1452,10 +1468,12 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             }, status=500)
     
     def send_json_response(self, data, status=200):
-        """Send JSON response"""
+        """Send JSON response with security headers"""
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Cache-Control', 'no-store, max-age=0')
+        self.send_header('X-Content-Type-Options', 'nosniff')
         self.end_headers()
         self.wfile.write(json.dumps(data, indent=2).encode('utf-8'))
     
