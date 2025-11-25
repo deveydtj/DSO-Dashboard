@@ -345,21 +345,6 @@ body {
     min-height: 2.5em;
 }
 
-.repo-stats {
-    display: flex;
-    gap: var(--spacing-md);
-    padding-top: var(--spacing-sm);
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.repo-stat {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-xs);
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-}
-
 .repo-link {
     display: inline-block;
     margin-top: var(--spacing-sm);
@@ -953,15 +938,6 @@ body.compact .repo-visibility {
     font-size: 0.7rem;
 }
 
-body.compact .repo-stats {
-    gap: 0.75rem;
-    padding-top: 0.5rem;
-}
-
-body.compact .repo-stat {
-    font-size: 0.75rem;
-}
-
 body.compact .repo-pipeline {
     margin: 0.75rem 0;
     padding-top: 0.5rem;
@@ -1171,10 +1147,6 @@ body.tv .repo-name {
 }
 
 body.tv .repo-description {
-    font-size: 1.2rem;
-}
-
-body.tv .repo-stat {
     font-size: 1.2rem;
 }
 
