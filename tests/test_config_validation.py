@@ -379,14 +379,14 @@ class TestMainWithValidation(unittest.TestCase):
             with patch.object(server, 'load_mock_data') as mock_load_mock:
                 mock_load_mock.return_value = mock_data
                 
-                with patch.object(server.DashboardServer, 'serve_forever') as mock_serve:
-                    # Simulate KeyboardInterrupt to exit serve_forever
-                    mock_serve.side_effect = KeyboardInterrupt()
-                    
-                    with patch.object(server.DashboardServer, 'shutdown'):
-                        result = server.main()
-                        # Should exit cleanly with 0
-                        self.assertEqual(result, 0)
+                # Patch DashboardServer to avoid binding to real port
+                mock_server = MagicMock()
+                mock_server.serve_forever.side_effect = KeyboardInterrupt()
+                
+                with patch.object(server, 'DashboardServer', return_value=mock_server):
+                    result = server.main()
+                    # Should exit cleanly with 0
+                    self.assertEqual(result, 0)
 
 
 if __name__ == '__main__':
