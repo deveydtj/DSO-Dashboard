@@ -307,10 +307,10 @@ class TestSuccessRateCalculation(unittest.TestCase):
         }
         
         # Mix of main and feature branch pipelines
-        # All branches are included in success rate
+        # All branches are included in success rate (not just default branch)
         pipelines = [
             {'status': 'success', 'ref': 'main', 'created_at': '2024-01-20T10:00:00Z'},
-            {'status': 'failed', 'ref': 'feature/new', 'created_at': '2024-01-20T09:00:00Z'},  # INCLUDED
+            {'status': 'failed', 'ref': 'feature/new', 'created_at': '2024-01-20T09:00:00Z'},  # now included in success rate
             {'status': 'failed', 'ref': 'main', 'created_at': '2024-01-20T08:00:00Z'},
         ]
         
@@ -348,8 +348,8 @@ class TestSuccessRateCalculation(unittest.TestCase):
         # Feature branch failures drag the health down
         self.assertEqual(enriched[0]['recent_success_rate'], 0.4)
     
-    def test_success_rate_uses_first_n_pipelines(self):
-        """Test that success rate uses first N pipelines (up to PIPELINES_PER_PROJECT)"""
+    def test_success_rate_respects_pipelines_per_project_limit(self):
+        """Test that success rate uses only the first 10 pipelines (PIPELINES_PER_PROJECT)"""
         project = {
             'id': 1,
             'name': 'test-project',
@@ -358,13 +358,14 @@ class TestSuccessRateCalculation(unittest.TestCase):
         
         # Create more pipelines than PIPELINES_PER_PROJECT (10)
         # First 10 are all failures, later ones are successes
+        # Use different hours instead of days to avoid invalid date issues
         pipelines = []
         for i in range(15):
             status = 'failed' if i < 10 else 'success'
             pipelines.append({
                 'status': status,
                 'ref': 'main',
-                'created_at': f'2024-01-{20-i:02d}T10:00:00Z'
+                'created_at': f'2024-01-20T{23-i:02d}:00:00Z'
             })
         
         per_project_pipelines = {1: pipelines}
