@@ -1585,11 +1585,6 @@ def load_config():
     if isinstance(config['project_ids'], list):
         config['project_ids'] = [str(pid).strip() for pid in config['project_ids'] if pid and str(pid).strip()]
     
-    # Validate required fields (only if not in mock mode)
-    if not config['use_mock_data'] and not config['api_token']:
-        logger.warning("GITLAB_API_TOKEN not set. API requests will fail.")
-        logger.warning("Set GITLAB_API_TOKEN environment variable or add 'api_token' to config.json")
-    
     # Log configuration (without secrets)
     logger.info(f"Configuration loaded from: {config_source}")
     logger.info(f"  Log level: {config['log_level']}")
@@ -1608,6 +1603,66 @@ def load_config():
     logger.info(f"  API token: {'***' if config['api_token'] else 'NOT SET'}")
     
     return config
+
+
+def validate_config(config):
+    """Validate configuration values and fail-fast if invalid
+    
+    Validates:
+    - API token must be provided if mock mode is disabled
+    - poll_interval_sec must be a positive integer (≥5 recommended)
+    - cache_ttl_sec must not be negative
+    - per_page must be positive
+    
+    Args:
+        config: Configuration dict from load_config()
+    
+    Returns:
+        bool: True if configuration is valid, False otherwise
+    
+    Side effects:
+        Logs error messages describing which key is invalid and how to fix it
+    """
+    is_valid = True
+    
+    # Skip API token validation if mock mode is enabled
+    if not config.get('use_mock_data', False):
+        # API token is required in non-mock mode
+        if not config.get('api_token'):
+            logger.error("Configuration error: 'api_token' is required when mock mode is disabled")
+            logger.error("  Fix: Set GITLAB_API_TOKEN environment variable or add 'api_token' to config.json")
+            is_valid = False
+    
+    # Validate poll_interval_sec is a positive integer
+    poll_interval = config.get('poll_interval_sec')
+    if poll_interval is None or not isinstance(poll_interval, int) or poll_interval <= 0:
+        logger.error(f"Configuration error: 'poll_interval_sec' must be a positive integer, got: {poll_interval}")
+        logger.error("  Fix: Set POLL_INTERVAL environment variable or 'poll_interval_sec' in config.json to a positive integer")
+        is_valid = False
+    elif poll_interval < 5:
+        logger.warning(f"Configuration warning: 'poll_interval_sec' is {poll_interval}s, which is very short. Recommend ≥5s to avoid rate limiting.")
+    
+    # Validate cache_ttl_sec is not negative
+    cache_ttl = config.get('cache_ttl_sec')
+    if cache_ttl is None or not isinstance(cache_ttl, int) or cache_ttl < 0:
+        logger.error(f"Configuration error: 'cache_ttl_sec' must be a non-negative integer, got: {cache_ttl}")
+        logger.error("  Fix: Set CACHE_TTL environment variable or 'cache_ttl_sec' in config.json to 0 or a positive integer")
+        is_valid = False
+    
+    # Validate per_page is positive
+    per_page = config.get('per_page')
+    if per_page is None or not isinstance(per_page, int) or per_page <= 0:
+        logger.error(f"Configuration error: 'per_page' must be a positive integer, got: {per_page}")
+        logger.error("  Fix: Set PER_PAGE environment variable or 'per_page' in config.json to a positive integer (1-100)")
+        is_valid = False
+    
+    # Log validation result
+    if is_valid:
+        logger.info("Configuration validation passed")
+    else:
+        logger.error("Configuration validation failed - see errors above")
+    
+    return is_valid
 
 
 def load_mock_data(scenario=''):
@@ -1669,6 +1724,11 @@ def main():
     
     # Load configuration
     config = load_config()
+    
+    # Validate configuration (fail-fast on invalid config)
+    if not validate_config(config):
+        logger.error("Server startup aborted due to configuration errors")
+        return 1
     
     # Check if mock mode is enabled
     if config['use_mock_data']:
@@ -1741,7 +1801,10 @@ def main():
                 logger.warning("Poller thread did not stop cleanly")
         httpd.shutdown()
         logger.info("Server stopped.")
+    
+    return 0
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    sys.exit(main() or 0)
