@@ -402,7 +402,8 @@ class DashboardApp {
         const prevState = this.repoState;
         const nextState = new Map();
 
-        // Sort repositories: failing repos first
+        // Sort repositories by: (1) default-branch consecutive failures, (2) recent all-branch success rate,
+        // (3) last pipeline status, (4) name alphabetically
         const sortedRepos = [...repos].sort((a, b) => {
             // First priority: consecutive_default_branch_failures DESC
             const failuresA = a.consecutive_default_branch_failures || 0;
@@ -411,7 +412,25 @@ class DashboardApp {
                 return failuresB - failuresA;
             }
 
-            // Second priority: failed/running pipelines first (using normalized status)
+            // Second priority: recent_success_rate (lower is worse, so sort ascending)
+            // Repos with no success rate data (null/undefined) sort after those with data
+            const successA = typeof a.recent_success_rate === 'number' ? a.recent_success_rate : null;
+            const successB = typeof b.recent_success_rate === 'number' ? b.recent_success_rate : null;
+            if (successA !== null && successB !== null) {
+                // Both have numeric values - lower success rate comes first
+                if (successA !== successB) {
+                    return successA - successB;
+                }
+            } else if (successA !== null && successB === null) {
+                // A has data, B doesn't - A comes first
+                return -1;
+            } else if (successA === null && successB !== null) {
+                // B has data, A doesn't - B comes first
+                return 1;
+            }
+            // Both null or equal - fall through to next priority
+
+            // Third priority: failed/running pipelines first (using normalized status)
             const normalizedStatusA = this.normalizeStatus(a.last_pipeline_status);
             const normalizedStatusB = this.normalizeStatus(b.last_pipeline_status);
             
@@ -432,7 +451,7 @@ class DashboardApp {
                 return priorityA - priorityB;
             }
 
-            // Third priority: alphabetical by name
+            // Fourth priority: alphabetical by name
             const nameA = (a.name || '').toLowerCase();
             const nameB = (b.name || '').toLowerCase();
             return nameA.localeCompare(nameB);
@@ -507,9 +526,9 @@ class DashboardApp {
         if (repo.recent_success_rate != null) {
             const successPercent = Math.round(repo.recent_success_rate * 100);
             successRateSection = `
-                <div class="repo-success-rate">
+                <div class="repo-success-rate" title="Recent success rate across all branches (excludes skipped/manual/canceled pipelines)">
                     <div class="success-rate-label">
-                        <span>Success Rate</span>
+                        <span>Recent Success Rate</span>
                         <span class="success-rate-value">${successPercent}%</span>
                     </div>
                     <div class="success-rate-bar">
