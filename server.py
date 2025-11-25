@@ -1467,7 +1467,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'is_mock': True,
                 'backend_status': snapshot['status'],
                 'last_updated': timestamp_iso,
-                'timestamp': timestamp_iso,  # Keep for backward compatibility
+                'timestamp': timestamp_iso,  # Deprecated: use last_updated (kept for backward compatibility)
                 'scenario': MOCK_SCENARIO if MOCK_SCENARIO else 'default',
                 'summary': {
                     'repositories': len(mock_data['repositories']),
