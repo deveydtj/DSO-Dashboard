@@ -37,7 +37,26 @@ class DashboardApp {
             repos: null,
             pipelines: null
         };
+        // Track per-repo state between refreshes for animation detection
+        // Stores { status: normalizedStatus, index: sortedPosition } per repo key
+        this.repoState = new Map();
         this.init();
+    }
+
+    /**
+     * Get a stable unique key for a repository
+     * @param {Object} repo - Repository object
+     * @returns {string} - Stable key for the repository
+     */
+    getRepoKey(repo) {
+        // Prefer id (most stable), fallback to path_with_namespace, then name
+        if (repo.id != null) {
+            return String(repo.id);
+        }
+        if (repo.path_with_namespace) {
+            return repo.path_with_namespace;
+        }
+        return repo.name || 'unknown';
     }
 
     init() {
@@ -379,6 +398,10 @@ class DashboardApp {
             return;
         }
 
+        // Grab previous state for change detection
+        const prevState = this.repoState || new Map();
+        const nextState = new Map();
+
         // Sort repositories: failing repos first
         const sortedRepos = [...repos].sort((a, b) => {
             // First priority: consecutive_default_branch_failures DESC
@@ -415,10 +438,44 @@ class DashboardApp {
             return nameA.localeCompare(nameB);
         });
 
-        container.innerHTML = sortedRepos.map(repo => this.createRepoCard(repo)).join('');
+        // Generate cards with attention classes based on state changes
+        const cardsHtml = sortedRepos.map((repo, currentIndex) => {
+            const key = this.getRepoKey(repo);
+            const normalizedStatus = this.normalizeStatus(repo.last_pipeline_status);
+            const prev = prevState.get(key);
+
+            // Determine if status degraded (success -> failed is primary case)
+            // Also treat running -> failed or other -> failed as degradation
+            let hasDegradedStatus = false;
+            if (prev && normalizedStatus === 'failed') {
+                const wasNotFailed = prev.status !== 'failed';
+                hasDegradedStatus = wasNotFailed;
+            }
+
+            // Determine if position changed
+            const hasMoved = prev && typeof prev.index === 'number' && prev.index !== currentIndex;
+
+            // Build extra CSS classes - prefer degradation over movement
+            let attentionClass = '';
+            if (hasDegradedStatus) {
+                attentionClass = ' repo-status-degraded';
+            } else if (hasMoved) {
+                attentionClass = ' repo-moved';
+            }
+
+            // Store new state for next refresh
+            nextState.set(key, { status: normalizedStatus, index: currentIndex });
+
+            return this.createRepoCard(repo, attentionClass);
+        }).join('');
+
+        container.innerHTML = cardsHtml;
+
+        // Update instance state for subsequent refreshes
+        this.repoState = nextState;
     }
 
-    createRepoCard(repo) {
+    createRepoCard(repo, extraClasses = '') {
         const description = repo.description || 'No description available';
         const pipelineStatus = repo.last_pipeline_status || null;
         const normalizedStatus = this.normalizeStatus(pipelineStatus);
@@ -467,8 +524,11 @@ class DashboardApp {
             `;
         }
 
+        // Combine status class with any extra attention classes
+        const cardClasses = `repo-card ${statusClass}${extraClasses}`;
+
         return `
-            <div class="repo-card ${statusClass}">
+            <div class="${cardClasses}">
                 <div class="repo-header">
                     <div>
                         <h3 class="repo-name">${this.escapeHtml(repo.name)}</h3>
