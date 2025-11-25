@@ -1285,7 +1285,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     raise ValueError(f"limit must not exceed {MAX_PIPELINE_LIMIT}")
             except (ValueError, IndexError) as e:
                 logger.error(f"Invalid limit parameter: {e}")
-                self.send_json_response({'error': f'Invalid limit parameter: {str(e)}'}, status=400)
+                self.send_json_response({'error': f'Invalid limit parameter: {str(e)}', 'is_mock': MOCK_MODE_ENABLED}, status=400)
                 return
             
             # Get optional filter parameters

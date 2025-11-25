@@ -220,7 +220,7 @@ class TestPipelinesLimitValidation(unittest.TestCase):
         return 200  # Default status
     
     def test_invalid_limit_returns_400(self):
-        """Test that non-numeric limit returns 400 error"""
+        """Test that non-numeric limit returns 400 error with is_mock"""
         handler = MagicMock(spec=server.DashboardRequestHandler)
         handler.send_json_response = MagicMock()
         handler.path = '/api/pipelines?limit=invalid'
@@ -233,10 +233,11 @@ class TestPipelinesLimitValidation(unittest.TestCase):
         status_code = self._get_status_code(call_args)
         
         self.assertIn('error', response_data)
+        self.assertIn('is_mock', response_data)
         self.assertEqual(status_code, 400)
     
     def test_zero_limit_returns_400(self):
-        """Test that limit=0 returns 400 error"""
+        """Test that limit=0 returns 400 error with is_mock"""
         handler = MagicMock(spec=server.DashboardRequestHandler)
         handler.send_json_response = MagicMock()
         handler.path = '/api/pipelines?limit=0'
@@ -249,10 +250,11 @@ class TestPipelinesLimitValidation(unittest.TestCase):
         status_code = self._get_status_code(call_args)
         
         self.assertIn('error', response_data)
+        self.assertIn('is_mock', response_data)
         self.assertEqual(status_code, 400)
     
     def test_negative_limit_returns_400(self):
-        """Test that negative limit returns 400 error"""
+        """Test that negative limit returns 400 error with is_mock"""
         handler = MagicMock(spec=server.DashboardRequestHandler)
         handler.send_json_response = MagicMock()
         handler.path = '/api/pipelines?limit=-5'
@@ -265,10 +267,11 @@ class TestPipelinesLimitValidation(unittest.TestCase):
         status_code = self._get_status_code(call_args)
         
         self.assertIn('error', response_data)
+        self.assertIn('is_mock', response_data)
         self.assertEqual(status_code, 400)
     
     def test_float_limit_returns_400(self):
-        """Test that float limit (like 5.5) returns 400 error"""
+        """Test that float limit (like 5.5) returns 400 error with is_mock"""
         handler = MagicMock(spec=server.DashboardRequestHandler)
         handler.send_json_response = MagicMock()
         handler.path = '/api/pipelines?limit=5.5'
@@ -281,10 +284,11 @@ class TestPipelinesLimitValidation(unittest.TestCase):
         status_code = self._get_status_code(call_args)
         
         self.assertIn('error', response_data)
+        self.assertIn('is_mock', response_data)
         self.assertEqual(status_code, 400)
     
     def test_limit_exceeds_max_returns_400(self):
-        """Test that limit exceeding MAX_PIPELINE_LIMIT returns 400 error"""
+        """Test that limit exceeding MAX_PIPELINE_LIMIT returns 400 error with is_mock"""
         handler = MagicMock(spec=server.DashboardRequestHandler)
         handler.send_json_response = MagicMock()
         handler.path = f'/api/pipelines?limit={server.MAX_PIPELINE_LIMIT + 1}'
@@ -297,6 +301,7 @@ class TestPipelinesLimitValidation(unittest.TestCase):
         status_code = self._get_status_code(call_args)
         
         self.assertIn('error', response_data)
+        self.assertIn('is_mock', response_data)
         self.assertEqual(status_code, 400)
     
     def test_valid_limit_returns_200(self):
