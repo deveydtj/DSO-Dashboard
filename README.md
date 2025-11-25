@@ -623,9 +623,6 @@ List of repositories with enriched pipeline health data. **Always returns consis
       "description": "An awesome project",
       "web_url": "https://gitlab.com/my-group/my-awesome-project",
       "last_activity_at": "2024-01-15T11:30:00.000Z",
-      "star_count": 15,
-      "forks_count": 3,
-      "open_issues_count": 8,
       "default_branch": "main",
       "visibility": "private",
       "last_pipeline_status": "success",
@@ -784,11 +781,11 @@ curl -X POST http://localhost:8080/api/mock/reload
 - Grid layout of project cards
 - Each card shows:
   - Project name and description
-  - Stars, forks, open issues
   - Last pipeline status badge
-  - Recent success rate
+  - Recent success rate (default branch)
+  - Consecutive failure count for noisy repos
   - Link to GitLab project
-- Sortable by name, activity, or pipeline status
+- Sorted by pipeline health: failing/noisy repos surface to top
 
 #### Pipeline Table (Bottom)
 - Recent pipeline runs across all projects
