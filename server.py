@@ -1415,13 +1415,24 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         Re-reads mock data file and atomically replaces STATE contents.
         Only works when server is running in mock mode.
         Reloads from the same scenario that was initially configured.
+        
+        This endpoint is intentionally restricted to mock mode only because:
+        1. In production (non-mock mode), STATE is populated by the background poller
+           which fetches data from the real GitLab API. Allowing arbitrary state
+           replacement would bypass normal data flow and could cause inconsistencies.
+        2. Mock mode is designed for CI, testing, and demos - environments where
+           hot-reloading test data is useful.
+        3. This prevents accidental misuse where someone might try to "reload" data
+           when connected to a real GitLab instance.
         """
         try:
-            # Check if server is in mock mode
+            # Guardrail: This endpoint only works in mock mode.
+            # See docstring above for rationale on why this is intentionally restricted.
             if not MOCK_MODE_ENABLED:
                 self.send_json_response({
                     'error': 'Mock reload endpoint only available in mock mode',
-                    'hint': 'Set USE_MOCK_DATA=true or use_mock_data: true in config.json'
+                    'hint': 'Set USE_MOCK_DATA=true or use_mock_data: true in config.json',
+                    'is_mock': False
                 }, status=400)
                 return
             
@@ -1430,6 +1441,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             if mock_data is None:
                 self.send_json_response({
                     'error': f'Failed to load mock data file',
+                    'is_mock': True,
                     'scenario': MOCK_SCENARIO if MOCK_SCENARIO else 'default (mock_data.json)',
                     'details': 'Check server logs for details'
                 }, status=500)
@@ -1452,7 +1464,10 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             
             self.send_json_response({
                 'reloaded': True,
-                'timestamp': timestamp_iso,
+                'is_mock': True,
+                'backend_status': snapshot['status'],
+                'last_updated': timestamp_iso,
+                'timestamp': timestamp_iso,  # Keep for backward compatibility
                 'scenario': MOCK_SCENARIO if MOCK_SCENARIO else 'default',
                 'summary': {
                     'repositories': len(mock_data['repositories']),
@@ -1464,7 +1479,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             logger.error(f"Error in handle_mock_reload: {e}")
             self.send_json_response({
                 'error': str(e),
-                'reloaded': False
+                'reloaded': False,
+                'is_mock': MOCK_MODE_ENABLED
             }, status=500)
     
     def send_json_response(self, data, status=200):
@@ -1753,14 +1769,23 @@ def main():
         MOCK_MODE_ENABLED = True
         MOCK_SCENARIO = config['mock_scenario']
         
+        # Determine the resolved file path for the mock data
+        if MOCK_SCENARIO:
+            mock_file_path = f'data/mock_scenarios/{MOCK_SCENARIO}.json'
+        else:
+            mock_file_path = 'mock_data.json'
+        # Resolve to absolute path for clarity in logs
+        resolved_mock_path = os.path.abspath(mock_file_path)
+        
+        # Log a clear banner about mock mode
         logger.info("=" * 70)
         logger.info("MOCK DATA MODE ENABLED")
-        if MOCK_SCENARIO:
-            logger.info(f"Server will use mock scenario: {MOCK_SCENARIO}")
-            logger.info(f"Loading from: data/mock_scenarios/{MOCK_SCENARIO}.json")
-        else:
-            logger.info("Server will use default mock_data.json")
-        logger.info("GitLab polling is DISABLED in this mode")
+        logger.info("=" * 70)
+        logger.info(f"  Scenario: {MOCK_SCENARIO if MOCK_SCENARIO else 'default'}")
+        logger.info(f"  File: {mock_file_path}")
+        logger.info(f"  Resolved path: {resolved_mock_path}")
+        logger.info("  GitLab polling: DISABLED")
+        logger.info("  Use POST /api/mock/reload to hot-reload mock data")
         logger.info("=" * 70)
         
         # Load mock data with scenario

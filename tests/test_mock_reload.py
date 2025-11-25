@@ -74,6 +74,8 @@ class TestMockReloadEndpoint(unittest.TestCase):
         self.assertIn('error', response_data)
         self.assertIn('Mock reload endpoint only available in mock mode', response_data['error'])
         self.assertIn('hint', response_data)
+        # Verify is_mock: false is included in the 400 response
+        self.assertFalse(response_data['is_mock'])
     
     def test_mock_reload_success(self):
         """Test successful mock data reload"""
@@ -117,6 +119,13 @@ class TestMockReloadEndpoint(unittest.TestCase):
         self.assertEqual(response_data['summary']['repositories'], 3)
         self.assertEqual(response_data['summary']['pipelines'], 2)
         
+        # Verify new fields from requirement
+        self.assertTrue(response_data['is_mock'])  # New: top-level is_mock: true
+        self.assertIn('backend_status', response_data)  # New: backend_status
+        self.assertEqual(response_data['backend_status'], 'ONLINE')
+        self.assertIn('last_updated', response_data)  # New: last_updated from state snapshot
+        self.assertIsNotNone(response_data['last_updated'])
+        
         # Verify STATE was updated
         projects = server.get_state('projects')
         pipelines = server.get_state('pipelines')
@@ -142,6 +151,8 @@ class TestMockReloadEndpoint(unittest.TestCase):
         
         self.assertIn('error', response_data)
         self.assertIn('Failed to load mock data file', response_data['error'])
+        # Verify is_mock is included in the error response
+        self.assertTrue(response_data['is_mock'])
     
     def test_mock_reload_exception_handling(self):
         """Test that exceptions are caught and returned as 500 errors"""
@@ -159,6 +170,8 @@ class TestMockReloadEndpoint(unittest.TestCase):
         
         self.assertIn('error', response_data)
         self.assertFalse(response_data['reloaded'])
+        # Verify is_mock is included even in error response
+        self.assertTrue(response_data['is_mock'])
     
     def test_mock_reload_state_atomic_update(self):
         """Test that STATE is updated atomically"""
