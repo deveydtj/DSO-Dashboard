@@ -399,7 +399,7 @@ class DashboardApp {
         }
 
         // Grab previous state for change detection
-        const prevState = this.repoState || new Map();
+        const prevState = this.repoState;
         const nextState = new Map();
 
         // Sort repositories: failing repos first
@@ -444,16 +444,11 @@ class DashboardApp {
             const normalizedStatus = this.normalizeStatus(repo.last_pipeline_status);
             const prev = prevState.get(key);
 
-            // Determine if status degraded (success -> failed is primary case)
-            // Also treat running -> failed or other -> failed as degradation
-            let hasDegradedStatus = false;
-            if (prev && normalizedStatus === 'failed') {
-                const wasNotFailed = prev.status !== 'failed';
-                hasDegradedStatus = wasNotFailed;
-            }
+            // Determine if status degraded (any status -> failed is considered degradation)
+            const hasDegradedStatus = prev && normalizedStatus === 'failed' && prev.status !== 'failed';
 
             // Determine if position changed
-            const hasMoved = prev && typeof prev.index === 'number' && prev.index !== currentIndex;
+            const hasMoved = prev && prev.index !== currentIndex;
 
             // Build extra CSS classes - prefer degradation over movement
             let attentionClass = '';
