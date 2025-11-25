@@ -533,20 +533,6 @@ class DashboardApp {
                 <p class="repo-description">${this.escapeHtml(description)}</p>
                 ${pipelineInfo}
                 ${successRateSection}
-                <div class="repo-stats">
-                    <div class="repo-stat">
-                        <span>⭐</span>
-                        <span>${repo.star_count || 0}</span>
-                    </div>
-                    <div class="repo-stat">
-                        <span>🔱</span>
-                        <span>${repo.forks_count || 0}</span>
-                    </div>
-                    <div class="repo-stat">
-                        <span>🐛</span>
-                        <span>${repo.open_issues_count || 0}</span>
-                    </div>
-                </div>
                 ${repo.web_url ? `<a href="${repo.web_url}" target="_blank" rel="noopener noreferrer" class="repo-link">View on GitLab →</a>` : ''}
             </div>
         `;
