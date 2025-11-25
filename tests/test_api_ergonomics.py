@@ -207,6 +207,18 @@ class TestPipelinesLimitValidation(unittest.TestCase):
             'summary': dict(server.DEFAULT_SUMMARY)
         })
     
+    def _get_status_code(self, call_args):
+        """Extract status code from mock call arguments
+        
+        Helper method to extract HTTP status code from send_json_response mock call.
+        Handles both positional and keyword argument cases.
+        """
+        if 'status' in call_args[1]:
+            return call_args[1]['status']
+        elif len(call_args[0]) > 1:
+            return call_args[0][1]
+        return 200  # Default status
+    
     def test_invalid_limit_returns_400(self):
         """Test that non-numeric limit returns 400 error"""
         handler = MagicMock(spec=server.DashboardRequestHandler)
@@ -218,7 +230,7 @@ class TestPipelinesLimitValidation(unittest.TestCase):
         handler.send_json_response.assert_called_once()
         call_args = handler.send_json_response.call_args
         response_data = call_args[0][0]
-        status_code = call_args[1]['status'] if 'status' in call_args[1] else call_args[0][1] if len(call_args[0]) > 1 else 200
+        status_code = self._get_status_code(call_args)
         
         self.assertIn('error', response_data)
         self.assertEqual(status_code, 400)
@@ -234,7 +246,7 @@ class TestPipelinesLimitValidation(unittest.TestCase):
         handler.send_json_response.assert_called_once()
         call_args = handler.send_json_response.call_args
         response_data = call_args[0][0]
-        status_code = call_args[1]['status'] if 'status' in call_args[1] else call_args[0][1] if len(call_args[0]) > 1 else 200
+        status_code = self._get_status_code(call_args)
         
         self.assertIn('error', response_data)
         self.assertEqual(status_code, 400)
@@ -250,7 +262,7 @@ class TestPipelinesLimitValidation(unittest.TestCase):
         handler.send_json_response.assert_called_once()
         call_args = handler.send_json_response.call_args
         response_data = call_args[0][0]
-        status_code = call_args[1]['status'] if 'status' in call_args[1] else call_args[0][1] if len(call_args[0]) > 1 else 200
+        status_code = self._get_status_code(call_args)
         
         self.assertIn('error', response_data)
         self.assertEqual(status_code, 400)
@@ -266,7 +278,7 @@ class TestPipelinesLimitValidation(unittest.TestCase):
         handler.send_json_response.assert_called_once()
         call_args = handler.send_json_response.call_args
         response_data = call_args[0][0]
-        status_code = call_args[1]['status'] if 'status' in call_args[1] else call_args[0][1] if len(call_args[0]) > 1 else 200
+        status_code = self._get_status_code(call_args)
         
         self.assertIn('error', response_data)
         self.assertEqual(status_code, 400)
@@ -282,7 +294,7 @@ class TestPipelinesLimitValidation(unittest.TestCase):
         handler.send_json_response.assert_called_once()
         call_args = handler.send_json_response.call_args
         response_data = call_args[0][0]
-        status_code = call_args[1]['status'] if 'status' in call_args[1] else call_args[0][1] if len(call_args[0]) > 1 else 200
+        status_code = self._get_status_code(call_args)
         
         self.assertIn('error', response_data)
         self.assertEqual(status_code, 400)
@@ -298,13 +310,9 @@ class TestPipelinesLimitValidation(unittest.TestCase):
         handler.send_json_response.assert_called_once()
         call_args = handler.send_json_response.call_args
         response_data = call_args[0][0]
+        status_code = self._get_status_code(call_args)
         
-        # Default status should be 200
-        if len(call_args[0]) > 1:
-            self.assertEqual(call_args[0][1], 200)
-        elif 'status' in call_args[1]:
-            self.assertEqual(call_args[1]['status'], 200)
-        
+        self.assertEqual(status_code, 200)
         self.assertIn('pipelines', response_data)
         self.assertNotIn('error', response_data)
     
