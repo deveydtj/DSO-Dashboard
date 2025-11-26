@@ -704,6 +704,62 @@ class TestPollDataIncludesServices(unittest.TestCase):
         self.assertIn('services', snapshot['data'])
         self.assertEqual(len(snapshot['data']['services']), 1)
         self.assertEqual(snapshot['data']['services'][0]['status'], 'UP')
+    
+    def test_poll_data_updates_services_when_gitlab_fails(self):
+        """Test services are updated even when GitLab API fails
+        
+        External service checks should be decoupled from GitLab fetches,
+        so service health continues to refresh during GitLab outages.
+        """
+        services_config = [{'name': 'Test', 'url': 'https://test.example.com'}]
+        poller = server.BackgroundPoller(
+            self.mock_client,
+            60,
+            external_services=services_config
+        )
+        
+        # Mock GitLab fetches to fail
+        with patch.object(poller, '_fetch_projects', return_value=None):  # GitLab failure
+            with patch.object(poller, '_check_external_services', return_value=[
+                {'id': 'test', 'name': 'Test', 'status': 'UP'}
+            ]):
+                poller.poll_data('test-poll')
+        
+        # Verify services was still updated despite GitLab failure
+        snapshot = server.get_state_snapshot()
+        self.assertIn('services', snapshot['data'])
+        self.assertEqual(len(snapshot['data']['services']), 1)
+        self.assertEqual(snapshot['data']['services'][0]['status'], 'UP')
+        # But status should be ERROR due to GitLab failure
+        self.assertEqual(snapshot['status'], 'ERROR')
+    
+    def test_poll_data_updates_services_when_pipeline_fetch_fails(self):
+        """Test services are updated even when pipeline fetch fails
+        
+        External service checks should continue even when GitLab 
+        pipeline API calls fail.
+        """
+        services_config = [{'name': 'Test', 'url': 'https://test.example.com'}]
+        poller = server.BackgroundPoller(
+            self.mock_client,
+            60,
+            external_services=services_config
+        )
+        
+        # Mock projects success but pipelines fail
+        with patch.object(poller, '_fetch_projects', return_value=[]):
+            with patch.object(poller, '_fetch_pipelines', return_value=None):  # Pipeline failure
+                with patch.object(poller, '_check_external_services', return_value=[
+                    {'id': 'svc', 'name': 'Service', 'status': 'DOWN', 'error': 'Connection refused'}
+                ]):
+                    poller.poll_data('test-poll')
+        
+        # Verify services was still updated despite pipeline failure
+        snapshot = server.get_state_snapshot()
+        self.assertEqual(len(snapshot['data']['services']), 1)
+        self.assertEqual(snapshot['data']['services'][0]['status'], 'DOWN')
+        # But status should be ERROR due to pipeline failure
+        self.assertEqual(snapshot['status'], 'ERROR')
 
 
 if __name__ == '__main__':

@@ -634,6 +634,20 @@ def set_state_error(error, poll_id=None):
         logger.error(f"[poll_id={poll_id}] State set to ERROR: {error}")
 
 
+def update_services_only(services):
+    """Thread-safe update of services in STATE without changing status
+    
+    Updates only the services collection, preserving existing status/error.
+    Used when external service checks succeed but GitLab API fails.
+    
+    Args:
+        services: List of service health check results
+    """
+    with STATE_LOCK:
+        STATE['data']['services'] = services
+        # Don't change status or error - GitLab failure sets those
+
+
 class BackgroundPoller(threading.Thread):
     """Background thread that polls GitLab API and updates global STATE"""
     
@@ -676,18 +690,28 @@ class BackgroundPoller(threading.Thread):
     def poll_data(self, poll_id):
         """Poll GitLab API and update STATE
         
+        External service checks are decoupled from GitLab fetches - they run
+        regardless of GitLab API success/failure so that service health 
+        continues to refresh even during GitLab outages.
+        
         Args:
             poll_id: Poll cycle identifier for logging context
         """
         logger.info(f"[poll_id={poll_id}] Starting data poll...")
         
-        # Fetch projects and pipelines FIRST (don't update STATE yet)
+        # Check external services FIRST - independent of GitLab
+        # This ensures service health is always updated, even during GitLab outages
+        services = self._check_external_services(poll_id)
+        
+        # Fetch projects and pipelines
         projects = self._fetch_projects(poll_id)
         if projects is None:
             logger.error(f"[poll_id={poll_id}] Failed to fetch projects - API error")
-            # Set error state so health endpoint reflects the failure
+            # Update services even though GitLab failed
+            update_services_only(services)
+            # Set error state so health endpoint reflects the GitLab failure
             set_state_error("Failed to fetch data from GitLab API", poll_id=poll_id)
-            logger.error(f"[poll_id={poll_id}] Data poll completed with failures - state marked as ERROR")
+            logger.error(f"[poll_id={poll_id}] Data poll completed with failures - state marked as ERROR (services still updated)")
             return
         
         # Fetch pipelines (pass projects to respect configured scope)
@@ -695,9 +719,11 @@ class BackgroundPoller(threading.Thread):
         pipeline_data = self._fetch_pipelines(projects, poll_id)
         if pipeline_data is None:
             logger.error(f"[poll_id={poll_id}] Failed to fetch pipelines - API error")
-            # Set error state so health endpoint reflects the failure
+            # Update services even though GitLab failed
+            update_services_only(services)
+            # Set error state so health endpoint reflects the GitLab failure
             set_state_error("Failed to fetch data from GitLab API", poll_id=poll_id)
-            logger.error(f"[poll_id={poll_id}] Data poll completed with failures - state marked as ERROR")
+            logger.error(f"[poll_id={poll_id}] Data poll completed with failures - state marked as ERROR (services still updated)")
             return
         
         # Enrich projects with per-project pipeline health data
@@ -705,9 +731,6 @@ class BackgroundPoller(threading.Thread):
         
         # Both fetches succeeded - calculate summary and update STATE atomically
         summary = self._calculate_summary(enriched_projects, pipeline_data['all_pipelines'])
-        
-        # Check external services
-        services = self._check_external_services(poll_id)
         
         # Update all keys atomically with single timestamp and status
         update_state_atomic({
