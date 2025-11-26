@@ -8,7 +8,7 @@ import unittest
 import sys
 import os
 import json
-from unittest.mock import MagicMock, patch, Mock
+from unittest.mock import MagicMock, patch, Mock, mock_open
 from datetime import datetime
 from urllib.error import URLError, HTTPError
 
@@ -90,7 +90,7 @@ class TestExternalServicesConfig(unittest.TestCase):
         }
         
         with patch('os.path.exists', return_value=True):
-            with patch('builtins.open', unittest.mock.mock_open(read_data=json.dumps(mock_config))):
+            with patch('builtins.open', mock_open(read_data=json.dumps(mock_config))):
                 config = server.load_config()
                 self.assertEqual(len(config['external_services']), 1)
                 self.assertEqual(config['external_services'][0]['name'], 'Artifactory')
@@ -100,7 +100,7 @@ class TestExternalServicesConfig(unittest.TestCase):
         mock_config = {'external_services': None}
         
         with patch('os.path.exists', return_value=True):
-            with patch('builtins.open', unittest.mock.mock_open(read_data=json.dumps(mock_config))):
+            with patch('builtins.open', mock_open(read_data=json.dumps(mock_config))):
                 config = server.load_config()
                 self.assertEqual(config['external_services'], [])
     
@@ -109,7 +109,7 @@ class TestExternalServicesConfig(unittest.TestCase):
         mock_config = {'external_services': 'invalid'}
         
         with patch('os.path.exists', return_value=True):
-            with patch('builtins.open', unittest.mock.mock_open(read_data=json.dumps(mock_config))):
+            with patch('builtins.open', mock_open(read_data=json.dumps(mock_config))):
                 config = server.load_config()
                 self.assertEqual(config['external_services'], [])
 
