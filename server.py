@@ -539,13 +539,17 @@ STATE = {
     'data': {
         'projects': [],
         'pipelines': [],
-        'summary': dict(DEFAULT_SUMMARY)  # Use copy of default summary
+        'summary': dict(DEFAULT_SUMMARY),  # Use copy of default summary
+        'services': []  # External service health checks
     },
     'last_updated': None,
     'status': 'INITIALIZING',
     'error': None
 }
 STATE_LOCK = threading.Lock()
+
+# Default timeout for external service checks (seconds)
+DEFAULT_SERVICE_CHECK_TIMEOUT = 10
 
 # Global flag to track if server is running in mock mode
 MOCK_MODE_ENABLED = False
@@ -633,12 +637,14 @@ def set_state_error(error, poll_id=None):
 class BackgroundPoller(threading.Thread):
     """Background thread that polls GitLab API and updates global STATE"""
     
-    def __init__(self, gitlab_client, poll_interval_sec, group_ids=None, project_ids=None):
+    def __init__(self, gitlab_client, poll_interval_sec, group_ids=None, project_ids=None,
+                 external_services=None):
         super().__init__(daemon=True)
         self.gitlab_client = gitlab_client
         self.poll_interval = poll_interval_sec
         self.group_ids = group_ids or []
         self.project_ids = project_ids or []
+        self.external_services = external_services if isinstance(external_services, list) else []
         self.running = True
         self.stop_event = threading.Event()
         self.poll_counter = 0
@@ -700,14 +706,18 @@ class BackgroundPoller(threading.Thread):
         # Both fetches succeeded - calculate summary and update STATE atomically
         summary = self._calculate_summary(enriched_projects, pipeline_data['all_pipelines'])
         
+        # Check external services
+        services = self._check_external_services(poll_id)
+        
         # Update all keys atomically with single timestamp and status
         update_state_atomic({
             'projects': enriched_projects,
             'pipelines': pipeline_data['all_pipelines'],
-            'summary': summary
+            'summary': summary,
+            'services': services
         })
         
-        logger.info(f"[poll_id={poll_id}] Updated STATE atomically: {len(enriched_projects)} projects, {len(pipeline_data['all_pipelines'])} pipelines")
+        logger.info(f"[poll_id={poll_id}] Updated STATE atomically: {len(enriched_projects)} projects, {len(pipeline_data['all_pipelines'])} pipelines, {len(services)} services")
         logger.info(f"[poll_id={poll_id}] Data poll completed successfully")
     
     def _fetch_projects(self, poll_id=None):
@@ -1052,6 +1062,195 @@ class BackgroundPoller(threading.Thread):
             'pipeline_statuses': pipeline_statuses
         }
     
+    def _check_external_services(self, poll_id=None):
+        """Check health of configured external services
+        
+        For each configured external service:
+        - Makes a HEAD request (fallback to GET if needed)
+        - Classifies the result as UP or DOWN
+        - Captures latency, status code, and any error message
+        
+        Args:
+            poll_id: Poll cycle identifier for logging context
+        
+        Returns:
+            list: List of dicts with service health data
+        """
+        log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
+        
+        if not self.external_services:
+            logger.debug(f"{log_prefix}No external services configured")
+            return []
+        
+        results = []
+        
+        for service_config in self.external_services:
+            # Skip invalid entries
+            if not isinstance(service_config, dict):
+                logger.warning(f"{log_prefix}Skipping invalid service config (not a dict): {service_config}")
+                continue
+            
+            url = service_config.get('url')
+            if not url:
+                logger.warning(f"{log_prefix}Skipping service config with missing URL: {service_config}")
+                continue
+            
+            # Resolve human-readable name (prefer name, then id, then url)
+            name = service_config.get('name') or service_config.get('id') or url
+            
+            # Generate stable service ID
+            service_id = service_config.get('id')
+            if not service_id:
+                # Normalize name to create a stable ID
+                service_id = name.lower().replace(' ', '-').replace('/', '-')
+            
+            # Get timeout (use default if not provided)
+            timeout = service_config.get('timeout', DEFAULT_SERVICE_CHECK_TIMEOUT)
+            try:
+                timeout = int(timeout)
+                if timeout <= 0:
+                    timeout = DEFAULT_SERVICE_CHECK_TIMEOUT
+            except (ValueError, TypeError):
+                timeout = DEFAULT_SERVICE_CHECK_TIMEOUT
+            
+            # Check the service
+            result = self._check_single_service(
+                url=url,
+                name=name,
+                service_id=service_id,
+                timeout=timeout,
+                poll_id=poll_id
+            )
+            results.append(result)
+        
+        # Log summary
+        up_count = sum(1 for r in results if r.get('status') == 'UP')
+        down_count = len(results) - up_count
+        logger.info(f"{log_prefix}Checked {len(results)} external services: {up_count} UP, {down_count} DOWN")
+        
+        return results
+    
+    def _check_single_service(self, url, name, service_id, timeout, poll_id=None):
+        """Check health of a single external service
+        
+        Performs a HEAD request first, falling back to GET if HEAD is not allowed.
+        
+        Args:
+            url: Service URL to check
+            name: Human-readable service name
+            service_id: Stable service identifier
+            timeout: Request timeout in seconds
+            poll_id: Poll cycle identifier for logging context
+        
+        Returns:
+            dict: Service health data with id, name, url, status, latency_ms, 
+                  last_checked, http_status, and error fields
+        """
+        log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
+        
+        result = {
+            'id': service_id,
+            'name': name,
+            'url': url,
+            'status': 'DOWN',
+            'latency_ms': None,
+            'last_checked': datetime.now().isoformat(),
+            'http_status': None,
+            'error': None
+        }
+        
+        # Use same SSL context as GitLab client if available
+        ssl_context = None
+        if self.gitlab_client:
+            ssl_context = self.gitlab_client.ssl_context
+        
+        start_time = time.monotonic()
+        
+        try:
+            # Try HEAD request first (lighter weight)
+            request = Request(url, method='HEAD')
+            request.add_header('User-Agent', 'DSO-Dashboard-ServiceCheck/1.0')
+            
+            try:
+                if ssl_context:
+                    response = urlopen(request, timeout=timeout, context=ssl_context)
+                else:
+                    response = urlopen(request, timeout=timeout)
+                
+                elapsed_ms = (time.monotonic() - start_time) * 1000
+                http_status = response.status
+                response.close()
+                
+            except HTTPError as e:
+                # HEAD might return 405 Method Not Allowed, try GET
+                if e.code == 405:
+                    logger.debug(f"{log_prefix}HEAD not allowed for {name}, trying GET")
+                    start_time = time.monotonic()  # Reset timer for GET
+                    request = Request(url)
+                    request.add_header('User-Agent', 'DSO-Dashboard-ServiceCheck/1.0')
+                    
+                    if ssl_context:
+                        response = urlopen(request, timeout=timeout, context=ssl_context)
+                    else:
+                        response = urlopen(request, timeout=timeout)
+                    
+                    elapsed_ms = (time.monotonic() - start_time) * 1000
+                    http_status = response.status
+                    response.close()
+                else:
+                    # Other HTTP errors
+                    elapsed_ms = (time.monotonic() - start_time) * 1000
+                    http_status = e.code
+                    
+                    # 2xx and 3xx are considered UP
+                    if 200 <= http_status < 400:
+                        result['status'] = 'UP'
+                    else:
+                        result['error'] = f"HTTP {http_status}: {e.reason}"
+                    
+                    result['latency_ms'] = round(elapsed_ms, 2)
+                    result['http_status'] = http_status
+                    logger.debug(f"{log_prefix}Service {name}: HTTP {http_status} in {elapsed_ms:.1f}ms")
+                    return result
+            
+            # Successful response (2xx or 3xx)
+            result['latency_ms'] = round(elapsed_ms, 2)
+            result['http_status'] = http_status
+            
+            if 200 <= http_status < 400:
+                result['status'] = 'UP'
+            else:
+                result['status'] = 'DOWN'
+                result['error'] = f"HTTP {http_status}"
+            
+            logger.debug(f"{log_prefix}Service {name}: {result['status']} HTTP {http_status} in {elapsed_ms:.1f}ms")
+            
+        except HTTPError as e:
+            elapsed_ms = (time.monotonic() - start_time) * 1000
+            result['latency_ms'] = round(elapsed_ms, 2)
+            result['http_status'] = e.code
+            result['error'] = f"HTTP {e.code}: {e.reason}"
+            
+            # 2xx and 3xx are considered UP
+            if 200 <= e.code < 400:
+                result['status'] = 'UP'
+            
+            logger.debug(f"{log_prefix}Service {name}: DOWN HTTP {e.code} in {elapsed_ms:.1f}ms")
+            
+        except URLError as e:
+            elapsed_ms = (time.monotonic() - start_time) * 1000
+            result['latency_ms'] = round(elapsed_ms, 2)
+            result['error'] = str(e.reason)
+            logger.debug(f"{log_prefix}Service {name}: DOWN URLError {e.reason} in {elapsed_ms:.1f}ms")
+            
+        except Exception as e:
+            elapsed_ms = (time.monotonic() - start_time) * 1000
+            result['latency_ms'] = round(elapsed_ms, 2)
+            result['error'] = str(e)
+            logger.debug(f"{log_prefix}Service {name}: DOWN Error {e} in {elapsed_ms:.1f}ms")
+        
+        return result
+    
     def stop(self):
         """Stop the polling thread"""
         logger.info("Stopping background poller")
@@ -1116,6 +1315,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             self.handle_pipelines()
         elif path == '/api/health':
             self.handle_health()
+        elif path == '/api/services':
+            self.handle_services()
         else:
             # Serve static files
             super().do_GET()
@@ -1411,6 +1612,44 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             }
             self.send_json_response(health, status=503)
     
+    def handle_services(self):
+        """Handle /api/services endpoint
+        
+        Returns the current health status of configured external services.
+        Always returns proper JSON shape even when data is empty or initializing.
+        Uses atomic snapshot from in-memory STATE to prevent torn reads.
+        """
+        try:
+            # Get atomic snapshot of STATE (single lock acquisition)
+            snapshot = get_state_snapshot()
+            services = snapshot['data'].get('services')
+            
+            # Ensure services is never None (use empty list if None)
+            if services is None:
+                services = []
+            
+            response = {
+                'services': services,
+                'total': len(services),
+                'last_updated': snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated']) if snapshot['last_updated'] else None,
+                'backend_status': snapshot['status'],
+                'is_mock': MOCK_MODE_ENABLED
+            }
+            
+            self.send_json_response(response)
+            
+        except Exception as e:
+            logger.error(f"Error in handle_services: {e}")
+            # Even on error, return proper shape with empty array
+            self.send_json_response({
+                'services': [],
+                'total': 0,
+                'last_updated': None,
+                'backend_status': 'ERROR',
+                'is_mock': MOCK_MODE_ENABLED,
+                'error': str(e)
+            }, status=500)
+    
     def handle_mock_reload(self):
         """Handle /api/mock/reload endpoint (POST only)
         
@@ -1450,10 +1689,13 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 return
             
             # Atomically update STATE with new mock data
+            # Use services from mock data if present, otherwise empty list
+            services = mock_data.get('services', [])
             update_state_atomic({
                 'projects': mock_data['repositories'],
                 'pipelines': mock_data['pipelines'],
-                'summary': mock_data['summary']
+                'summary': mock_data['summary'],
+                'services': services
             })
             
             # Get the timestamp that was just set (using atomic snapshot)
@@ -1463,6 +1705,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             logger.info("Mock data reloaded successfully via API")
             logger.info(f"  Repositories: {len(mock_data['repositories'])}")
             logger.info(f"  Pipelines: {len(mock_data['pipelines'])}")
+            logger.info(f"  Services: {len(services)}")
             
             self.send_json_response({
                 'reloaded': True,
@@ -1473,7 +1716,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'scenario': MOCK_SCENARIO if MOCK_SCENARIO else 'default',
                 'summary': {
                     'repositories': len(mock_data['repositories']),
-                    'pipelines': len(mock_data['pipelines'])
+                    'pipelines': len(mock_data['pipelines']),
+                    'services': len(services)
                 }
             })
             
@@ -1615,6 +1859,16 @@ def load_config():
     # Mock scenario selection - which mock file to load
     config['mock_scenario'] = os.environ.get('MOCK_SCENARIO', config.get('mock_scenario', ''))
     
+    # External services configuration (for uptime monitoring)
+    # Normalize: if missing, null, or not a list, use empty list
+    external_services = config.get('external_services')
+    if external_services is None or not isinstance(external_services, list):
+        if external_services is not None:
+            logger.warning(f"Invalid external_services (not a list): {type(external_services).__name__}. Using empty list.")
+        config['external_services'] = []
+    else:
+        config['external_services'] = external_services
+    
     # Ensure lists are clean (filter config.json values that might have empty strings or numeric IDs)
     if isinstance(config['group_ids'], list):
         config['group_ids'] = [str(gid).strip() for gid in config['group_ids'] if gid and str(gid).strip()]
@@ -1636,6 +1890,7 @@ def load_config():
     logger.info(f"  Use mock data: {config['use_mock_data']}")
     if config['use_mock_data']:
         logger.info(f"  Mock scenario: {config['mock_scenario'] if config['mock_scenario'] else 'default (mock_data.json)'}")
+    logger.info(f"  External services: {len(config['external_services'])} configured")
     logger.info(f"  API token: {'***' if config['api_token'] else 'NOT SET'}")
     
     return config
@@ -1691,6 +1946,19 @@ def validate_config(config):
         logger.error(f"Configuration error: 'per_page' must be a positive integer, got: {per_page}")
         logger.error("  Fix: Set PER_PAGE environment variable or 'per_page' in config.json to a positive integer (1-100)")
         is_valid = False
+    
+    # Validate external_services entries
+    external_services = config.get('external_services', [])
+    if external_services:
+        for i, service in enumerate(external_services):
+            if not isinstance(service, dict):
+                logger.error(f"Configuration error: external_services[{i}] must be a dict, got: {type(service).__name__}")
+                logger.error("  Fix: Each entry in external_services must be an object with at least a 'url' field")
+                is_valid = False
+            elif not service.get('url'):
+                logger.error(f"Configuration error: external_services[{i}] is missing required 'url' field")
+                logger.error("  Fix: Each entry in external_services must have a 'url' field")
+                is_valid = False
     
     # Log validation result
     if is_valid:
@@ -1797,10 +2065,13 @@ def main():
             return
         
         # Initialize STATE with mock data
+        # Use services from mock data if present, otherwise empty list
+        services = mock_data.get('services', [])
         update_state_atomic({
             'projects': mock_data['repositories'],
             'pipelines': mock_data['pipelines'],
-            'summary': mock_data['summary']
+            'summary': mock_data['summary'],
+            'services': services
         })
         logger.info("Mock data loaded into STATE successfully")
         
@@ -1823,7 +2094,8 @@ def main():
             gitlab_client,
             config['poll_interval_sec'],
             group_ids=config['group_ids'],
-            project_ids=config['project_ids']
+            project_ids=config['project_ids'],
+            external_services=config.get('external_services', [])
         )
         poller.start()
         logger.info(f"Background poller started (interval: {config['poll_interval_sec']}s)")
