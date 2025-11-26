@@ -543,6 +543,7 @@ STATE = {
         'services': []  # External service health checks
     },
     'last_updated': None,
+    'services_last_updated': None,  # Separate timestamp for external services
     'status': 'INITIALIZING',
     'error': None
 }
@@ -579,7 +580,11 @@ def update_state_atomic(updates):
     with STATE_LOCK:
         for key, value in updates.items():
             STATE['data'][key] = value
-        STATE['last_updated'] = datetime.now()
+        now = datetime.now()
+        STATE['last_updated'] = now
+        # Also update services_last_updated when services are included
+        if 'services' in updates:
+            STATE['services_last_updated'] = now
         STATE['status'] = 'ONLINE'
         STATE['error'] = None
 
@@ -607,14 +612,15 @@ def get_state_snapshot():
     This prevents torn reads where data could change between multiple get_state() calls.
     
     Returns:
-        dict: Complete snapshot with 'data', 'last_updated', 'status', 'error' keys
-              The 'data' dict contains references to the actual lists/dicts (shallow copy)
-              which is safe since we rebuild these on each update
+        dict: Complete snapshot with 'data', 'last_updated', 'services_last_updated', 
+              'status', 'error' keys. The 'data' dict contains references to the actual 
+              lists/dicts (shallow copy) which is safe since we rebuild these on each update
     """
     with STATE_LOCK:
         return {
             'data': dict(STATE['data']),  # Shallow copy of data dict
             'last_updated': STATE['last_updated'],
+            'services_last_updated': STATE['services_last_updated'],
             'status': STATE['status'],
             'error': STATE['error']
         }
@@ -639,12 +645,14 @@ def update_services_only(services):
     
     Updates only the services collection, preserving existing status/error.
     Used when external service checks succeed but GitLab API fails.
+    Also updates services_last_updated so clients know when services were last checked.
     
     Args:
         services: List of service health check results
     """
     with STATE_LOCK:
         STATE['data']['services'] = services
+        STATE['services_last_updated'] = datetime.now()
         # Don't change status or error - GitLab failure sets those
 
 
@@ -1651,10 +1659,13 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             if services is None:
                 services = []
             
+            # Use services-specific timestamp (falls back to main timestamp if not set)
+            services_ts = snapshot['services_last_updated'] or snapshot['last_updated']
+            
             response = {
                 'services': services,
                 'total': len(services),
-                'last_updated': snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated']) if snapshot['last_updated'] else None,
+                'last_updated': services_ts.isoformat() if isinstance(services_ts, datetime) else str(services_ts) if services_ts else None,
                 'backend_status': snapshot['status'],
                 'is_mock': MOCK_MODE_ENABLED
             }

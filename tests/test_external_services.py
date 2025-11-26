@@ -31,6 +31,7 @@ class TestExternalServicesStateInit(unittest.TestCase):
                 'services': []
             }
             server.STATE['last_updated'] = None
+            server.STATE['services_last_updated'] = None
             server.STATE['status'] = 'INITIALIZING'
             server.STATE['error'] = None
     
@@ -490,6 +491,7 @@ class TestServicesEndpoint(unittest.TestCase):
                 'services': []
             }
             server.STATE['last_updated'] = None
+            server.STATE['services_last_updated'] = None
             server.STATE['status'] = 'INITIALIZING'
             server.STATE['error'] = None
     
@@ -609,6 +611,7 @@ class TestServicesInMockMode(unittest.TestCase):
                 'services': []
             }
             server.STATE['last_updated'] = None
+            server.STATE['services_last_updated'] = None
             server.STATE['status'] = 'INITIALIZING'
             server.STATE['error'] = None
     
@@ -677,6 +680,7 @@ class TestPollDataIncludesServices(unittest.TestCase):
                 'services': []
             }
             server.STATE['last_updated'] = None
+            server.STATE['services_last_updated'] = None
             server.STATE['status'] = 'INITIALIZING'
             server.STATE['error'] = None
     
@@ -760,6 +764,38 @@ class TestPollDataIncludesServices(unittest.TestCase):
         self.assertEqual(snapshot['data']['services'][0]['status'], 'DOWN')
         # But status should be ERROR due to pipeline failure
         self.assertEqual(snapshot['status'], 'ERROR')
+    
+    def test_services_timestamp_updates_during_gitlab_failure(self):
+        """Test services_last_updated is set even when GitLab fails
+        
+        The /api/services endpoint needs a fresh timestamp to indicate
+        when services were last checked, independent of GitLab state.
+        """
+        services_config = [{'name': 'Test', 'url': 'https://test.example.com'}]
+        poller = server.BackgroundPoller(
+            self.mock_client,
+            60,
+            external_services=services_config
+        )
+        
+        # Verify services_last_updated is initially None
+        snapshot_before = server.get_state_snapshot()
+        self.assertIsNone(snapshot_before['services_last_updated'])
+        
+        # Mock GitLab fetches to fail
+        with patch.object(poller, '_fetch_projects', return_value=None):  # GitLab failure
+            with patch.object(poller, '_check_external_services', return_value=[
+                {'id': 'test', 'name': 'Test', 'status': 'UP'}
+            ]):
+                poller.poll_data('test-poll')
+        
+        # Verify services_last_updated was set despite GitLab failure
+        snapshot = server.get_state_snapshot()
+        self.assertIsNotNone(snapshot['services_last_updated'])
+        # last_updated (GitLab timestamp) should still be None since GitLab never succeeded
+        self.assertIsNone(snapshot['last_updated'])
+        # But services timestamp should be set
+        self.assertIsInstance(snapshot['services_last_updated'], datetime)
 
 
 if __name__ == '__main__':
