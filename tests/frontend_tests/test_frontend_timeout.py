@@ -117,7 +117,6 @@ class TestFetchTimeoutImplementation(unittest.TestCase):
             # Extract the module path from the import statement
             if 'from' in import_line:
                 # Find the quoted path
-                import re
                 match = re.search(r"from\s+['\"]([^'\"]+)['\"]", import_line)
                 if match:
                     module_path = match.group(1)
