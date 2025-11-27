@@ -217,7 +217,7 @@ The `external_services` configuration allows monitoring of external tools (Artif
 **Configuration:**
 - Each service entry requires a `url` field (the health-check endpoint to probe)
 - Optional fields: `id`, `name`, `timeout`, `critical`, `kind`
-- Services are validated at startup; invalid entries are logged and skipped
+- Services are validated at startup; invalid entries (non-dict or missing `url`) cause a fatal error and the server will not start
 
 **Backend Behavior:**
 - Services are checked during each poll cycle via `BackgroundPoller._check_external_services()`
