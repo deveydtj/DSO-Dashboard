@@ -11,7 +11,24 @@
   "insecure_skip_verify": false,
   "use_mock_data": false,
   "mock_scenario": "",
-  "external_services": [],
+  "external_services": [
+    {
+      "id": "artifactory",
+      "name": "Artifactory",
+      "url": "https://artifactory.example.com/api/system/ping",
+      "timeout": 5,
+      "critical": true,
+      "kind": "artifact-repository"
+    },
+    {
+      "id": "confluence",
+      "name": "Confluence",
+      "url": "https://confluence.example.com/status",
+      "timeout": 10,
+      "critical": false,
+      "kind": "wiki"
+    }
+  ],
   "comment": "group_ids and project_ids can be numeric (e.g., [123, 456]) or strings (e.g., ['proj-1', 'proj-2'])",
   "note1": "Environment variables override config.json values when explicitly set.",
   "note2": "Set GITLAB_GROUP_IDS='' (empty) to clear configured scope at runtime.",
@@ -20,10 +37,5 @@
   "note5": "Set use_mock_data=true or USE_MOCK_DATA=true to run without GitLab API (uses mock_data.json).",
   "note6": "Set mock_scenario to 'healthy', 'failing', or 'running' to load a specific scenario from data/mock_scenarios/.",
   "note7": "log_level: Controls logging verbosity. Options: DEBUG, INFO, WARNING, ERROR, CRITICAL. Default is INFO.",
-  "note8": "external_services: List of external services to monitor (e.g., Artifactory, Confluence). Each entry must have 'url', optional 'name', 'id', and 'timeout' (default 10s).",
-  "external_services_example": [
-    {"name": "Artifactory", "url": "https://artifactory.example.com/api/system/ping", "timeout": 5},
-    {"name": "Confluence", "url": "https://confluence.example.com/status"},
-    {"id": "jira-prod", "name": "Jira Production", "url": "https://jira.example.com/status"}
-  ]
+  "note8": "external_services: Optional list of external services to monitor. Each entry requires 'url', with optional 'id' (stable identifier), 'name' (display name), 'timeout' (seconds, default 10), 'critical' (boolean), and 'kind' (type label). Omit or leave empty to disable external service monitoring."
 }
