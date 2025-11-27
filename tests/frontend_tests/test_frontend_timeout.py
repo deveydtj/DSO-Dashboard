@@ -113,8 +113,18 @@ class TestFetchTimeoutImplementation(unittest.TestCase):
         # ES module imports from './file.js' are local and acceptable
         import_lines = [line for line in self.app_js_content.split('\n') if line.strip().startswith('import ')]
         for import_line in import_lines:
-            # Check that all imports are from local files (start with './')
-            self.assertNotIn('from "', import_line.replace("'", '"'))
+            # Check that all imports are from local files (start with './' or '../')
+            # Extract the module path from the import statement
+            if 'from' in import_line:
+                # Find the quoted path
+                import re
+                match = re.search(r"from\s+['\"]([^'\"]+)['\"]", import_line)
+                if match:
+                    module_path = match.group(1)
+                    self.assertTrue(
+                        module_path.startswith('./') or module_path.startswith('../'),
+                        f"Import must be from local file (start with './' or '../'), got: {module_path}"
+                    )
         
         self.assertNotIn('require(', self.app_js_content)
         
