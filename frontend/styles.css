@@ -538,6 +538,181 @@ body {
     border-left: 4px solid var(--accent-error);
 }
 
+/* Services Grid */
+.services-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--spacing-md);
+}
+
+.services-empty {
+    text-align: center;
+    padding: var(--spacing-lg);
+    color: var(--text-secondary);
+    font-style: italic;
+    grid-column: 1 / -1;
+}
+
+/* Service Card */
+.service-card {
+    background: var(--bg-card);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-lg);
+    box-shadow: 
+        6px 6px 12px var(--shadow-dark),
+        -6px -6px 12px var(--shadow-light);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    border-left: 3px solid transparent;
+}
+
+.service-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 
+        8px 8px 16px var(--shadow-dark),
+        -8px -8px 16px var(--shadow-light);
+}
+
+/* Service status-based card accents */
+.service-card.service-status-up {
+    border-left-color: var(--accent-success);
+}
+
+.service-card.service-status-down {
+    border-left-color: var(--accent-error);
+    box-shadow: 
+        6px 6px 12px var(--shadow-dark),
+        -6px -6px 12px var(--shadow-light),
+        0 0 10px rgba(239, 68, 68, 0.1);
+}
+
+.service-card.service-status-unknown {
+    border-left-color: var(--text-secondary);
+}
+
+.service-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--spacing-md);
+    gap: var(--spacing-sm);
+}
+
+.service-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--accent-primary);
+    margin: 0;
+    word-break: break-word;
+}
+
+/* Service Status Chip */
+.service-status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 0.35rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+.service-status-chip .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.service-status-chip.up {
+    background: rgba(16, 185, 129, 0.2);
+    color: var(--accent-success);
+}
+
+.service-status-chip.up .status-dot {
+    background: var(--accent-success);
+}
+
+.service-status-chip.down {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--accent-error);
+}
+
+.service-status-chip.down .status-dot {
+    background: var(--accent-error);
+    animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.service-status-chip.unknown {
+    background: rgba(160, 160, 176, 0.2);
+    color: var(--text-secondary);
+}
+
+.service-status-chip.unknown .status-dot {
+    background: var(--text-secondary);
+}
+
+/* Service Metrics */
+.service-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.service-metric {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-secondary);
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    min-width: 80px;
+}
+
+.metric-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.2rem;
+}
+
+.metric-value {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Service Error */
+.service-error {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--accent-error);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    margin-bottom: var(--spacing-sm);
+    word-break: break-word;
+}
+
+/* Service Link */
+.service-link {
+    display: inline-block;
+    margin-top: var(--spacing-xs);
+    padding: 0.4rem 0.8rem;
+    background: var(--accent-primary);
+    color: white;
+    text-decoration: none;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    transition: opacity 0.3s ease;
+}
+
+.service-link:hover {
+    opacity: 0.8;
+}
+
 /* Pipeline Health Section in Repo Cards */
 .repo-pipeline {
     margin: var(--spacing-md) 0;
@@ -970,6 +1145,53 @@ body.compact .repo-link {
     font-size: 0.8rem;
 }
 
+/* Compact mode service styles */
+body.compact .services-grid {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.75rem;
+}
+
+body.compact .service-card {
+    padding: 1rem;
+}
+
+body.compact .service-name {
+    font-size: 0.95rem;
+}
+
+body.compact .service-status-chip {
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+}
+
+body.compact .service-metrics {
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+body.compact .service-metric {
+    padding: 0.35rem 0.5rem;
+    min-width: 70px;
+}
+
+body.compact .metric-label {
+    font-size: 0.6rem;
+}
+
+body.compact .metric-value {
+    font-size: 0.8rem;
+}
+
+body.compact .service-error {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.5rem;
+}
+
+body.compact .service-link {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+}
+
 body.compact .table-container {
     padding: 0.75rem;
 }
@@ -1078,6 +1300,32 @@ body.tv.compact .commit-sha {
     font-size: 0.95rem;
 }
 
+/* TV+Compact mode service styles */
+body.tv.compact .services-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+body.tv.compact .service-name {
+    font-size: 1.3rem;
+}
+
+body.tv.compact .service-status-chip {
+    font-size: 0.9rem;
+    padding: 0.4rem 0.8rem;
+}
+
+body.tv.compact .service-metric {
+    padding: 0.5rem 0.75rem;
+}
+
+body.tv.compact .metric-label {
+    font-size: 0.75rem;
+}
+
+body.tv.compact .metric-value {
+    font-size: 1rem;
+}
+
 /* TV Mode - Monitor-friendly viewing */
 body.tv {
     /* Larger base font size for readability from distance */
@@ -1184,6 +1432,51 @@ body.tv .commit-sha {
 
 body.tv .pipeline-link {
     font-size: 1.1rem;
+}
+
+/* TV mode service styles */
+body.tv .services-grid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+body.tv .service-card {
+    padding: var(--spacing-xl);
+}
+
+body.tv .service-name {
+    font-size: 1.5rem;
+}
+
+body.tv .service-status-chip {
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+}
+
+body.tv .service-metrics {
+    gap: var(--spacing-md);
+}
+
+body.tv .service-metric {
+    padding: 0.75rem 1rem;
+    min-width: 100px;
+}
+
+body.tv .metric-label {
+    font-size: 0.85rem;
+}
+
+body.tv .metric-value {
+    font-size: 1.2rem;
+}
+
+body.tv .service-error {
+    font-size: 1rem;
+    padding: var(--spacing-sm);
+}
+
+body.tv .service-link {
+    padding: 0.6rem 1.2rem;
+    font-size: 1rem;
 }
 
 body.tv .footer {
