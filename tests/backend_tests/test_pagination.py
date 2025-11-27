@@ -8,10 +8,10 @@ import sys
 import os
 from unittest.mock import MagicMock, patch
 
-# Add parent directory to path to import server module
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add parent directory to path to from backend import app as server module
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-import server
+from backend import app as server
 
 
 class TestPaginationHelpers(unittest.TestCase):
@@ -372,7 +372,7 @@ class TestPaginationLogging(unittest.TestCase):
             }
             
             # Capture log output
-            with patch('server.logger') as mock_logger:
+            with patch('backend.app.logger') as mock_logger:
                 self.client._make_paginated_request('projects')
                 
                 # Check all log calls don't contain the token
@@ -393,7 +393,7 @@ class TestPaginationLogging(unittest.TestCase):
                 'total': '1'
             }
             
-            with patch('server.logger') as mock_logger:
+            with patch('backend.app.logger') as mock_logger:
                 self.client.get_projects()
                 
                 # Verify no log contains the actual token

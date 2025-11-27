@@ -16,6 +16,10 @@ from urllib.error import URLError, HTTPError
 from urllib.parse import urlparse, parse_qs, urlencode, unquote
 import logging
 
+# Compute project root directory (parent of backend/)
+# This ensures paths work correctly regardless of where the script is run from
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 # Valid log level names (case-insensitive)
 VALID_LOG_LEVELS = ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
 
@@ -1293,8 +1297,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
     """Custom HTTP request handler for the dashboard"""
     
     def __init__(self, *args, **kwargs):
-        # Set the directory to serve static files from
-        super().__init__(*args, directory='frontend', **kwargs)
+        # Set the directory to serve static files from (relative to project root)
+        frontend_dir = os.path.join(PROJECT_ROOT, 'frontend')
+        super().__init__(*args, directory=frontend_dir, **kwargs)
     
     def _is_blocked_path(self, path):
         """Check if a path should be blocked for security reasons
@@ -1822,8 +1827,8 @@ def load_config():
     config = {}
     config_source = "environment variables"
     
-    # Try to load from config.json first
-    config_file = 'config.json'
+    # Try to load from config.json first (in project root)
+    config_file = os.path.join(PROJECT_ROOT, 'config.json')
     if os.path.exists(config_file):
         try:
             with open(config_file, 'r') as f:
@@ -2017,10 +2022,10 @@ def load_mock_data(scenario=''):
     """
     if scenario:
         # Load from scenario file in data/mock_scenarios/
-        mock_data_file = f'data/mock_scenarios/{scenario}.json'
+        mock_data_file = os.path.join(PROJECT_ROOT, 'data', 'mock_scenarios', f'{scenario}.json')
     else:
         # Load from default mock_data.json
-        mock_data_file = 'mock_data.json'
+        mock_data_file = os.path.join(PROJECT_ROOT, 'mock_data.json')
     
     if not os.path.exists(mock_data_file):
         logger.error(f"Mock data file not found: {mock_data_file}")
@@ -2075,9 +2080,9 @@ def main():
         
         # Determine the resolved file path for the mock data
         if MOCK_SCENARIO:
-            mock_file_path = f'data/mock_scenarios/{MOCK_SCENARIO}.json'
+            mock_file_path = os.path.join(PROJECT_ROOT, 'data', 'mock_scenarios', f'{MOCK_SCENARIO}.json')
         else:
-            mock_file_path = 'mock_data.json'
+            mock_file_path = os.path.join(PROJECT_ROOT, 'mock_data.json')
         # Resolve to absolute path for clarity in logs
         resolved_mock_path = os.path.abspath(mock_file_path)
         
