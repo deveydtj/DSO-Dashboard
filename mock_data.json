@@ -405,5 +405,57 @@
       "updated_at": "2024-01-20T07:50:00.000Z",
       "duration": 120
     }
+  ],
+  "services": [
+    {
+      "id": "artifactory",
+      "name": "Artifactory",
+      "url": "https://artifactory.example.com",
+      "status": "UP",
+      "latency_ms": 45,
+      "last_checked": "2024-01-20T10:30:00.000Z",
+      "http_status": 200,
+      "error": null
+    },
+    {
+      "id": "confluence",
+      "name": "Confluence",
+      "url": "https://confluence.example.com",
+      "status": "UP",
+      "latency_ms": 128,
+      "last_checked": "2024-01-20T10:30:00.000Z",
+      "http_status": 200,
+      "error": null
+    },
+    {
+      "id": "jira",
+      "name": "Jira",
+      "url": "https://jira.example.com",
+      "status": "DOWN",
+      "latency_ms": 5032,
+      "last_checked": "2024-01-20T10:30:00.000Z",
+      "http_status": 503,
+      "error": "Service Unavailable"
+    },
+    {
+      "id": "sonarqube",
+      "name": "SonarQube",
+      "url": "https://sonarqube.example.com",
+      "status": "UP",
+      "latency_ms": 89,
+      "last_checked": "2024-01-20T10:30:00.000Z",
+      "http_status": 200,
+      "error": null
+    },
+    {
+      "id": "nexus",
+      "name": "Nexus Repository",
+      "url": "https://nexus.example.com",
+      "status": "UP",
+      "latency_ms": 67,
+      "last_checked": "2024-01-20T10:30:00.000Z",
+      "http_status": 200,
+      "error": null
+    }
   ]
 }

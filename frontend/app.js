@@ -35,7 +35,8 @@ class DashboardApp {
         this.cachedData = {
             summary: null,
             repos: null,
-            pipelines: null
+            pipelines: null,
+            services: null
         };
         // Track per-repo state between refreshes for animation detection
         // Stores { status: normalizedStatus, index: sortedPosition } per repo key
@@ -275,7 +276,7 @@ class DashboardApp {
         }
         // Show stale data notice when offline
         if (!isOnline && lastUpdated) {
-            const hasCache = this.cachedData.summary || this.cachedData.repos || this.cachedData.pipelines;
+            const hasCache = this.cachedData.summary || this.cachedData.repos || this.cachedData.pipelines || this.cachedData.services;
             if (hasCache) {
                 lastUpdated.textContent = '⚠️ Showing cached data (backend offline)';
             }
@@ -289,19 +290,21 @@ class DashboardApp {
         console.log('📊 Loading dashboard data...');
         // Load endpoints concurrently using Promise.allSettled
         // This fetches in parallel while handling individual failures gracefully
-        const [summaryResult, reposResult, pipelinesResult] = await Promise.allSettled([
+        const [summaryResult, reposResult, pipelinesResult, servicesResult] = await Promise.allSettled([
             this.loadSummary(),
             this.loadRepositories(),
-            this.loadPipelines()
+            this.loadPipelines(),
+            this.loadServices()
         ]);
         
         // Extract success status from each result
         const summarySuccess = summaryResult.status === 'fulfilled' && summaryResult.value === true;
         const reposSuccess = reposResult.status === 'fulfilled' && reposResult.value === true;
         const pipelinesSuccess = pipelinesResult.status === 'fulfilled' && pipelinesResult.value === true;
+        const servicesSuccess = servicesResult.status === 'fulfilled' && servicesResult.value === true;
         
-        const anySuccess = summarySuccess || reposSuccess || pipelinesSuccess;
-        const anyFailure = !summarySuccess || !reposSuccess || !pipelinesSuccess;
+        const anySuccess = summarySuccess || reposSuccess || pipelinesSuccess || servicesSuccess;
+        const anyFailure = !summarySuccess || !reposSuccess || !pipelinesSuccess || !servicesSuccess;
         
         // Update timestamp and status based on results
         if (anySuccess && !anyFailure) {
@@ -624,6 +627,117 @@ class DashboardApp {
         `;
     }
 
+    async loadServices() {
+        try {
+            const response = await fetchWithTimeout(`${this.apiBase}/api/services`, this.fetchTimeout);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const data = await response.json();
+            this.cachedData.services = data.services;
+            this.renderServices(data.services || []);
+            console.log(`✅ Loaded ${data.services?.length || 0} services`);
+            return true;
+        } catch (error) {
+            console.error('❌ Error loading services:', error);
+            // Try to use cached data
+            if (this.cachedData.services) {
+                console.log('📦 Using cached services data');
+                this.renderServices(this.cachedData.services);
+            } else {
+                this.showError('Failed to load services', 'servicesGrid');
+            }
+            return false;
+        }
+    }
+
+    renderServices(services) {
+        const container = document.getElementById('servicesGrid');
+        if (!container) return;
+
+        if (services.length === 0) {
+            container.innerHTML = '<div class="services-empty">No services configured</div>';
+            return;
+        }
+
+        container.innerHTML = services.map(service => this.createServiceCard(service)).join('');
+    }
+
+    createServiceCard(service) {
+        const name = service.name || service.id || service.url || 'Unknown Service';
+        const status = this.normalizeServiceStatus(service.status);
+        const statusClass = `service-status-${status.toLowerCase()}`;
+        
+        // Latency display
+        const latency = service.latency_ms != null 
+            ? `${Math.round(service.latency_ms)}ms`
+            : '--';
+        
+        // Last checked display
+        const lastChecked = service.last_checked 
+            ? this.formatDate(service.last_checked)
+            : '--';
+        
+        // HTTP status display (optional)
+        const httpStatus = service.http_status 
+            ? `HTTP ${service.http_status}`
+            : '';
+        
+        // Error message (optional)
+        const errorHtml = service.error 
+            ? `<div class="service-error">${this.escapeHtml(service.error)}</div>`
+            : '';
+        
+        // Optional link to open service URL
+        const linkHtml = service.url 
+            ? `<a href="${this.escapeHtml(service.url)}" target="_blank" rel="noopener noreferrer" class="service-link" title="Open ${this.escapeHtml(name)}">Open →</a>`
+            : '';
+
+        return `
+            <div class="service-card ${statusClass}">
+                <div class="service-header">
+                    <h3 class="service-name">${this.escapeHtml(name)}</h3>
+                    <span class="service-status-chip ${status.toLowerCase()}">
+                        <span class="status-dot"></span>
+                        <span>${this.escapeHtml(status)}</span>
+                    </span>
+                </div>
+                <div class="service-metrics">
+                    <div class="service-metric">
+                        <span class="metric-label">Latency</span>
+                        <span class="metric-value">${latency}</span>
+                    </div>
+                    <div class="service-metric">
+                        <span class="metric-label">Last Check</span>
+                        <span class="metric-value">${lastChecked}</span>
+                    </div>
+                    ${httpStatus ? `
+                    <div class="service-metric">
+                        <span class="metric-label">Status</span>
+                        <span class="metric-value">${httpStatus}</span>
+                    </div>
+                    ` : ''}
+                </div>
+                ${errorHtml}
+                ${linkHtml}
+            </div>
+        `;
+    }
+
+    normalizeServiceStatus(rawStatus) {
+        // Normalize service status to UP, DOWN, or UNKNOWN
+        if (!rawStatus) return 'UNKNOWN';
+        
+        const status = String(rawStatus).toUpperCase().trim();
+        
+        if (status === 'UP' || status === 'HEALTHY' || status === 'OK' || status === 'ONLINE') {
+            return 'UP';
+        }
+        if (status === 'DOWN' || status === 'UNHEALTHY' || status === 'ERROR' || status === 'OFFLINE') {
+            return 'DOWN';
+        }
+        return 'UNKNOWN';
+    }
+
     updateLastUpdated() {
         const element = document.getElementById('lastUpdated');
         if (element) {
@@ -644,7 +758,7 @@ class DashboardApp {
         const element = document.getElementById('lastUpdated');
         const indicator = document.getElementById('statusIndicator');
         if (element) {
-            const hasCache = this.cachedData.summary || this.cachedData.repos || this.cachedData.pipelines;
+            const hasCache = this.cachedData.summary || this.cachedData.repos || this.cachedData.pipelines || this.cachedData.services;
             if (hasCache) {
                 element.textContent = '⚠️ All data stale (using cache)';
             } else {
