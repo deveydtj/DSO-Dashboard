@@ -210,6 +210,29 @@ curl http://localhost:8080/api/pipelines
 5. Run all tests to ensure no regressions
 6. Update docs only if behavior was unclear
 
+### Working with External Services
+
+The `external_services` configuration allows monitoring of external tools (Artifactory, Confluence, Jira, etc.). When working with this feature:
+
+**Configuration:**
+- Each service entry requires a `url` field (the health-check endpoint to probe)
+- Optional fields: `id`, `name`, `timeout`, `critical`, `kind`
+- Services are validated at startup; invalid entries (non-dict or missing `url`) cause a fatal error and the server will not start
+
+**Backend Behavior:**
+- Services are checked during each poll cycle via `BackgroundPoller._check_external_services()`
+- Service checks run independently of GitLab API calls (continue even when GitLab is unreachable)
+- Results are available via `GET /api/services` endpoint
+
+**Frontend Behavior:**
+- The Core Services panel renders service cards from `/api/services` response
+- Panel shows "No services configured" when the list is empty
+- Service status is displayed as UP (green) or DOWN (red) with latency and last check time
+
+**Testing:**
+- Use `USE_MOCK_DATA=true` with mock data that includes a `services` array
+- Validate `/api/services` returns proper JSON shape (always has `services` array)
+
 ## Troubleshooting Common Issues
 
 ### "ImportError: No module named 'requests'"

@@ -246,7 +246,10 @@ DSO-Dashboard supports two configuration methods that can be used together. **En
 | `insecure_skip_verify` | `INSECURE_SKIP_VERIFY` | Skip SSL verification (not recommended, use `ca_bundle_path` instead) | `false` |
 | `use_mock_data` | `USE_MOCK_DATA` | Use mock data instead of GitLab API | `false` |
 | `mock_scenario` | `MOCK_SCENARIO` | Mock scenario name: `healthy`, `failing`, or `running` | `` (uses `mock_data.json`) |
+| `external_services` | - | List of external services to monitor (optional) | `[]` (disabled) |
 | `port` (N/A in json) | `PORT` | Server port | `8080` |
+
+**Note on `external_services`:** This optional field accepts a list of external service objects to monitor. Each entry must have a `url` field (the health-check endpoint). Optional fields include `id` (stable identifier), `name` (human-readable display name), `timeout` (seconds, default 10), `critical` (boolean flag), and `kind` (type label like `"artifact-repository"` or `"wiki"`). Omitting this field or leaving it as an empty list disables external service monitoring.
 
 **Note on pagination:** The `per_page` parameter controls how many items are fetched per API request. The dashboard automatically fetches all pages until exhausted, so groups with hundreds of projects will load completely. GitLab's maximum `per_page` is typically 100. The dashboard supports both X-Next-Page headers and RFC 5988 Link headers for pagination.
 
@@ -295,6 +298,39 @@ DSO-Dashboard supports two configuration methods that can be used together. **En
 # Start with config.json but override URL temporarily
 export GITLAB_URL="https://staging-gitlab.example.com"
 python3 server.py
+```
+
+**Example 6: External service monitoring**
+```json
+{
+  "gitlab_url": "https://gitlab.com",
+  "api_token": "glpat-xxxxxxxxxxxxx",
+  "external_services": [
+    {
+      "id": "artifactory",
+      "name": "Artifactory",
+      "url": "https://artifactory.example.com/api/system/ping",
+      "timeout": 5,
+      "critical": true,
+      "kind": "artifact-repository"
+    },
+    {
+      "id": "confluence",
+      "name": "Confluence",
+      "url": "https://confluence.example.com/status",
+      "timeout": 10,
+      "critical": false,
+      "kind": "wiki"
+    },
+    {
+      "id": "jira-prod",
+      "name": "Jira Production",
+      "url": "https://jira.example.com/status",
+      "critical": true,
+      "kind": "issue-tracker"
+    }
+  ]
+}
 ```
 
 ### SSL/TLS Configuration
@@ -724,6 +760,64 @@ GET /api/pipelines?project=my-app
 - `skipped`: Pipeline was skipped
 - `manual`: Pipeline requires manual action
 
+### GET `/api/services`
+
+Health status of configured external services. Returns the current availability of internal tools and dependencies monitored via the `external_services` configuration.
+
+**Response:**
+```json
+{
+  "services": [
+    {
+      "id": "artifactory",
+      "name": "Artifactory",
+      "url": "https://artifactory.example.com/api/system/ping",
+      "status": "UP",
+      "latency_ms": 45.23,
+      "http_status": 200,
+      "last_checked": "2024-01-15T12:00:00.000000",
+      "error": null
+    },
+    {
+      "id": "confluence",
+      "name": "Confluence",
+      "url": "https://confluence.example.com/status",
+      "status": "DOWN",
+      "latency_ms": 5023.45,
+      "http_status": 503,
+      "last_checked": "2024-01-15T12:00:00.000000",
+      "error": "HTTP 503: Service Unavailable"
+    }
+  ],
+  "total": 2,
+  "last_updated": "2024-01-15T12:00:00.000000",
+  "backend_status": "ONLINE",
+  "is_mock": false
+}
+```
+
+**Response Fields:**
+- `services`: Array of service health objects (empty array `[]` when no services configured)
+- `total`: Count of services returned
+- `backend_status`: Backend state - `INITIALIZING`, `ONLINE`, or `ERROR`
+- `last_updated`: ISO timestamp of last service check (null when INITIALIZING)
+- `is_mock`: Boolean indicating if data is from mock mode
+
+**Service Object Fields:**
+- `id`: Stable identifier for the service
+- `name`: Human-readable service name
+- `url`: URL that was probed for health
+- `status`: Service availability - `UP` (2xx/3xx response) or `DOWN` (error/timeout/4xx/5xx)
+- `latency_ms`: Response time in milliseconds
+- `http_status`: HTTP status code returned (null if connection failed)
+- `last_checked`: ISO timestamp of when this service was last checked
+- `error`: Error message if the service is down (null when UP)
+
+**Notes:**
+- The list is empty when no `external_services` are configured
+- Services are checked during each polling cycle alongside GitLab data
+- Service checks continue even when GitLab API is unreachable
+
 ### POST `/api/mock/reload`
 
 Hot-reload mock data from `mock_data.json` without restarting the server. Only available when running in mock mode (`USE_MOCK_DATA=true`).
@@ -776,6 +870,18 @@ curl -X POST http://localhost:8080/api/mock/reload
 - **Total Pipelines**: Recent pipeline runs
 - **Success Rate**: Percentage of successful pipelines
 - Color-coded KPI cards with icons
+
+#### Core Services Panel
+- Displays health status of configured external services (e.g., Artifactory, Confluence, Jira)
+- Each service card shows:
+  - Service name and UP/DOWN status indicator
+  - Response latency in milliseconds
+  - Last check timestamp (relative, e.g., "2m ago")
+  - HTTP status code when available
+  - Error message when service is down
+  - Direct link to open the service URL
+- Appears only when `external_services` is configured
+- Helps teams monitor the availability of key internal tools at a glance
 
 #### Repository Cards (Middle)
 - Grid layout of project cards
