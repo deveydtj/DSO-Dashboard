@@ -8,18 +8,26 @@ DSO-Dashboard is a GitLab DevSecOps monitoring dashboard with a pure Python stan
 
 ```
 DSO-Dashboard/
-├── server.py              # Backend HTTP server (Python stdlib only)
+├── backend/               # Backend package (Python stdlib only)
+│   ├── __init__.py        # Package init
+│   └── app.py             # Main server application
+├── frontend/              # Static UI assets
+│   ├── index.html         # Main page
+│   ├── app.js             # Frontend logic (vanilla JS)
+│   └── styles.css         # Dark neomorphic styles
+├── data/                  # Data files
+│   └── mock_scenarios/    # Mock data for testing/demos
+├── tests/                 # Test suite
+│   ├── backend_tests/     # Backend unit tests (stdlib unittest)
+│   └── frontend_tests/    # Frontend tests
+├── docs/                  # Documentation
+│   └── architecture-overview.md  # Architecture guide
 ├── config.json.example    # Configuration template
-├── .env.example          # Environment variables template
-├── frontend/             # Static UI assets
-│   ├── index.html        # Main page
-│   ├── app.js           # Frontend logic (vanilla JS)
-│   └── styles.css       # Dark neomorphic styles
-├── tests/               # Unit tests (stdlib unittest)
-└── .github/             # GitHub configuration
+├── .env.example           # Environment variables template
+└── .github/               # GitHub configuration
     ├── copilot-instructions.md
-    ├── instructions/    # Path-specific instructions
-    └── workflows/       # CI/CD workflows
+    ├── instructions/      # Path-specific instructions
+    └── workflows/         # CI/CD workflows
 ```
 
 ## Non-Negotiable Constraints
@@ -66,7 +74,7 @@ DSO-Dashboard/
 
 3. **Run the server:**
    ```bash
-   python3 server.py
+   python3 backend/app.py
    ```
 
 4. **Access the dashboard:**
@@ -76,7 +84,7 @@ DSO-Dashboard/
 
 ### Syntax Check
 ```bash
-python -m py_compile server.py
+python -m py_compile backend/app.py
 ```
 
 ### Run Tests
@@ -85,7 +93,7 @@ python -m unittest discover -s tests -p "test_*.py"
 ```
 
 ### Manual Testing
-1. Start the server: `python3 server.py`
+1. Start the server: `python3 backend/app.py`
 2. Test API endpoints:
    - `curl http://localhost:8080/api/health`
    - `curl http://localhost:8080/api/summary`
@@ -183,7 +191,7 @@ The backend provides these JSON endpoints that the frontend depends on:
 ### Adding Configuration Options
 1. Add field to `config.json.example`
 2. Add corresponding environment variable to `.env.example`
-3. Update `load_config()` in `server.py`
+3. Update `load_config()` in `backend/app.py`
 4. Document in README
 5. Add test case
 
@@ -194,14 +202,14 @@ The backend provides these JSON endpoints that the frontend depends on:
 - **"Failed to fetch data"**: Check GitLab URL and network connectivity
 - **SSL certificate errors**: For self-signed certs, set `insecure_skip_verify: true` (use cautiously)
 - **No data showing**: Verify API token has `read_api` scope
-- **Port already in use**: Change PORT in config or use `PORT=8081 python3 server.py`
+- **Port already in use**: Change PORT in config or use `PORT=8081 python3 backend/app.py`
 
 ## Contributing
 
 When making changes:
 1. Follow the constraints above (stdlib-only, vanilla-only)
 2. Write or update tests for your changes
-3. Run validation: `python -m py_compile server.py && python -m unittest`
+3. Run validation: `python -m py_compile backend/app.py && python -m unittest`
 4. Update documentation if adding features or changing behavior
 5. Keep commits focused and well-described
 6. Ensure backward compatibility with existing deployments

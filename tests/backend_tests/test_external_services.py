@@ -12,10 +12,10 @@ from unittest.mock import MagicMock, patch, Mock, mock_open
 from datetime import datetime
 from urllib.error import URLError, HTTPError
 
-# Add parent directory to path to import server module
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add parent directory to path to from backend import app as server module
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-import server
+from backend import app as server
 
 
 class TestExternalServicesStateInit(unittest.TestCase):
@@ -374,7 +374,7 @@ class TestSingleServiceCheck(unittest.TestCase):
         mock_response.status = 200
         mock_response.close = MagicMock()
         
-        with patch('server.urlopen', return_value=mock_response):
+        with patch('backend.app.urlopen', return_value=mock_response):
             result = self.poller._check_single_service(
                 url='https://test.example.com',
                 name='Test',
@@ -395,7 +395,7 @@ class TestSingleServiceCheck(unittest.TestCase):
         mock_response.status = 302
         mock_response.close = MagicMock()
         
-        with patch('server.urlopen', return_value=mock_response):
+        with patch('backend.app.urlopen', return_value=mock_response):
             result = self.poller._check_single_service(
                 url='https://test.example.com',
                 name='Test',
@@ -416,7 +416,7 @@ class TestSingleServiceCheck(unittest.TestCase):
             fp=None
         )
         
-        with patch('server.urlopen', side_effect=mock_error):
+        with patch('backend.app.urlopen', side_effect=mock_error):
             result = self.poller._check_single_service(
                 url='https://test.example.com',
                 name='Test',
@@ -432,7 +432,7 @@ class TestSingleServiceCheck(unittest.TestCase):
         """Test _check_single_service returns DOWN for timeout"""
         mock_error = URLError('timed out')
         
-        with patch('server.urlopen', side_effect=mock_error):
+        with patch('backend.app.urlopen', side_effect=mock_error):
             result = self.poller._check_single_service(
                 url='https://test.example.com',
                 name='Test',
@@ -448,7 +448,7 @@ class TestSingleServiceCheck(unittest.TestCase):
         """Test _check_single_service returns DOWN for connection refused"""
         mock_error = URLError('Connection refused')
         
-        with patch('server.urlopen', side_effect=mock_error):
+        with patch('backend.app.urlopen', side_effect=mock_error):
             result = self.poller._check_single_service(
                 url='https://test.example.com',
                 name='Test',
@@ -465,7 +465,7 @@ class TestSingleServiceCheck(unittest.TestCase):
         mock_response.status = 200
         mock_response.close = MagicMock()
         
-        with patch('server.urlopen', return_value=mock_response):
+        with patch('backend.app.urlopen', return_value=mock_response):
             result = self.poller._check_single_service(
                 url='https://test.example.com',
                 name='Test',
@@ -581,7 +581,7 @@ class TestServicesEndpoint(unittest.TestCase):
         handler.send_json_response = MagicMock()
         
         # Mock get_state_snapshot to raise exception
-        with patch('server.get_state_snapshot', side_effect=Exception('Test error')):
+        with patch('backend.app.get_state_snapshot', side_effect=Exception('Test error')):
             server.DashboardRequestHandler.handle_services(handler)
         
         handler.send_json_response.assert_called_once()

@@ -37,7 +37,7 @@ jobs:
     - name: Compile Python syntax
       run: |
         echo "Checking Python syntax..."
-        python -m py_compile server.py
+        python -m py_compile backend/app.py
         echo "✓ Python syntax check passed"
     
     - name: Run unit tests
@@ -68,8 +68,8 @@ jobs:
       run: |
         echo "Checking for hardcoded secrets..."
         # Check for potential hardcoded tokens or passwords
-        if grep -i "token.*=.*['\"][a-zA-Z0-9_-]\{20,\}['\"]" server.py; then
-          echo "⚠️  WARNING: Potential hardcoded token found in server.py"
+        if grep -i "token.*=.*['\"][a-zA-Z0-9_-]\{20,\}['\"]" backend/app.py; then
+          echo "⚠️  WARNING: Potential hardcoded token found in backend/app.py"
           echo "    Tokens should be in config.json or environment variables"
           exit 1
         fi
@@ -79,7 +79,9 @@ jobs:
       run: |
         echo "Validating project structure..."
         # Check required files exist
-        test -f server.py || (echo "❌ server.py missing" && exit 1)
+        test -d backend || (echo "❌ backend/ directory missing" && exit 1)
+        test -f backend/app.py || (echo "❌ backend/app.py missing" && exit 1)
+        test -f backend/__init__.py || (echo "❌ backend/__init__.py missing" && exit 1)
         test -f config.json.example || (echo "❌ config.json.example missing" && exit 1)
         test -f .env.example || (echo "❌ .env.example missing" && exit 1)
         test -f README.md || (echo "❌ README.md missing" && exit 1)
@@ -88,6 +90,8 @@ jobs:
         test -f frontend/app.js || (echo "❌ frontend/app.js missing" && exit 1)
         test -f frontend/styles.css || (echo "❌ frontend/styles.css missing" && exit 1)
         test -d tests || (echo "❌ tests/ directory missing" && exit 1)
+        test -d docs || (echo "❌ docs/ directory missing" && exit 1)
+        test -f docs/architecture-overview.md || (echo "❌ docs/architecture-overview.md missing" && exit 1)
         echo "✓ Project structure validated"
     
     - name: Verify config.json not committed
@@ -195,7 +199,7 @@ jobs:
       run: |
         echo "Testing server startup (without API token)..."
         # Start server in background
-        python3 server.py &
+        python3 backend/app.py &
         SERVER_PID=$!
         
         # Wait for server to start
@@ -217,7 +221,7 @@ jobs:
       run: |
         echo "Testing API endpoints..."
         # Start server in background
-        python3 server.py &
+        python3 backend/app.py &
         SERVER_PID=$!
         
         # Wait for server to be ready

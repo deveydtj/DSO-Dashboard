@@ -10,10 +10,10 @@ import os
 import json
 from unittest.mock import MagicMock, patch, mock_open
 
-# Add parent directory to path to import server module
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add parent directory to path to from backend import app as server module
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-import server
+from backend import app as server
 
 
 class TestMockScenarioLoading(unittest.TestCase):
@@ -46,8 +46,9 @@ class TestMockScenarioLoading(unittest.TestCase):
             with patch('os.path.exists', return_value=True) as mock_exists:
                 result = server.load_mock_data('healthy')
                 
-                # Verify it tried to load the correct file
-                mock_exists.assert_called_with('data/mock_scenarios/healthy.json')
+                # Verify it tried to load the correct file (absolute path from PROJECT_ROOT)
+                expected_path = os.path.join(server.PROJECT_ROOT, 'data', 'mock_scenarios', 'healthy.json')
+                mock_exists.assert_called_with(expected_path)
         
         self.assertIsNotNone(result)
         self.assertEqual(result['summary']['total_repositories'], 10)
@@ -65,8 +66,9 @@ class TestMockScenarioLoading(unittest.TestCase):
             with patch('os.path.exists', return_value=True) as mock_exists:
                 result = server.load_mock_data('failing')
                 
-                # Verify it tried to load the correct file
-                mock_exists.assert_called_with('data/mock_scenarios/failing.json')
+                # Verify it tried to load the correct file (absolute path from PROJECT_ROOT)
+                expected_path = os.path.join(server.PROJECT_ROOT, 'data', 'mock_scenarios', 'failing.json')
+                mock_exists.assert_called_with(expected_path)
         
         self.assertIsNotNone(result)
         self.assertEqual(result['summary']['total_repositories'], 8)
@@ -84,8 +86,9 @@ class TestMockScenarioLoading(unittest.TestCase):
             with patch('os.path.exists', return_value=True) as mock_exists:
                 result = server.load_mock_data('running')
                 
-                # Verify it tried to load the correct file
-                mock_exists.assert_called_with('data/mock_scenarios/running.json')
+                # Verify it tried to load the correct file (absolute path from PROJECT_ROOT)
+                expected_path = os.path.join(server.PROJECT_ROOT, 'data', 'mock_scenarios', 'running.json')
+                mock_exists.assert_called_with(expected_path)
         
         self.assertIsNotNone(result)
         self.assertEqual(result['summary']['running_pipelines'], 18)

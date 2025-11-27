@@ -13,10 +13,10 @@ from unittest.mock import MagicMock, patch, mock_open
 from datetime import datetime
 from http.server import HTTPServer
 
-# Add parent directory to path to import server module
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add parent directory to path to from backend import app as server module
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-import server
+from backend import app as server
 
 
 class TestMockReloadEndpoint(unittest.TestCase):
@@ -103,7 +103,7 @@ class TestMockReloadEndpoint(unittest.TestCase):
             ]
         }
         
-        with patch('server.load_mock_data', return_value=mock_data):
+        with patch('backend.app.load_mock_data', return_value=mock_data):
             self.handler.handle_mock_reload()
         
         # Should return 200 OK
@@ -139,7 +139,7 @@ class TestMockReloadEndpoint(unittest.TestCase):
         """Test reload when mock_data.json fails to load"""
         server.MOCK_MODE_ENABLED = True
         
-        with patch('server.load_mock_data', return_value=None):
+        with patch('backend.app.load_mock_data', return_value=None):
             self.handler.handle_mock_reload()
         
         # Should return 500 Internal Server Error
@@ -158,7 +158,7 @@ class TestMockReloadEndpoint(unittest.TestCase):
         """Test that exceptions are caught and returned as 500 errors"""
         server.MOCK_MODE_ENABLED = True
         
-        with patch('server.load_mock_data', side_effect=Exception('Test exception')):
+        with patch('backend.app.load_mock_data', side_effect=Exception('Test exception')):
             self.handler.handle_mock_reload()
         
         # Should return 500 Internal Server Error
@@ -197,7 +197,7 @@ class TestMockReloadEndpoint(unittest.TestCase):
             ]
         }
         
-        with patch('server.load_mock_data', return_value=new_mock_data):
+        with patch('backend.app.load_mock_data', return_value=new_mock_data):
             self.handler.handle_mock_reload()
         
         # Verify STATE was completely replaced

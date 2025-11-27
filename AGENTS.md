@@ -25,7 +25,7 @@ This file provides guidance for GitHub Copilot Coding Agents working on this rep
 Before marking a PR as complete, ensure:
 
 ### Code Quality
-- [ ] Changes compile/run without errors: `python -m py_compile server.py`
+- [ ] Changes compile/run without errors: `python -m py_compile backend/app.py`
 - [ ] All tests pass: `python -m unittest discover -s tests`
 - [ ] No external dependencies added (stdlib-only for backend, vanilla-only for frontend)
 - [ ] Code follows existing style and patterns
@@ -67,6 +67,9 @@ Follow this workflow when addressing tasks:
 cat .github/copilot-instructions.md
 cat .github/instructions/backend.instructions.md  # If touching Python
 cat .github/instructions/frontend.instructions.md  # If touching JS/HTML/CSS
+
+# Read the architecture overview
+cat docs/architecture-overview.md
 ```
 
 **Key things to understand:**
@@ -80,18 +83,20 @@ cat .github/instructions/frontend.instructions.md  # If touching JS/HTML/CSS
 Based on the task, determine which files need changes:
 
 **Backend tasks (API, polling, config):**
-- `server.py` - Core backend logic
+- `backend/app.py` - Core backend logic (main server file)
 - `config.json.example` - Configuration template
 - `.env.example` - Environment variables
-- `tests/test_*.py` - Backend tests
+- `tests/backend_tests/test_*.py` - Backend tests
 
 **Frontend tasks (UI, dashboard, display):**
-- `frontend/index.html` - Page structure
-- `frontend/app.js` - Frontend logic
-- `frontend/styles.css` - Styles and theme
+- `frontend/index.html` - Page structure (main HTML entry point)
+- `frontend/app.js` - Frontend logic (main JavaScript entry point)
+- `frontend/styles.css` - Styles and theme (main CSS entry point)
+- `tests/frontend_tests/test_*.py` - Frontend tests
 
 **Documentation tasks:**
 - `README.md` - Main documentation
+- `docs/architecture-overview.md` - Architecture guide (starting point for agents)
 - `.github/copilot-instructions.md` - Agent instructions
 
 **Infrastructure tasks:**
@@ -127,13 +132,13 @@ Based on the task, determine which files need changes:
 
 ```bash
 # Validate Python syntax
-python -m py_compile server.py
+python -m py_compile backend/app.py
 
 # Run tests (if tests exist)
 python -m unittest discover -s tests -p "test_*.py"
 
 # Start server manually
-python3 server.py
+python3 backend/app.py
 # Keep running and test in another terminal...
 
 # Test API endpoints
@@ -154,6 +159,7 @@ curl http://localhost:8080/api/pipelines
 **If your changes affect behavior, update:**
 
 - **README.md**: For user-facing changes (new config options, new endpoints, setup changes)
+- **docs/architecture-overview.md**: For structural changes
 - **API Documentation**: If you modified endpoint behavior or added parameters
 - **Configuration examples**: Update `config.json.example` and `.env.example`
 - **Comments**: Add comments only if the code is not self-explanatory
@@ -169,7 +175,7 @@ curl http://localhost:8080/api/pipelines
 
 1. Add field to `config.json.example` with comment
 2. Add corresponding env var to `.env.example`
-3. Update `load_config()` in `server.py` to read the option
+3. Update `load_config()` in `backend/app.py` to read the option
 4. Use the config value in your feature
 5. Document in README "Configuration Options" section
 6. Add test case for config loading
@@ -250,14 +256,14 @@ The `external_services` configuration allows monitoring of external tools (Artif
 - Verify test mocks match actual function signatures
 
 ### CI workflow failing
-- Run the same commands locally: `python -m py_compile server.py && python -m unittest`
+- Run the same commands locally: `python -m py_compile backend/app.py && python -m unittest`
 - Check if you need to update test fixtures
 - Review CI logs for specific error messages
 
 ### Server won't start
 - Check if GITLAB_API_TOKEN is set
 - Verify port is available: `lsof -i :8080`
-- Look for Python syntax errors: `python -m py_compile server.py`
+- Look for Python syntax errors: `python -m py_compile backend/app.py`
 - Check logs for specific error messages
 
 ## Security Checklist
@@ -277,13 +283,13 @@ Before committing, verify:
 ### Backend Testing
 ```bash
 # Syntax check
-python -m py_compile server.py
+python -m py_compile backend/app.py
 
 # Unit tests
 python -m unittest discover -s tests
 
 # Integration test
-python3 server.py &
+python3 backend/app.py &
 sleep 5
 curl http://localhost:8080/api/health
 curl http://localhost:8080/api/summary

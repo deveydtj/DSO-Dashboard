@@ -16,10 +16,10 @@ import time
 from unittest.mock import MagicMock, patch, call
 from urllib.error import HTTPError, URLError
 
-# Add parent directory to path to import server module
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add parent directory to path to from backend import app as server module
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-import server
+from backend import app as server
 
 
 class TestRateLimitHandling(unittest.TestCase):
@@ -46,7 +46,7 @@ class TestRateLimitHandling(unittest.TestCase):
         )
         
         # Mock urlopen to raise 429 once, then succeed
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             # First call raises 429
             mock_success_response = MagicMock()
             mock_success_response.read.return_value = b'{"data": "success"}'
@@ -78,7 +78,7 @@ class TestRateLimitHandling(unittest.TestCase):
             fp=None
         )
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             # First call raises 429, second succeeds
             mock_success_response = MagicMock()
             mock_success_response.read.return_value = b'{"data": "success"}'
@@ -106,7 +106,7 @@ class TestRateLimitHandling(unittest.TestCase):
             fp=None
         )
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             # Always raise 429
             mock_urlopen.side_effect = mock_error
             
@@ -134,7 +134,7 @@ class TestRateLimitHandling(unittest.TestCase):
             fp=None
         )
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             mock_success_response = MagicMock()
             mock_success_response.read.return_value = b'{"data": "success"}'
             mock_success_response.headers = {}
@@ -173,7 +173,7 @@ class TestServerErrorRetry(unittest.TestCase):
             fp=None
         )
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             # Fail twice with 500, then succeed
             mock_success_response = MagicMock()
             mock_success_response.read.return_value = b'{"data": "success"}'
@@ -203,7 +203,7 @@ class TestServerErrorRetry(unittest.TestCase):
             fp=None
         )
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             mock_success_response = MagicMock()
             mock_success_response.read.return_value = b'{"data": "success"}'
             mock_success_response.headers = {}
@@ -229,7 +229,7 @@ class TestServerErrorRetry(unittest.TestCase):
             fp=None
         )
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             # Always fail with 502
             mock_urlopen.side_effect = mock_error
             
@@ -264,7 +264,7 @@ class TestTimeoutAndConnectionErrorRetry(unittest.TestCase):
         """Test timeout error retries with exponential backoff"""
         mock_error = URLError('timed out')
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             mock_success_response = MagicMock()
             mock_success_response.read.return_value = b'{"data": "success"}'
             mock_success_response.headers = {}
@@ -284,7 +284,7 @@ class TestTimeoutAndConnectionErrorRetry(unittest.TestCase):
         """Test connection error retries"""
         mock_error = URLError('Connection refused')
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             mock_success_response = MagicMock()
             mock_success_response.read.return_value = b'{"data": "success"}'
             mock_success_response.headers = {}
@@ -304,7 +304,7 @@ class TestTimeoutAndConnectionErrorRetry(unittest.TestCase):
         """Test connection error returns None after max retries"""
         mock_error = URLError('Connection reset by peer')
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             # Always fail
             mock_urlopen.side_effect = mock_error
             
@@ -342,7 +342,7 @@ class TestNonRetryableErrors(unittest.TestCase):
             fp=None
         )
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             mock_urlopen.side_effect = mock_error
             
             with patch('time.sleep') as mock_sleep:
@@ -364,7 +364,7 @@ class TestNonRetryableErrors(unittest.TestCase):
             fp=None
         )
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             mock_urlopen.side_effect = mock_error
             
             with patch('time.sleep') as mock_sleep:
@@ -396,7 +396,7 @@ class TestExponentialBackoffFormula(unittest.TestCase):
             fp=None
         )
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             mock_urlopen.side_effect = mock_error
             
             with patch('time.sleep') as mock_sleep:
@@ -424,7 +424,7 @@ class TestExponentialBackoffFormula(unittest.TestCase):
             fp=None
         )
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             mock_urlopen.side_effect = mock_error
             
             with patch('time.sleep') as mock_sleep:
@@ -447,7 +447,7 @@ class TestRetryLogic(unittest.TestCase):
             initial_retry_delay=1.0
         )
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             mock_response = MagicMock()
             mock_response.read.return_value = b'{"data": "success"}'
             mock_response.headers = {}
@@ -493,7 +493,7 @@ class TestRetryLogic(unittest.TestCase):
         
         mock_timeout = URLError('timed out')
         
-        with patch('server.urlopen') as mock_urlopen:
+        with patch('backend.app.urlopen') as mock_urlopen:
             mock_success = MagicMock()
             mock_success.read.return_value = b'{"data": "success"}'
             mock_success.headers = {}

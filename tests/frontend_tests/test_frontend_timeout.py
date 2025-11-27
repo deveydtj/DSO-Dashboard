@@ -3,6 +3,7 @@ Tests for frontend fetch timeout functionality
 """
 import unittest
 import re
+import os
 
 
 class TestFetchTimeoutImplementation(unittest.TestCase):
@@ -10,7 +11,11 @@ class TestFetchTimeoutImplementation(unittest.TestCase):
     
     def setUp(self):
         """Load the frontend app.js file"""
-        with open('frontend/app.js', 'r') as f:
+        # Compute path relative to this test file's location
+        test_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(test_dir))
+        frontend_path = os.path.join(project_root, 'frontend', 'app.js')
+        with open(frontend_path, 'r') as f:
             self.app_js_content = f.read()
     
     def test_fetchWithTimeout_function_exists(self):

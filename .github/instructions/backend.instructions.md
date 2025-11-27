@@ -1,6 +1,7 @@
 ---
 applyTo:
-  - "server.py"
+  - "backend/app.py"
+  - "backend/*.py"
   - "*.py"
 ---
 

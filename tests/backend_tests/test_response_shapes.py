@@ -11,10 +11,10 @@ import json
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 
-# Add parent directory to path to import server module
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add parent directory to path to from backend import app as server module
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-import server
+from backend import app as server
 
 
 class TestResponseShapes(unittest.TestCase):

@@ -83,7 +83,7 @@ DSO-Dashboard is a lightweight, portable GitLab monitoring dashboard designed fo
 
 ### Component Details
 
-#### Backend (`server.py`)
+#### Backend (`backend/app.py`)
 - **`GitLabAPIClient`**: Handles all GitLab API communication
   - Retry logic with exponential backoff
   - Rate limiting (429 response handling)
@@ -203,7 +203,7 @@ export GITLAB_URL="https://gitlab.com"
 export GITLAB_API_TOKEN="your_token_here"
 
 # 3. Run the server
-python3 server.py
+python3 backend/app.py
 ```
 
 Open your browser to **`http://localhost:8080`**
@@ -297,7 +297,7 @@ DSO-Dashboard supports two configuration methods that can be used together. **En
 ```bash
 # Start with config.json but override URL temporarily
 export GITLAB_URL="https://staging-gitlab.example.com"
-python3 server.py
+python3 backend/app.py
 ```
 
 **Example 6: External service monitoring**
@@ -353,7 +353,7 @@ For internal GitLab instances using corporate or custom CA certificates, use the
 **Environment Variable:**
 ```bash
 export CA_BUNDLE_PATH=/etc/ssl/certs/ca-bundle.crt
-python3 server.py
+python3 backend/app.py
 ```
 
 The CA bundle should be in PEM format and contain one or more CA certificates. Common locations:
@@ -377,7 +377,7 @@ The CA bundle should be in PEM format and contain one or more CA certificates. C
 **Environment Variable:**
 ```bash
 export INSECURE_SKIP_VERIFY=true
-python3 server.py
+python3 backend/app.py
 ```
 
 When `insecure_skip_verify` is enabled, the server logs a prominent warning on startup.
@@ -429,7 +429,7 @@ Mock data mode allows the dashboard to run without GitLab API access. This is us
 **Option 1: Environment Variable**
 ```bash
 export USE_MOCK_DATA=true
-python3 server.py
+python3 backend/app.py
 ```
 
 **Option 2: config.json**
@@ -462,21 +462,21 @@ DSO-Dashboard includes pre-built mock scenarios for testing different edge cases
 # Use the healthy scenario
 export USE_MOCK_DATA=true
 export MOCK_SCENARIO=healthy
-python3 server.py
+python3 backend/app.py
 
 # Use the failing scenario
 export USE_MOCK_DATA=true
 export MOCK_SCENARIO=failing
-python3 server.py
+python3 backend/app.py
 
 # Use the running scenario
 export USE_MOCK_DATA=true
 export MOCK_SCENARIO=running
-python3 server.py
+python3 backend/app.py
 
 # Use default mock_data.json (no scenario specified)
 export USE_MOCK_DATA=true
-python3 server.py
+python3 backend/app.py
 ```
 
 **Or via config.json:**
@@ -937,18 +937,30 @@ The UI uses a dark neomorphic design with:
 
 ```
 DSO-Dashboard/
-├── server.py                 # Backend (Python stdlib only)
-├── config.json.example       # Configuration template
-├── .env.example              # Environment variables template
+├── backend/                  # Backend package (Python stdlib only)
+│   ├── __init__.py           # Package init
+│   └── app.py                # Main server application
 │
 ├── frontend/                 # Static frontend files
 │   ├── index.html            # Page structure
 │   ├── app.js                # JavaScript logic (vanilla)
 │   └── styles.css            # Neomorphic dark theme
 │
-├── tests/                    # Unit tests (stdlib unittest)
+├── data/                     # Data files
+│   └── mock_scenarios/       # Mock data scenarios
+│       ├── healthy.json      # Healthy CI/CD scenario
+│       ├── failing.json      # Failing pipeline scenario
+│       └── running.json      # Active builds scenario
+│
+├── tests/                    # Test suite
 │   ├── __init__.py
-│   └── test_smoke.py         # Smoke tests
+│   ├── backend_tests/        # Backend unit tests
+│   │   └── test_*.py         # Test modules
+│   └── frontend_tests/       # Frontend tests
+│       └── test_*.py         # Test modules
+│
+├── docs/                     # Documentation
+│   └── architecture-overview.md  # Architecture guide
 │
 ├── .github/
 │   ├── copilot-instructions.md        # Copilot guidance (repo-wide)
@@ -961,6 +973,9 @@ DSO-Dashboard/
 │       ├── bug_report.md
 │       └── feature_request.md
 │
+├── config.json.example       # Configuration template
+├── .env.example              # Environment variables template
+├── mock_data.json            # Default mock data file
 ├── AGENTS.md                 # Agent workflow guidance
 ├── README.md                 # This file
 └── .gitignore                # Git ignore rules
@@ -985,7 +1000,7 @@ DSO-Dashboard/
 
 ```bash
 # Start the server
-python3 server.py
+python3 backend/app.py
 
 # In another terminal, test the API
 curl http://localhost:8080/api/health
@@ -1032,7 +1047,7 @@ python -m unittest discover -s tests -p "test_*.py" -v
 python -m unittest tests.test_smoke -v
 
 # Check Python syntax
-python -m py_compile server.py
+python -m py_compile backend/app.py
 ```
 
 ### Test Coverage
@@ -1069,7 +1084,7 @@ class TestMyFeature(unittest.TestCase):
 ### CI/CD Pipeline
 
 GitHub Actions runs on every push and PR:
-1. **Syntax Check**: `python -m py_compile server.py`
+1. **Syntax Check**: `python -m py_compile backend/app.py`
 2. **Unit Tests**: `python -m unittest`
 3. **Dependency Check**: Ensures no external dependencies
 4. **Frontend Check**: Ensures no frameworks/build tools
@@ -1153,7 +1168,7 @@ For more details, see the [SSL/TLS Configuration](#ssltls-configuration) section
 **Solution:**
 ```bash
 # Use a different port
-PORT=8081 python3 server.py
+PORT=8081 python3 backend/app.py
 
 # Or in config.json, set via env var only
 export PORT=8081
@@ -1184,7 +1199,7 @@ export PORT=8081
 Enable debug logging:
 
 ```python
-# In server.py, change logging level temporarily
+# In backend/app.py, change logging level temporarily
 logging.basicConfig(
     level=logging.DEBUG,  # Changed from INFO
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -1225,7 +1240,7 @@ Contributions are welcome! Please follow these guidelines:
 4. **Write/update tests** for your changes
 5. **Run validation**:
    ```bash
-   python -m py_compile server.py
+   python -m py_compile backend/app.py
    python -m unittest
    ```
 6. **Test manually** (start server, test in browser)
