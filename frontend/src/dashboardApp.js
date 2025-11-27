@@ -2,30 +2,28 @@
 // Pure JavaScript - no external dependencies
 // ES Module - DashboardApp class
 
-/**
- * Fetch with timeout support using AbortController
- * @param {string} url - The URL to fetch
- * @param {number} timeoutMs - Timeout in milliseconds (default: 8000ms)
- * @returns {Promise<Response>} - Fetch response
- * @throws {Error} - Throws on timeout or fetch errors
- */
-export async function fetchWithTimeout(url, timeoutMs = 8000) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-    
-    try {
-        const response = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-        return response;
-    } catch (error) {
-        clearTimeout(timeoutId);
-        // AbortController throws an AbortError when signal is aborted
-        if (error.name === 'AbortError') {
-            throw new Error(`Request timeout after ${timeoutMs}ms`);
-        }
-        throw error;
-    }
-}
+// Import utility modules
+import { escapeHtml, formatDate, formatDuration } from './utils/formatters.js';
+import { normalizeStatus, normalizeServiceStatus } from './utils/status.js';
+import {
+    showError,
+    updateStatusIndicator,
+    updateLastUpdated,
+    showPartialStaleWarning,
+    showAllStaleWarning,
+    updateMockBadge
+} from './utils/dom.js';
+import {
+    fetchWithTimeout,
+    fetchSummary,
+    fetchRepos,
+    fetchPipelines,
+    fetchServices,
+    checkBackendHealth
+} from './api/apiClient.js';
+
+// Re-export fetchWithTimeout for backward compatibility with tests
+export { fetchWithTimeout };
 
 export class DashboardApp {
     constructor() {
@@ -251,39 +249,12 @@ export class DashboardApp {
 
     async checkHealth() {
         try {
-            const response = await fetchWithTimeout(`${this.apiBase}/api/health`, this.fetchTimeout);
-            
-            // Check if response is successful (status 200-299)
-            if (!response.ok) {
-                console.error(`❌ Backend health check failed: HTTP ${response.status}`);
-                this.updateStatusIndicator(false);
-                return;
-            }
-            
-            const data = await response.json();
-            this.updateStatusIndicator(true);
+            const data = await checkBackendHealth(this.apiBase, this.fetchTimeout);
+            updateStatusIndicator(true, this.cachedData);
             console.log('✅ Backend health check passed', data);
         } catch (error) {
             console.error('❌ Backend health check failed', error);
-            this.updateStatusIndicator(false);
-        }
-    }
-
-    updateStatusIndicator(isOnline) {
-        const indicator = document.getElementById('statusIndicator');
-        const lastUpdated = document.getElementById('lastUpdated');
-        if (indicator) {
-            indicator.className = `status-indicator ${isOnline ? 'online' : 'offline'}`;
-        }
-        // Show stale data notice when offline
-        if (!isOnline && lastUpdated) {
-            const hasCache = this.cachedData.summary || this.cachedData.repos || this.cachedData.pipelines || this.cachedData.services;
-            if (hasCache) {
-                lastUpdated.textContent = '⚠️ Showing cached data (backend offline)';
-            }
-        } else if (isOnline && lastUpdated) {
-            // Clear any partial stale warning when back online
-            // (will be updated by loadAllData if needed)
+            updateStatusIndicator(false, this.cachedData);
         }
     }
 
@@ -310,23 +281,20 @@ export class DashboardApp {
         // Update timestamp and status based on results
         if (anySuccess && !anyFailure) {
             // All endpoints succeeded - show fresh data
-            this.updateLastUpdated();
+            updateLastUpdated();
         } else if (anySuccess && anyFailure) {
             // Partial success - show warning about mixed data
-            this.updateLastUpdated();
-            this.showPartialStaleWarning();
+            updateLastUpdated();
+            showPartialStaleWarning();
         } else if (!anySuccess) {
             // All endpoints failed - show stale data warning even if health check passed
-            this.showAllStaleWarning();
+            showAllStaleWarning(this.cachedData);
         }
     }
 
     async loadSummary() {
         try {
-            const response = await fetchWithTimeout(`${this.apiBase}/api/summary`, this.fetchTimeout);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            
-            const data = await response.json();
+            const data = await fetchSummary(this.apiBase, this.fetchTimeout);
             this.cachedData.summary = data;
             this.updateSummaryKPIs(data);
             console.log('✅ Summary data loaded', data);
@@ -338,7 +306,7 @@ export class DashboardApp {
                 console.log('📦 Using cached summary data');
                 this.updateSummaryKPIs(this.cachedData.summary);
             } else {
-                this.showError('Failed to load summary data');
+                showError('Failed to load summary data');
             }
             return false;
         }
@@ -356,26 +324,12 @@ export class DashboardApp {
         if (runningPipelines) runningPipelines.textContent = data.running_pipelines || 0;
 
         // Update mock data badge visibility
-        this.updateMockBadge(data.is_mock);
-    }
-
-    updateMockBadge(isMock) {
-        const badge = document.getElementById('mockBadge');
-        if (badge) {
-            if (isMock === true) {
-                badge.style.display = 'inline-flex';
-            } else {
-                badge.style.display = 'none';
-            }
-        }
+        updateMockBadge(data.is_mock);
     }
 
     async loadRepositories() {
         try {
-            const response = await fetchWithTimeout(`${this.apiBase}/api/repos`, this.fetchTimeout);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            
-            const data = await response.json();
+            const data = await fetchRepos(this.apiBase, this.fetchTimeout);
             this.cachedData.repos = data.repositories;
             this.renderRepositories(data.repositories || []);
             console.log(`✅ Loaded ${data.repositories?.length || 0} repositories`);
@@ -387,7 +341,7 @@ export class DashboardApp {
                 console.log('📦 Using cached repositories data');
                 this.renderRepositories(this.cachedData.repos);
             } else {
-                this.showError('Failed to load repositories', 'repoGrid');
+                showError('Failed to load repositories', 'repoGrid');
             }
             return false;
         }
@@ -435,8 +389,8 @@ export class DashboardApp {
             // Both null or equal - fall through to next priority
 
             // Third priority: failed/running pipelines first (using normalized status)
-            const normalizedStatusA = this.normalizeStatus(a.last_pipeline_status);
-            const normalizedStatusB = this.normalizeStatus(b.last_pipeline_status);
+            const normalizedStatusA = normalizeStatus(a.last_pipeline_status);
+            const normalizedStatusB = normalizeStatus(b.last_pipeline_status);
             
             const statusPriorityMap = {
                 'failed': 0,
@@ -464,7 +418,7 @@ export class DashboardApp {
         // Generate cards with attention classes based on state changes
         const cardsHtml = sortedRepos.map((repo, currentIndex) => {
             const key = this.getRepoKey(repo);
-            const normalizedStatus = this.normalizeStatus(repo.last_pipeline_status);
+            const normalizedStatus = normalizeStatus(repo.last_pipeline_status);
             const prev = prevState.get(key);
 
             // Determine if status degraded (any status -> failed is considered degradation)
@@ -496,7 +450,7 @@ export class DashboardApp {
     createRepoCard(repo, extraClasses = '') {
         const description = repo.description || 'No description available';
         const pipelineStatus = repo.last_pipeline_status || null;
-        const normalizedStatus = this.normalizeStatus(pipelineStatus);
+        const normalizedStatus = normalizeStatus(pipelineStatus);
         const statusClass = pipelineStatus ? `status-${normalizedStatus}` : 'status-none';
         
         // Pipeline info section
@@ -504,20 +458,20 @@ export class DashboardApp {
         if (pipelineStatus) {
             const ref = repo.last_pipeline_ref || 'unknown';
             const duration = repo.last_pipeline_duration != null 
-                ? this.formatDuration(repo.last_pipeline_duration) 
+                ? formatDuration(repo.last_pipeline_duration) 
                 : '--';
             const updatedAt = repo.last_pipeline_updated_at 
-                ? this.formatDate(repo.last_pipeline_updated_at) 
+                ? formatDate(repo.last_pipeline_updated_at) 
                 : 'unknown';
             
             pipelineInfo = `
                 <div class="repo-pipeline">
-                    <div class="pipeline-status-chip ${normalizedStatus}" title="Status: ${this.escapeHtml(pipelineStatus)}">
+                    <div class="pipeline-status-chip ${normalizedStatus}" title="Status: ${escapeHtml(pipelineStatus)}">
                         <span class="status-dot"></span>
-                        <span>${this.escapeHtml(pipelineStatus)}</span>
+                        <span>${escapeHtml(pipelineStatus)}</span>
                     </div>
                     <div class="pipeline-details">
-                        <span class="pipeline-ref">${this.escapeHtml(ref)}</span>
+                        <span class="pipeline-ref">${escapeHtml(ref)}</span>
                         <span class="pipeline-duration">${duration}</span>
                         <span class="pipeline-time">updated ${updatedAt}</span>
                     </div>
@@ -549,11 +503,11 @@ export class DashboardApp {
             <div class="${cardClasses}">
                 <div class="repo-header">
                     <div>
-                        <h3 class="repo-name">${this.escapeHtml(repo.name)}</h3>
+                        <h3 class="repo-name">${escapeHtml(repo.name)}</h3>
                     </div>
-                    <span class="repo-visibility">${this.escapeHtml(repo.visibility)}</span>
+                    <span class="repo-visibility">${escapeHtml(repo.visibility)}</span>
                 </div>
-                <p class="repo-description">${this.escapeHtml(description)}</p>
+                <p class="repo-description">${escapeHtml(description)}</p>
                 ${pipelineInfo}
                 ${successRateSection}
                 ${repo.web_url ? `<a href="${repo.web_url}" target="_blank" rel="noopener noreferrer" class="repo-link">View on GitLab →</a>` : ''}
@@ -563,10 +517,7 @@ export class DashboardApp {
 
     async loadPipelines() {
         try {
-            const response = await fetchWithTimeout(`${this.apiBase}/api/pipelines`, this.fetchTimeout);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            
-            const data = await response.json();
+            const data = await fetchPipelines(this.apiBase, this.fetchTimeout);
             this.cachedData.pipelines = data.pipelines;
             this.renderPipelines(data.pipelines || []);
             console.log(`✅ Loaded ${data.pipelines?.length || 0} pipelines`);
@@ -578,7 +529,7 @@ export class DashboardApp {
                 console.log('📦 Using cached pipelines data');
                 this.renderPipelines(this.cachedData.pipelines);
             } else {
-                this.showError('Failed to load pipelines', 'pipelineTableBody');
+                showError('Failed to load pipelines', 'pipelineTableBody');
             }
             return false;
         }
@@ -598,27 +549,27 @@ export class DashboardApp {
 
     createPipelineRow(pipeline) {
         const status = pipeline.status || 'unknown';
-        const normalizedStatus = this.normalizeStatus(status);
+        const normalizedStatus = normalizeStatus(status);
         const duration = pipeline.duration != null
-            ? this.formatDuration(pipeline.duration) 
+            ? formatDuration(pipeline.duration) 
             : '--';
         const createdAt = pipeline.created_at 
-            ? this.formatDate(pipeline.created_at) 
+            ? formatDate(pipeline.created_at) 
             : '--';
         const fullTimestamp = pipeline.created_at || '';
 
         return `
             <tr class="row-status-${normalizedStatus}">
                 <td>
-                    <span class="pipeline-status ${normalizedStatus}" title="Raw status: ${this.escapeHtml(status)}">${this.escapeHtml(status)}</span>
+                    <span class="pipeline-status ${normalizedStatus}" title="Raw status: ${escapeHtml(status)}">${escapeHtml(status)}</span>
                 </td>
-                <td>${this.escapeHtml(pipeline.project_name)}</td>
-                <td>${this.escapeHtml(pipeline.ref || '--')}</td>
+                <td>${escapeHtml(pipeline.project_name)}</td>
+                <td>${escapeHtml(pipeline.ref || '--')}</td>
                 <td>
-                    <span class="commit-sha">${this.escapeHtml(pipeline.sha || '--')}</span>
+                    <span class="commit-sha">${escapeHtml(pipeline.sha || '--')}</span>
                 </td>
                 <td>${duration}</td>
-                <td title="${this.escapeHtml(fullTimestamp)}">${createdAt}</td>
+                <td title="${escapeHtml(fullTimestamp)}">${createdAt}</td>
                 <td>
                     ${pipeline.web_url 
                         ? `<a href="${pipeline.web_url}" target="_blank" rel="noopener noreferrer" class="pipeline-link">View →</a>` 
@@ -630,10 +581,7 @@ export class DashboardApp {
 
     async loadServices() {
         try {
-            const response = await fetchWithTimeout(`${this.apiBase}/api/services`, this.fetchTimeout);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            
-            const data = await response.json();
+            const data = await fetchServices(this.apiBase, this.fetchTimeout);
             this.cachedData.services = data.services;
             this.renderServices(data.services || []);
             console.log(`✅ Loaded ${data.services?.length || 0} services`);
@@ -645,7 +593,7 @@ export class DashboardApp {
                 console.log('📦 Using cached services data');
                 this.renderServices(this.cachedData.services);
             } else {
-                this.showError('Failed to load services', 'servicesGrid');
+                showError('Failed to load services', 'servicesGrid');
             }
             return false;
         }
@@ -665,7 +613,7 @@ export class DashboardApp {
 
     createServiceCard(service) {
         const name = service.name || service.id || service.url || 'Unknown Service';
-        const status = this.normalizeServiceStatus(service.status);
+        const status = normalizeServiceStatus(service.status);
         const statusClass = `service-status-${status.toLowerCase()}`;
         
         // Latency display
@@ -675,7 +623,7 @@ export class DashboardApp {
         
         // Last checked display
         const lastChecked = service.last_checked 
-            ? this.formatDate(service.last_checked)
+            ? formatDate(service.last_checked)
             : '--';
         
         // HTTP status display (optional)
@@ -685,21 +633,21 @@ export class DashboardApp {
         
         // Error message (optional)
         const errorHtml = service.error 
-            ? `<div class="service-error">${this.escapeHtml(service.error)}</div>`
+            ? `<div class="service-error">${escapeHtml(service.error)}</div>`
             : '';
         
         // Optional link to open service URL
         const linkHtml = service.url 
-            ? `<a href="${this.escapeHtml(service.url)}" target="_blank" rel="noopener noreferrer" class="service-link" title="Open ${this.escapeHtml(name)}">Open →</a>`
+            ? `<a href="${escapeHtml(service.url)}" target="_blank" rel="noopener noreferrer" class="service-link" title="Open ${escapeHtml(name)}">Open →</a>`
             : '';
 
         return `
             <div class="service-card ${statusClass}">
                 <div class="service-header">
-                    <h3 class="service-name">${this.escapeHtml(name)}</h3>
+                    <h3 class="service-name">${escapeHtml(name)}</h3>
                     <span class="service-status-chip ${status.toLowerCase()}">
                         <span class="status-dot"></span>
-                        <span>${this.escapeHtml(status)}</span>
+                        <span>${escapeHtml(status)}</span>
                     </span>
                 </div>
                 <div class="service-metrics">
@@ -724,54 +672,6 @@ export class DashboardApp {
         `;
     }
 
-    normalizeServiceStatus(rawStatus) {
-        // Normalize service status to UP, DOWN, or UNKNOWN
-        if (!rawStatus) return 'UNKNOWN';
-        
-        const status = String(rawStatus).toUpperCase().trim();
-        
-        if (status === 'UP' || status === 'HEALTHY' || status === 'OK' || status === 'ONLINE') {
-            return 'UP';
-        }
-        if (status === 'DOWN' || status === 'UNHEALTHY' || status === 'ERROR' || status === 'OFFLINE') {
-            return 'DOWN';
-        }
-        return 'UNKNOWN';
-    }
-
-    updateLastUpdated() {
-        const element = document.getElementById('lastUpdated');
-        if (element) {
-            const now = new Date();
-            element.textContent = `Last updated: ${now.toLocaleTimeString()}`;
-        }
-    }
-
-    showPartialStaleWarning() {
-        const element = document.getElementById('lastUpdated');
-        if (element) {
-            const now = new Date();
-            element.textContent = `⚠️ Partially stale (updated: ${now.toLocaleTimeString()})`;
-        }
-    }
-
-    showAllStaleWarning() {
-        const element = document.getElementById('lastUpdated');
-        const indicator = document.getElementById('statusIndicator');
-        if (element) {
-            const hasCache = this.cachedData.summary || this.cachedData.repos || this.cachedData.pipelines || this.cachedData.services;
-            if (hasCache) {
-                element.textContent = '⚠️ All data stale (using cache)';
-            } else {
-                element.textContent = '❌ Failed to load data';
-            }
-        }
-        // Update indicator to offline when all endpoints fail
-        if (indicator) {
-            indicator.className = 'status-indicator offline';
-        }
-    }
-
     startAutoRefresh() {
         console.log(`⏱️ Auto-refresh enabled (every ${this.refreshInterval / 1000}s)`);
         
@@ -786,107 +686,5 @@ export class DashboardApp {
             this.checkHealth();  // Re-check health status
             this.loadAllData();
         }, this.refreshInterval);
-    }
-
-    showError(message, containerId = null) {
-        const errorHtml = `<div class="error">⚠️ ${message}</div>`;
-        
-        if (containerId) {
-            const container = document.getElementById(containerId);
-            if (container) {
-                container.innerHTML = errorHtml;
-            }
-        } else {
-            console.error(message);
-        }
-    }
-
-    formatDate(dateString) {
-        try {
-            const date = new Date(dateString);
-            const now = new Date();
-            const diffMs = now - date;
-            const diffMins = Math.floor(diffMs / 60000);
-            const diffHours = Math.floor(diffMs / 3600000);
-            const diffDays = Math.floor(diffMs / 86400000);
-
-            if (diffMins < 1) return 'Just now';
-            if (diffMins < 60) return `${diffMins}m ago`;
-            if (diffHours < 24) return `${diffHours}h ago`;
-            if (diffDays < 7) return `${diffDays}d ago`;
-            
-            return date.toLocaleDateString();
-        } catch (error) {
-            return dateString;
-        }
-    }
-
-    formatDuration(seconds) {
-        if (seconds == null || seconds < 0) return '--';
-        
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        
-        if (mins === 0) return `${secs}s`;
-        return `${mins}m ${secs}s`;
-    }
-
-    escapeHtml(text) {
-        if (!text) return '';
-        
-        const map = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#039;'
-        };
-        return String(text).replace(/[&<>"']/g, char => map[char]);
-    }
-
-    normalizeStatus(rawStatus) {
-        // Normalize GitLab pipeline status to a safe whitelist for CSS classes
-        // Handles null/undefined/empty, case differences, and underscores
-        
-        if (!rawStatus) return 'other';
-        
-        // Normalize: lowercase and replace underscores/dashes with spaces for matching
-        const normalized = String(rawStatus).toLowerCase().replace(/[_-]/g, ' ').trim();
-        
-        // Map GitLab statuses to our whitelist
-        const statusMap = {
-            // Success states
-            'success': 'success',
-            'passed': 'success',
-            
-            // Failed states
-            'failed': 'failed',
-            'failure': 'failed',
-            
-            // Running states
-            'running': 'running',
-            'in progress': 'running',
-            
-            // Pending/waiting states
-            'pending': 'pending',
-            'created': 'pending',
-            'scheduled': 'pending',
-            'preparing': 'pending',
-            'waiting for resource': 'pending',
-            'waiting for callback': 'pending',
-            
-            // Canceled states
-            'canceled': 'canceled',
-            'cancelled': 'canceled',
-            
-            // Skipped states
-            'skipped': 'skipped',
-            
-            // Manual intervention needed
-            'manual': 'manual'
-        };
-        
-        // Return mapped status or 'other' for unknown statuses
-        return statusMap[normalized] || 'other';
     }
 }

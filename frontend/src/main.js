@@ -2,17 +2,13 @@
 // Pure JavaScript ES Module - no external dependencies
 
 import { DashboardApp } from './dashboardApp.js';
+import { escapeHtml } from './utils/formatters.js';
 
 /**
  * Sanity check function to verify escapeHtml is properly applied
  * @returns {boolean} - true if all tests pass, false otherwise
  */
 function verifySanitization() {
-    // Create a temporary instance to test escapeHtml
-    const testApp = { 
-        escapeHtml: DashboardApp.prototype.escapeHtml 
-    };
-    
     // Test cases for XSS prevention
     const tests = [
         { input: '<script>alert("xss")</script>', expected: '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;' },
@@ -25,7 +21,7 @@ function verifySanitization() {
     let failed = 0;
     
     tests.forEach((test, index) => {
-        const result = testApp.escapeHtml(test.input);
+        const result = escapeHtml(test.input);
         if (result === test.expected) {
             passed++;
         } else {
