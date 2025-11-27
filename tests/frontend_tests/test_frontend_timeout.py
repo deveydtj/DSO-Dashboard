@@ -10,11 +10,12 @@ class TestFetchTimeoutImplementation(unittest.TestCase):
     """Test that fetch timeout is properly implemented in frontend code"""
     
     def setUp(self):
-        """Load the frontend app.js file"""
+        """Load the frontend dashboardApp.js file (ES module)"""
         # Compute path relative to this test file's location
         test_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.dirname(os.path.dirname(test_dir))
-        frontend_path = os.path.join(project_root, 'frontend', 'app.js')
+        # Load the new ES module file
+        frontend_path = os.path.join(project_root, 'frontend', 'src', 'dashboardApp.js')
         with open(frontend_path, 'r') as f:
             self.app_js_content = f.read()
     
@@ -107,9 +108,23 @@ class TestFetchTimeoutImplementation(unittest.TestCase):
             )
     
     def test_no_external_dependencies(self):
-        """Test that no external dependencies are imported"""
-        # Should not import any external libraries
-        self.assertNotIn('import ', self.app_js_content)
+        """Test that no external dependencies are imported (ES modules only use local imports)"""
+        # Should not import any external libraries (only local ES module imports are allowed)
+        # ES module imports from './file.js' are local and acceptable
+        import_lines = [line for line in self.app_js_content.split('\n') if line.strip().startswith('import ')]
+        for import_line in import_lines:
+            # Check that all imports are from local files (start with './' or '../')
+            # Extract the module path from the import statement
+            if 'from' in import_line:
+                # Find the quoted path
+                match = re.search(r"from\s+['\"]([^'\"]+)['\"]", import_line)
+                if match:
+                    module_path = match.group(1)
+                    self.assertTrue(
+                        module_path.startswith('./') or module_path.startswith('../'),
+                        f"Import must be from local file (start with './' or '../'), got: {module_path}"
+                    )
+        
         self.assertNotIn('require(', self.app_js_content)
         
         # Verify comment states no external dependencies
