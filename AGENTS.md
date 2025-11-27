@@ -89,10 +89,19 @@ Based on the task, determine which files need changes:
 - `tests/backend_tests/test_*.py` - Backend tests
 
 **Frontend tasks (UI, dashboard, display):**
+- `frontend/src/main.js` - Main JavaScript entrypoint (ES module)
+- `frontend/src/dashboardApp.js` - DashboardApp class (ES module)
 - `frontend/index.html` - Page structure (main HTML entry point)
-- `frontend/app.js` - Frontend logic (main JavaScript entry point)
+- `frontend/app.js` - DEPRECATED: Thin wrapper for backward compatibility
 - `frontend/styles.css` - Styles and theme (main CSS entry point)
 - `tests/frontend_tests/test_*.py` - Frontend tests
+
+**Frontend entrypoints:**
+Start with these files when working on JavaScript logic:
+- `frontend/src/main.js` - Application bootstrap, sanitization checks, DOM ready handling
+- `frontend/src/dashboardApp.js` - Main `DashboardApp` class with all dashboard logic
+
+The HTML loads the entrypoint via `<script type="module" src="./src/main.js"></script>`.
 
 **Documentation tasks:**
 - `README.md` - Main documentation
