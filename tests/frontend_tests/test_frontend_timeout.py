@@ -36,7 +36,8 @@ class TestFetchTimeoutImplementation(unittest.TestCase):
     def test_fetchWithTimeout_has_default_timeout(self):
         """Test that fetchWithTimeout has a default timeout parameter"""
         # Check for function signature with default parameter in apiClient.js
-        pattern = r'async function fetchWithTimeout\([^)]*timeoutMs\s*=\s*\w+'
+        # Matches either a numeric literal (8000) or a constant name (DEFAULT_TIMEOUT)
+        pattern = r'async function fetchWithTimeout\([^)]*timeoutMs\s*=\s*[\w\d]+'
         self.assertTrue(
             re.search(pattern, self.api_client_content),
             "fetchWithTimeout should have a default timeout parameter"

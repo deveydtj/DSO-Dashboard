@@ -22,9 +22,6 @@ import {
     checkBackendHealth
 } from './api/apiClient.js';
 
-// Re-export fetchWithTimeout for backward compatibility with tests
-export { fetchWithTimeout };
-
 export class DashboardApp {
     constructor() {
         this.apiBase = window.location.origin;
