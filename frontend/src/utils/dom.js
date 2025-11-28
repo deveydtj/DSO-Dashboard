@@ -1,13 +1,15 @@
 // DOM manipulation utilities
 // Pure JavaScript - no external dependencies
 
+import { escapeHtml } from './formatters.js';
+
 /**
  * Show an error message in a container or log to console
  * @param {string} message - Error message to display
  * @param {string} [containerId] - Optional container element ID to show error in
  */
 export function showError(message, containerId = null) {
-    const errorHtml = `<div class="error">⚠️ ${message}</div>`;
+    const errorHtml = `<div class="error">⚠️ ${escapeHtml(message)}</div>`;
     
     if (containerId) {
         const container = document.getElementById(containerId);

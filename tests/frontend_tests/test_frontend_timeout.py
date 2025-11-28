@@ -37,7 +37,7 @@ class TestFetchTimeoutImplementation(unittest.TestCase):
         """Test that fetchWithTimeout has a default timeout parameter"""
         # Check for function signature with default parameter in apiClient.js
         # Matches either a numeric literal (8000) or a constant name (DEFAULT_TIMEOUT)
-        pattern = r'async function fetchWithTimeout\([^)]*timeoutMs\s*=\s*[\w\d]+'
+        pattern = r'async function fetchWithTimeout\([^)]*timeoutMs\s*=\s*\w+'
         self.assertTrue(
             re.search(pattern, self.api_client_content),
             "fetchWithTimeout should have a default timeout parameter"
@@ -83,9 +83,15 @@ class TestFetchTimeoutImplementation(unittest.TestCase):
     
     def test_dashboardApp_imports_api_client(self):
         """Test that DashboardApp imports from apiClient.js"""
-        # Check for import of fetchWithTimeout from apiClient
+        # Check for import from apiClient module
         self.assertIn("from './api/apiClient.js'", self.app_js_content)
-        self.assertIn('fetchWithTimeout', self.app_js_content)
+        # Check that at least one API function is imported
+        self.assertTrue(
+            'fetchSummary' in self.app_js_content or 
+            'fetchRepos' in self.app_js_content or
+            'fetchPipelines' in self.app_js_content,
+            "DashboardApp should import API functions from apiClient.js"
+        )
     
     def test_dashboardApp_uses_api_functions(self):
         """Test that DashboardApp uses the imported API functions"""

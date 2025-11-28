@@ -14,7 +14,6 @@ import {
     updateMockBadge
 } from './utils/dom.js';
 import {
-    fetchWithTimeout,
     fetchSummary,
     fetchRepos,
     fetchPipelines,
