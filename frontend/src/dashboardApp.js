@@ -122,7 +122,7 @@ export class DashboardApp {
         try {
             const data = await fetchRepos(this.apiBase, this.fetchTimeout);
             this.cachedData.repos = data.repositories;
-            // Use view module to render repos, passing current state and updating with returned state
+            // Render repos and track state for attention animations (status degradation, position changes)
             this.repoState = renderRepositories(data.repositories || [], this.repoState);
             console.log(`✅ Loaded ${data.repositories?.length || 0} repositories`);
             return true;

@@ -166,7 +166,7 @@ function sortRepositories(repos) {
  */
 export function renderRepositories(repos, previousState) {
     const container = document.getElementById('repoGrid');
-    if (!container) return previousState;
+    if (!container) return new Map();
 
     if (repos.length === 0) {
         container.innerHTML = '<div class="loading">No repositories found</div>';
