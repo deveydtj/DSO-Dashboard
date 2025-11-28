@@ -99,9 +99,18 @@ Based on the task, determine which files need changes:
 **Frontend entrypoints:**
 Start with these files when working on JavaScript logic:
 - `frontend/src/main.js` - Application bootstrap, sanitization checks, DOM ready handling
-- `frontend/src/dashboardApp.js` - Main `DashboardApp` class with all dashboard logic
+- `frontend/src/dashboardApp.js` - Main `DashboardApp` class with dashboard orchestration
 
 The HTML loads the entrypoint via `<script type="module" src="./src/main.js"></script>`.
+
+**Utility modules:**
+Reusable helpers extracted from `DashboardApp` to keep code focused and DRY:
+- `frontend/src/api/apiClient.js` - API client with `fetchWithTimeout`, `fetchSummary()`, `fetchRepos()`, `fetchPipelines()`, `fetchServices()`, `checkBackendHealth()`
+- `frontend/src/utils/formatters.js` - Data formatting: `escapeHtml()`, `formatDate()`, `formatDuration()`
+- `frontend/src/utils/status.js` - Status normalization: `normalizeStatus()`, `normalizeServiceStatus()`
+- `frontend/src/utils/dom.js` - DOM updates: `showError()`, `updateStatusIndicator()`, `updateLastUpdated()`, `showPartialStaleWarning()`, `showAllStaleWarning()`, `updateMockBadge()`
+
+When implementing new features, import from these modules instead of re-implementing helpers.
 
 **Documentation tasks:**
 - `README.md` - Main documentation
