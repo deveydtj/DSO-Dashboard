@@ -103,6 +103,16 @@ Start with these files when working on JavaScript logic:
 
 The HTML loads the entrypoint via `<script type="module" src="./src/main.js"></script>`.
 
+**View modules (UI rendering):**
+All UI rendering is organized under `frontend/src/views/`. Each file corresponds to a specific section of the dashboard:
+- `frontend/src/views/headerView.js` - Header toggles (TV Mode, Compact Mode, Wallboard View). Exports `initHeaderToggles()`, `checkTVMode()`, `checkDensityMode()`, `setupTVToggle()`, `setupDensityToggle()`, `setupWallboardPreset()`, `updateWallboardButtonState()`
+- `frontend/src/views/kpiView.js` - Summary KPI cards rendering. Exports `renderSummaryKpis(data)`
+- `frontend/src/views/repoView.js` - Repository cards with status animations. Exports `renderRepositories(repos, previousState)`, `createRepoCard(repo, extraClasses)`, `getRepoKey(repo)`
+- `frontend/src/views/pipelineView.js` - Pipelines table rendering. Exports `renderPipelines(pipelines)`, `createPipelineRow(pipeline)`
+- `frontend/src/views/serviceView.js` - External services cards. Exports `renderServices(services)`, `createServiceCard(service)`
+
+When making UI tweaks, go to the appropriate view module. The `DashboardApp` class coordinates data fetching and calls these view functions for rendering.
+
 **Utility modules:**
 Reusable helpers extracted from `DashboardApp` to keep code focused and DRY:
 - `frontend/src/api/apiClient.js` - API client with `fetchWithTimeout`, `fetchSummary()`, `fetchRepos()`, `fetchPipelines()`, `fetchServices()`, `checkBackendHealth()`
@@ -211,10 +221,16 @@ curl http://localhost:8080/api/pipelines
 
 1. Edit HTML structure in `frontend/index.html`
 2. Add styles in `frontend/styles.css` (use CSS variables)
-3. Add JavaScript logic in `frontend/app.js`
-4. Test in browser at multiple screen sizes
-5. Test TV mode (`?tv=true`)
-6. Verify auto-refresh still works
+3. For rendering logic, modify the appropriate view module in `frontend/src/views/`:
+   - **Header toggles** (TV/Compact/Wallboard): `views/headerView.js`
+   - **Summary KPIs**: `views/kpiView.js`
+   - **Repository cards**: `views/repoView.js`
+   - **Pipelines table**: `views/pipelineView.js`
+   - **Services cards**: `views/serviceView.js`
+4. For orchestration logic, modify `frontend/src/dashboardApp.js`
+5. Test in browser at multiple screen sizes
+6. Test TV mode (`?tv=true`)
+7. Verify auto-refresh still works
 
 ### Adding Tests
 
