@@ -12,13 +12,12 @@ It imports functionality from modular components:
 
 import json
 import os
+import sys
 import threading
 from datetime import datetime, timedelta
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote
 import logging
-import sys
-import os
 
 # Add parent directory to path to allow direct execution (python3 backend/app.py)
 # This is needed because when running directly, Python doesn't see the backend package
@@ -29,31 +28,32 @@ if _parent_dir not in sys.path:
 # Import from modular components
 from backend.config_loader import (
     configure_logging,
-    get_log_level,
     load_config,
     load_mock_data,
-    parse_csv_list,
-    parse_int_config,
     validate_config,
     PROJECT_ROOT,
-    VALID_LOG_LEVELS,
 )
 from backend.gitlab_client import (
     GitLabAPIClient,
     enrich_projects_with_pipelines,
-    get_pipelines as format_pipelines,
-    get_repositories,
     get_summary,
-    EPOCH_TIMESTAMP,
-    IGNORED_PIPELINE_STATUSES,
     MAX_PROJECTS_FOR_PIPELINES,
     PIPELINES_PER_PROJECT,
-    DEFAULT_BRANCH_NAME,
 )
 from backend.services import (
     get_service_statuses,
-    DEFAULT_SERVICE_CHECK_TIMEOUT,
 )
+
+# Re-export symbols for backward compatibility with tests
+# These are used in tests that import from backend.app (as 'server')
+from backend.config_loader import (
+    get_log_level,
+    parse_csv_list,
+    parse_int_config,
+    VALID_LOG_LEVELS,
+)
+from backend.services import DEFAULT_SERVICE_CHECK_TIMEOUT
+from backend.gitlab_client import EPOCH_TIMESTAMP, DEFAULT_BRANCH_NAME
 
 # Configure logging at module load (can be reconfigured in main())
 _configured_level = configure_logging()
@@ -132,8 +132,6 @@ STATE = {
     'error': None
 }
 STATE_LOCK = threading.Lock()
-
-# Note: DEFAULT_SERVICE_CHECK_TIMEOUT is now imported from backend.services
 
 # Global flag to track if server is running in mock mode
 MOCK_MODE_ENABLED = False
