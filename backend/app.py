@@ -17,6 +17,14 @@ from datetime import datetime, timedelta
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, unquote
 import logging
+import sys
+import os
+
+# Add parent directory to path to allow direct execution (python3 backend/app.py)
+# This is needed because when running directly, Python doesn't see the backend package
+_parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _parent_dir not in sys.path:
+    sys.path.insert(0, _parent_dir)
 
 # Import from modular components
 from backend.config_loader import (

@@ -83,10 +83,61 @@ cat docs/architecture-overview.md
 Based on the task, determine which files need changes:
 
 **Backend tasks (API, polling, config):**
-- `backend/app.py` - Core backend logic (main server file)
+- `backend/app.py` - Core backend logic (main server file, route handlers)
+- `backend/gitlab_client.py` - GitLab API client and data processing functions
+- `backend/services.py` - External service health check functions
+- `backend/config_loader.py` - Configuration loading from config.json and environment variables
 - `config.json.example` - Configuration template
 - `.env.example` - Environment variables
 - `tests/backend_tests/test_*.py` - Backend tests
+
+## Backend Modules
+
+The backend is organized into focused modules for maintainability:
+
+### `backend/app.py` - HTTP Server & Routes
+The main entry point that:
+- Sets up the HTTP server (`DashboardServer`, `DashboardRequestHandler`)
+- Defines route handlers for API endpoints (`/api/summary`, `/api/repos`, `/api/pipelines`, `/api/services`, `/api/health`)
+- Manages the background poller (`BackgroundPoller`)
+- Handles global state management (`STATE`, `STATE_LOCK`)
+
+### `backend/gitlab_client.py` - GitLab API Client
+Contains GitLab-specific functionality:
+- `GitLabAPIClient` class - HTTP client with retry, rate limiting, and pagination
+- `get_summary()` - Calculate summary statistics from projects and pipelines
+- `get_repositories()` - Format repository data for API response
+- `get_pipelines()` - Format and filter pipeline data for API response
+- `enrich_projects_with_pipelines()` - Add pipeline health metrics to projects
+- Constants: `MAX_PROJECTS_FOR_PIPELINES`, `PIPELINES_PER_PROJECT`, `IGNORED_PIPELINE_STATUSES`
+
+### `backend/services.py` - External Service Checks
+Handles external service health monitoring:
+- `get_service_statuses()` - Check health of configured external services
+- `_check_single_service()` - Perform HTTP health check on a single service
+- Constants: `DEFAULT_SERVICE_CHECK_TIMEOUT`
+
+### `backend/config_loader.py` - Configuration Management
+Configuration loading and validation:
+- `load_config()` - Load config from config.json and environment variables
+- `validate_config()` - Validate configuration values (fail-fast on invalid)
+- `load_mock_data()` - Load mock data from mock_data.json or scenario files
+- `parse_int_config()`, `parse_csv_list()` - Config parsing helpers
+- Constants: `PROJECT_ROOT`, `VALID_LOG_LEVELS`
+
+### Module Dependencies
+```
+app.py
+├── imports from config_loader (load_config, validate_config, load_mock_data, ...)
+├── imports from gitlab_client (GitLabAPIClient, get_summary, get_repositories, ...)
+└── imports from services (get_service_statuses, ...)
+```
+
+When modifying backend behavior:
+- **GitLab API calls**: Modify `backend/gitlab_client.py`
+- **Service health checks**: Modify `backend/services.py`
+- **Configuration loading/validation**: Modify `backend/config_loader.py`
+- **Route handlers and server setup**: Modify `backend/app.py`
 
 **Frontend tasks (UI, dashboard, display):**
 - `frontend/src/main.js` - Main JavaScript entrypoint (ES module)
