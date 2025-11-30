@@ -1,97 +1,117 @@
 # Architecture Overview
 
-This document provides a high-level overview of the DSO-Dashboard project structure and components.
+This document provides a high-level overview of the DSO-Dashboard project for new developers and the GitHub Copilot Coding Agent.
+
+## What Is DSO-Dashboard?
+
+DSO-Dashboard is a **lightweight GitLab DevSecOps monitoring dashboard** designed for teams that need real-time visibility into their CI/CD pipelines and repository health. It provides:
+
+- **Repository health metrics**: Pipeline status, success rates, consecutive failures
+- **Pipeline monitoring**: Recent runs across all projects with status tracking
+- **External service health**: Monitor Artifactory, Confluence, Jira, or other tools
+- **TV/Kiosk mode**: Full-screen dashboard for team displays
+
+**Key design principles**:
+- **Zero dependencies**: Pure Python stdlib backend + vanilla JavaScript frontend
+- **Easy deployment**: Single `python backend/app.py` command, no build step
+- **GitLab native**: Works with GitLab SaaS or self-hosted instances
 
 ## Directory Structure
 
 ```
 DSO-Dashboard/
-├── backend/               # Backend server package
-│   ├── __init__.py        # Package init
-│   └── app.py             # Main server application (Python stdlib only)
+├── backend/                      # Backend server package (Python stdlib only)
+│   ├── __init__.py               # Package init
+│   ├── app.py                    # HTTP server, routes, and entry point
+│   ├── config_loader.py          # Configuration from config.json / env vars
+│   ├── gitlab_client.py          # GitLab API client and data processing
+│   └── services.py               # External service health checks
 │
-├── frontend/              # Static frontend files
-│   ├── index.html         # Main HTML page
-│   ├── app.js             # Vanilla JavaScript application logic
-│   └── styles.css         # Dark neomorphic CSS styles
+├── frontend/                     # Static frontend files (vanilla JS only)
+│   ├── index.html                # Main HTML page
+│   ├── styles.css                # Dark neomorphic CSS theme
+│   ├── app.js                    # DEPRECATED: Thin wrapper for backward compat
+│   └── src/                      # ES modules (main source)
+│       ├── main.js               # Application bootstrap / entrypoint
+│       ├── dashboardApp.js       # DashboardApp class (orchestration)
+│       ├── api/
+│       │   └── apiClient.js      # API client with timeout support
+│       ├── utils/
+│       │   ├── formatters.js     # escapeHtml, formatDate, formatDuration
+│       │   ├── status.js         # normalizeStatus, normalizeServiceStatus
+│       │   └── dom.js            # DOM updates (showError, updateStatusIndicator)
+│       └── views/
+│           ├── headerView.js     # TV/Compact/Wallboard toggles
+│           ├── kpiView.js        # Summary KPI cards rendering
+│           ├── repoView.js       # Repository cards with status animations
+│           ├── pipelineView.js   # Pipelines table rendering
+│           └── serviceView.js    # External services cards
 │
-├── data/                  # Data files
-│   └── mock_scenarios/    # Mock data scenarios for testing/demos
-│       ├── healthy.json   # Healthy CI/CD state scenario
-│       ├── failing.json   # Failing pipeline scenario
-│       └── running.json   # Active builds scenario
+├── data/                         # Data files
+│   └── mock_scenarios/           # Mock data for testing/demos
+│       ├── healthy.json          # Healthy CI/CD state scenario
+│       ├── failing.json          # Failing pipeline scenario
+│       └── running.json          # Active builds scenario
 │
-├── tests/                 # Test suite
-│   ├── backend_tests/     # Backend unit tests (stdlib unittest)
-│   └── frontend_tests/    # Frontend tests
+├── tests/                        # Test suite
+│   ├── backend_tests/            # Backend unit tests (stdlib unittest)
+│   └── frontend_tests/           # Frontend tests
 │
-├── docs/                  # Documentation
-│   └── architecture-overview.md  # This file
+├── docs/                         # Documentation
+│   └── architecture-overview.md  # This file (start here!)
 │
-├── config.json.example    # Configuration template
-├── .env.example           # Environment variables template
-├── mock_data.json         # Default mock data file
-├── README.md              # Main documentation
-└── AGENTS.md              # AI agent workflow guidance
+├── config.json.example           # Configuration template
+├── .env.example                  # Environment variables template
+├── mock_data.json                # Default mock data file
+├── README.md                     # Full documentation
+└── AGENTS.md                     # Agent workflow guidance
 ```
 
-## Component Details
+## Module Responsibilities
 
-### Backend (`backend/`)
+### Backend Modules
 
-The backend is a pure Python standard library implementation that provides:
+| Module | File | Responsibilities |
+|--------|------|------------------|
+| **HTTP Server** | `backend/app.py` | Entry point, route handlers (`/api/*`), background poller, global STATE management |
+| **Config Loader** | `backend/config_loader.py` | Load config from `config.json` and env vars, validate settings, load mock data |
+| **GitLab Client** | `backend/gitlab_client.py` | `GitLabAPIClient` class, retry/rate limiting, pagination, data enrichment |
+| **Services** | `backend/services.py` | External service health checks (Artifactory, Confluence, etc.) |
 
-- **HTTP Server**: Uses `http.server.HTTPServer` and `SimpleHTTPRequestHandler`
-- **GitLab API Client**: Handles all communication with GitLab API via `urllib`
-- **Background Poller**: Daemon thread that polls GitLab periodically
-- **Thread-Safe State**: In-memory cache protected by `threading.Lock`
-- **Static File Server**: Serves frontend files from `frontend/` directory
+**Dependency graph**:
+```
+app.py
+├── imports from config_loader (load_config, validate_config, load_mock_data)
+├── imports from gitlab_client (GitLabAPIClient, get_summary, get_repositories, ...)
+└── imports from services (get_service_statuses)
+```
 
-Key features:
-- Zero external dependencies (stdlib-only)
-- Retry logic with exponential backoff
-- Rate limiting support (429 response handling)
-- Full pagination support
-- SSL/TLS configuration (custom CA bundles, skip verify option)
-- Mock data mode for development and testing
+### Frontend Modules
 
-**Entry point**: `python backend/app.py`
+| Module | File | Responsibilities |
+|--------|------|------------------|
+| **Entrypoint** | `frontend/src/main.js` | Bootstrap, sanitization checks, DOM ready handling |
+| **App Orchestration** | `frontend/src/dashboardApp.js` | `DashboardApp` class, data loading, auto-refresh |
+| **API Client** | `frontend/src/api/apiClient.js` | `fetchWithTimeout`, `fetchSummary`, `fetchRepos`, etc. |
+| **Formatters** | `frontend/src/utils/formatters.js` | `escapeHtml` (XSS prevention), `formatDate`, `formatDuration` |
+| **Status Utils** | `frontend/src/utils/status.js` | `normalizeStatus`, `normalizeServiceStatus` |
+| **DOM Utils** | `frontend/src/utils/dom.js` | `showError`, `updateStatusIndicator`, `updateLastUpdated` |
+| **Header View** | `frontend/src/views/headerView.js` | TV mode, compact mode, wallboard preset toggles |
+| **KPI View** | `frontend/src/views/kpiView.js` | Summary KPI cards rendering |
+| **Repo View** | `frontend/src/views/repoView.js` | Repository cards with status animations |
+| **Pipeline View** | `frontend/src/views/pipelineView.js` | Pipelines table rendering |
+| **Service View** | `frontend/src/views/serviceView.js` | External services cards |
 
-### Frontend (`frontend/`)
-
-The frontend is a vanilla JavaScript single-page application:
-
-- **HTML5**: Semantic structure with accessibility features
-- **CSS3**: Dark neomorphic theme with CSS custom properties
-- **ES6+ JavaScript**: Modern vanilla JS with no frameworks
-
-Key features:
-- Auto-refresh every 60 seconds
-- TV/Kiosk mode (`?tv=true`)
-- XSS prevention (`escapeHtml()`)
-- Responsive design (mobile, tablet, desktop)
-- Status badges with color coding
-
-**Entry point**: `frontend/index.html` (served by backend)
-
-### Data (`data/`)
-
-Contains mock data scenarios for testing and demonstrations:
-
-- `mock_scenarios/healthy.json`: Mostly successful pipelines
-- `mock_scenarios/failing.json`: Multiple consecutive failures
-- `mock_scenarios/running.json`: Many active/pending pipelines
-
-Enable mock mode with `USE_MOCK_DATA=true` environment variable.
-
-### Tests (`tests/`)
-
-Test suite organized by component:
-
-- `tests/backend_tests/`: Backend unit tests using `unittest` and `unittest.mock`
-- `tests/frontend_tests/`: Frontend tests (JavaScript validation)
-
-Run tests: `python -m unittest discover -s tests -p "test_*.py"`
+**Frontend module flow**:
+```
+index.html
+└── loads src/main.js (ES module entrypoint)
+    └── instantiates DashboardApp (src/dashboardApp.js)
+        ├── calls initHeaderToggles() from views/headerView.js
+        ├── fetches data via api/apiClient.js
+        ├── renders via views/*.js modules
+        └── uses utils/*.js for formatting and DOM updates
+```
 
 ## Data Flow
 
@@ -105,6 +125,7 @@ Run tests: `python -m unittest discover -s tests -p "test_*.py"`
 │   BackgroundPoller (Thread)         │
 │   - Polls every N seconds           │
 │   - Enriches data with metrics      │
+│   - Checks external services        │
 └────────┬────────────────────────────┘
          │ Thread-safe updates
          ↓
@@ -116,7 +137,7 @@ Run tests: `python -m unittest discover -s tests -p "test_*.py"`
          │ Fast, non-blocking reads
          ↓
 ┌─────────────────────────────────────┐
-│   HTTP Request Handler              │
+│   HTTP Request Handler (app.py)     │
 │   - Serves JSON API endpoints       │
 │   - Serves static frontend files    │
 └────────┬────────────────────────────┘
@@ -124,8 +145,8 @@ Run tests: `python -m unittest discover -s tests -p "test_*.py"`
          ↓
 ┌─────────────────────────────────────┐
 │   Browser (Frontend)                │
-│   - Fetches data every 60s          │
-│   - Renders dark neomorphic UI      │
+│   - DashboardApp fetches every 60s  │
+│   - View modules render UI          │
 └─────────────────────────────────────┘
 ```
 
@@ -133,12 +154,12 @@ Run tests: `python -m unittest discover -s tests -p "test_*.py"`
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /api/health` | Health check and status |
-| `GET /api/summary` | Dashboard statistics |
-| `GET /api/repos` | Repository list with metrics |
-| `GET /api/pipelines` | Recent pipeline runs |
-| `GET /api/services` | External service health |
-| `POST /api/mock/reload` | Hot-reload mock data |
+| `GET /api/health` | Health check and backend status |
+| `GET /api/summary` | Dashboard statistics (KPIs) |
+| `GET /api/repos` | Repository list with pipeline health metrics |
+| `GET /api/pipelines` | Recent pipeline runs (supports `?limit=`, `?status=`, `?ref=`, `?project=`) |
+| `GET /api/services` | External service health status |
+| `POST /api/mock/reload` | Hot-reload mock data (mock mode only) |
 
 ## Key Constraints
 
@@ -147,4 +168,27 @@ Run tests: `python -m unittest discover -s tests -p "test_*.py"`
 3. **Theme**: Preserve dark neomorphic UI design
 4. **API**: Maintain backward-compatible response shapes
 
-See [AGENTS.md](../AGENTS.md) for complete development guidelines.
+## Where to Make Changes
+
+| Task | Where to Look |
+|------|---------------|
+| Change how repo cards look | `frontend/src/views/repoView.js` |
+| Change how pipelines table looks | `frontend/src/views/pipelineView.js` |
+| Change KPI cards | `frontend/src/views/kpiView.js` |
+| Change service cards | `frontend/src/views/serviceView.js` |
+| Add/modify header toggles | `frontend/src/views/headerView.js` |
+| Add date/time formatting | `frontend/src/utils/formatters.js` |
+| Modify status normalization | `frontend/src/utils/status.js` |
+| Add API fetch function | `frontend/src/api/apiClient.js` |
+| Change API routes/handlers | `backend/app.py` |
+| Change GitLab API logic | `backend/gitlab_client.py` |
+| Change config loading | `backend/config_loader.py` |
+| Add external service logic | `backend/services.py` |
+| Add new mock scenario | `data/mock_scenarios/` |
+
+## Next Steps
+
+- For full documentation, see [README.md](../README.md)
+- For agent workflow guidance, see [AGENTS.md](../AGENTS.md)
+- For backend constraints, see `.github/instructions/backend.instructions.md`
+- For frontend constraints, see `.github/instructions/frontend.instructions.md`

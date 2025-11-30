@@ -7,6 +7,7 @@ A production-ready, zero-dependency dashboard for monitoring GitLab repositories
 ## Table of Contents
 
 - [What This Is](#what-this-is)
+- [For New Developers](#for-new-developers)
 - [Architecture Overview](#architecture-overview)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
@@ -35,6 +36,41 @@ DSO-Dashboard is a lightweight, portable GitLab monitoring dashboard designed fo
 - **TV Displays**: Kiosk mode for team dashboards (`?tv=true`)
 - **Self-Hosted GitLab**: Works with internal GitLab instances (including self-signed certs)
 - **Quick Insights**: Get repository and pipeline metrics without navigating GitLab UI
+
+## For New Developers
+
+**Start here!** This section helps you quickly understand the codebase and find where to make changes.
+
+### Quick Orientation
+
+1. **Read the architecture guide first**: [`docs/architecture-overview.md`](docs/architecture-overview.md)
+2. **For agent/AI guidance**: [`AGENTS.md`](AGENTS.md)
+3. **For full coding constraints**: [`.github/copilot-instructions.md`](.github/copilot-instructions.md)
+
+### Common Tasks
+
+| What you want to do | Where to look |
+|---------------------|---------------|
+| Change how **repo cards** look | `frontend/src/views/repoView.js` |
+| Change how **pipelines table** looks | `frontend/src/views/pipelineView.js` |
+| Change **KPI cards** | `frontend/src/views/kpiView.js` |
+| Change **service cards** | `frontend/src/views/serviceView.js` |
+| Add/modify **header toggles** (TV, Compact) | `frontend/src/views/headerView.js` |
+| Add **date/time formatting** | `frontend/src/utils/formatters.js` |
+| Modify **status normalization** | `frontend/src/utils/status.js` |
+| Add **API fetch function** | `frontend/src/api/apiClient.js` |
+| Change **API routes/handlers** | `backend/app.py` |
+| Change **GitLab API logic** | `backend/gitlab_client.py` |
+| Change **config loading** | `backend/config_loader.py` |
+| Add **external service logic** | `backend/services.py` |
+| Add new **mock scenario** | `data/mock_scenarios/` |
+
+### Key Constraints to Remember
+
+- ⚠️ **Backend**: Python stdlib only (no pip dependencies)
+- ⚠️ **Frontend**: Vanilla JS only (no frameworks, no build tools)
+- ⚠️ **Theme**: Keep the dark neomorphic UI design
+- ⚠️ **API**: Don't break existing endpoint response shapes
 
 ## Architecture Overview
 

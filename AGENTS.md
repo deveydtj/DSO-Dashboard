@@ -2,6 +2,8 @@
 
 This file provides guidance for GitHub Copilot Coding Agents working on this repository.
 
+> **Start here**: Read [`docs/architecture-overview.md`](docs/architecture-overview.md) for a quick understanding of the codebase structure and module responsibilities.
+
 ## Quick Reference: Non-Negotiable Constraints
 
 ⚠️ **Read `.github/copilot-instructions.md` first** for complete context.
@@ -19,6 +21,52 @@ This file provides guidance for GitHub Copilot Coding Agents working on this rep
 - ✅ Keep dark neomorphic UI theme
 - ✅ Maintain API endpoint contracts
 - ✅ Preserve DOM structure and IDs
+
+### Use Existing Modules - Don't Duplicate
+- ✅ Import helpers from `frontend/src/utils/` (formatters, status, dom)
+- ✅ Import API functions from `frontend/src/api/apiClient.js`
+- ✅ Import backend helpers from `backend/config_loader.py`, `backend/gitlab_client.py`, `backend/services.py`
+- ❌ Don't re-implement `escapeHtml()`, `formatDate()`, `normalizeStatus()` etc.
+- ❌ Don't duplicate GitLab API client logic
+
+## Checklists for Adding Features
+
+### Adding a New Dashboard Section (Frontend)
+
+1. **Create view module**: Add `frontend/src/views/<section>View.js`
+   - Export a `render<Section>(data)` function
+   - Import from `utils/formatters.js` for `escapeHtml()`, `formatDate()`, etc.
+   - Import from `utils/status.js` for status normalization
+2. **Add API fetch function** (if new endpoint): Update `frontend/src/api/apiClient.js`
+3. **Add container element**: Update `frontend/index.html` with ID for the section
+4. **Wire up in DashboardApp**: Import and call view in `frontend/src/dashboardApp.js`
+5. **Add styles**: Update `frontend/styles.css` (use CSS custom properties)
+6. **Test**: Verify rendering, TV mode, auto-refresh, responsive design
+
+### Adding a New API Endpoint (Backend)
+
+1. **Add handler method**: Create `handle_<name>(self)` in `DashboardRequestHandler` (`backend/app.py`)
+2. **Add route**: Register in `do_GET()` method path matching
+3. **Use existing helpers**: Import from `gitlab_client.py` or `services.py` if applicable
+4. **Return proper JSON shape**: Use `send_json_response()` with `backend_status`, `last_updated`, `is_mock`
+5. **Add tests**: Create or update `tests/backend_tests/test_<feature>.py`
+6. **Document**: Update README "API Endpoints" section
+
+### Adding a New External Service Type
+
+1. **No code change needed** for standard HTTP health checks
+2. **Add to config.json**: Include in `external_services` array with `url`, `name`, `id`
+3. **For custom logic**: Modify `backend/services.py` `_check_single_service()`
+4. **Test**: Use mock data with services array to verify `/api/services` response
+
+### Adding a New Configuration Option
+
+1. **Add to template**: Update `config.json.example`
+2. **Add env var**: Update `.env.example`
+3. **Load in config_loader.py**: Add parsing in `load_config()`, add to `validate_config()` if needed
+4. **Use in app.py**: Access via `config['new_option']`
+5. **Document**: Update README "Configuration Options" section
+6. **Test**: Verify loading from both config.json and env var
 
 ## Definition of Done for Pull Requests
 
@@ -254,19 +302,21 @@ curl http://localhost:8080/api/pipelines
 
 1. Add field to `config.json.example` with comment
 2. Add corresponding env var to `.env.example`
-3. Update `load_config()` in `backend/app.py` to read the option
-4. Use the config value in your feature
-5. Document in README "Configuration Options" section
-6. Add test case for config loading
+3. Update `load_config()` in `backend/config_loader.py` to read the option
+4. Add validation in `validate_config()` if needed
+5. Use the config value in your feature
+6. Document in README "Configuration Options" section
+7. Add test case for config loading
 
 ### Adding a New API Endpoint
 
-1. Add handler method in `DashboardRequestHandler` class
+1. Add handler method in `DashboardRequestHandler` class (`backend/app.py`)
 2. Add route in `do_GET()` method
 3. Return JSON with `send_json_response()`
-4. Update frontend if needed (`app.js`)
-5. Add tests for the endpoint
-6. Document in README "API Endpoints" section
+4. Import and use helpers from `backend/gitlab_client.py` or `backend/services.py` if applicable
+5. Update frontend if needed (add fetch in `frontend/src/api/apiClient.js`)
+6. Add tests for the endpoint
+7. Document in README "API Endpoints" section
 
 ### Modifying Frontend UI
 
