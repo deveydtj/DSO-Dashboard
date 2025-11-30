@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from backend import app as server
+from backend import config_loader
+from backend import gitlab_client
 
 
 class TestSSLConfiguration(unittest.TestCase):
@@ -154,7 +156,8 @@ class TestSSLConfiguration(unittest.TestCase):
     
     def test_client_with_nonexistent_ca_bundle_falls_back(self):
         """Test that nonexistent CA bundle path falls back to default SSL"""
-        with patch('backend.app.logger') as mock_logger:
+        # GitLabAPIClient is now in gitlab_client module, so patch its logger
+        with patch.object(gitlab_client, 'logger') as mock_logger:
             client = server.GitLabAPIClient(
                 'https://gitlab.example.com',
                 'test-token',
@@ -181,7 +184,8 @@ class TestSSLConfiguration(unittest.TestCase):
             ca_bundle_path = f.name
         
         try:
-            with patch('backend.app.logger') as mock_logger:
+            # GitLabAPIClient is now in gitlab_client module, so patch its logger
+            with patch.object(gitlab_client, 'logger') as mock_logger:
                 client = server.GitLabAPIClient(
                     'https://gitlab.example.com',
                     'test-token',
@@ -382,7 +386,8 @@ class TestTokenScrubbing(unittest.TestCase):
         os.environ['GITLAB_API_TOKEN'] = 'secret-token-12345'
         
         with patch('os.path.exists', return_value=False):
-            with patch('backend.app.logger') as mock_logger:
+            # load_config is now in config_loader module, so patch its logger
+            with patch.object(config_loader, 'logger') as mock_logger:
                 config = server.load_config()
                 
                 # Check that the actual logging call scrubs the token
@@ -403,7 +408,8 @@ class TestTokenScrubbing(unittest.TestCase):
     def test_token_shown_as_not_set_when_empty(self):
         """Test that empty token is shown as NOT SET"""
         with patch('os.path.exists', return_value=False):
-            with patch('backend.app.logger') as mock_logger:
+            # load_config is now in config_loader module, so patch its logger
+            with patch.object(config_loader, 'logger') as mock_logger:
                 config = server.load_config()
                 
                 # Find the API token log call
@@ -418,7 +424,8 @@ class TestTokenScrubbing(unittest.TestCase):
     
     def test_client_never_logs_token(self):
         """Test that GitLabAPIClient never logs the token"""
-        with patch('backend.app.logger') as mock_logger:
+        # GitLabAPIClient is now in gitlab_client module, so patch its logger
+        with patch.object(gitlab_client, 'logger') as mock_logger:
             client = server.GitLabAPIClient(
                 'https://gitlab.example.com',
                 'super-secret-token-xyz',

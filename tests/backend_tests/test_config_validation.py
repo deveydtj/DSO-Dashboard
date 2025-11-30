@@ -15,6 +15,7 @@ import logging
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from backend import app as server
+from backend import config_loader
 
 
 class TestValidateConfigApiToken(unittest.TestCase):
@@ -138,7 +139,8 @@ class TestValidateConfigPollInterval(unittest.TestCase):
             'per_page': 100
         }
         
-        with patch.object(server.logger, 'warning') as mock_warning:
+        # validate_config is in config_loader, so patch its logger
+        with patch.object(config_loader.logger, 'warning') as mock_warning:
             result = server.validate_config(config)
             self.assertTrue(result)
             # Check that a warning was logged about short interval
@@ -285,7 +287,8 @@ class TestValidateConfigMultipleErrors(unittest.TestCase):
             'per_page': 0
         }
         
-        with patch.object(server.logger, 'error') as mock_error:
+        # validate_config is in config_loader, so patch its logger
+        with patch.object(config_loader.logger, 'error') as mock_error:
             server.validate_config(config)
             # Should log at least 4 errors:
             # - api_token
@@ -309,7 +312,8 @@ class TestValidateConfigLogging(unittest.TestCase):
             'per_page': 100
         }
         
-        with patch.object(server.logger, 'info') as mock_info:
+        # validate_config is in config_loader, so patch its logger
+        with patch.object(config_loader.logger, 'info') as mock_info:
             server.validate_config(config)
             # Should log "Configuration validation passed"
             mock_info.assert_called()
@@ -326,7 +330,8 @@ class TestValidateConfigLogging(unittest.TestCase):
             'per_page': 100
         }
         
-        with patch.object(server.logger, 'error') as mock_error:
+        # validate_config is in config_loader, so patch its logger
+        with patch.object(config_loader.logger, 'error') as mock_error:
             server.validate_config(config)
             # Should log "Configuration validation failed"
             mock_error.assert_called()

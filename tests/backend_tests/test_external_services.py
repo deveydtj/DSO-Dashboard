@@ -16,6 +16,7 @@ from urllib.error import URLError, HTTPError
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from backend import app as server
+from backend import services as services_module
 
 
 class TestExternalServicesStateInit(unittest.TestCase):
@@ -283,7 +284,8 @@ class TestExternalServiceChecks(unittest.TestCase):
             external_services=[{'name': 'Test Service', 'url': 'https://test.example.com'}]
         )
         
-        with patch.object(poller, '_check_single_service') as mock_check:
+        # Now _check_external_services delegates to services module, so patch at module level
+        with patch.object(services_module, '_check_single_service') as mock_check:
             mock_check.return_value = {'id': 'test-service', 'name': 'Test Service', 'status': 'UP'}
             
             result = poller._check_external_services()
@@ -301,7 +303,7 @@ class TestExternalServiceChecks(unittest.TestCase):
             external_services=[{'name': 'My Test Service', 'url': 'https://test.example.com'}]
         )
         
-        with patch.object(poller, '_check_single_service') as mock_check:
+        with patch.object(services_module, '_check_single_service') as mock_check:
             mock_check.return_value = {'id': 'my-test-service', 'name': 'My Test Service', 'status': 'UP'}
             
             poller._check_external_services()
@@ -318,7 +320,7 @@ class TestExternalServiceChecks(unittest.TestCase):
             external_services=[{'id': 'custom-id', 'name': 'Service', 'url': 'https://test.example.com'}]
         )
         
-        with patch.object(poller, '_check_single_service') as mock_check:
+        with patch.object(services_module, '_check_single_service') as mock_check:
             mock_check.return_value = {'id': 'custom-id', 'name': 'Service', 'status': 'UP'}
             
             poller._check_external_services()
@@ -334,7 +336,7 @@ class TestExternalServiceChecks(unittest.TestCase):
             external_services=[{'name': 'Service', 'url': 'https://test.example.com'}]
         )
         
-        with patch.object(poller, '_check_single_service') as mock_check:
+        with patch.object(services_module, '_check_single_service') as mock_check:
             mock_check.return_value = {'id': 'service', 'name': 'Service', 'status': 'UP'}
             
             poller._check_external_services()
@@ -350,7 +352,7 @@ class TestExternalServiceChecks(unittest.TestCase):
             external_services=[{'name': 'Service', 'url': 'https://test.example.com', 'timeout': 5}]
         )
         
-        with patch.object(poller, '_check_single_service') as mock_check:
+        with patch.object(services_module, '_check_single_service') as mock_check:
             mock_check.return_value = {'id': 'service', 'name': 'Service', 'status': 'UP'}
             
             poller._check_external_services()
@@ -360,13 +362,7 @@ class TestExternalServiceChecks(unittest.TestCase):
 
 
 class TestSingleServiceCheck(unittest.TestCase):
-    """Test _check_single_service method"""
-    
-    def setUp(self):
-        """Create mock GitLab client and poller"""
-        self.mock_client = MagicMock()
-        self.mock_client.ssl_context = None
-        self.poller = server.BackgroundPoller(self.mock_client, 60)
+    """Test _check_single_service function from services module"""
     
     def test_check_single_service_success(self):
         """Test _check_single_service returns UP for successful response"""
@@ -374,8 +370,8 @@ class TestSingleServiceCheck(unittest.TestCase):
         mock_response.status = 200
         mock_response.close = MagicMock()
         
-        with patch('backend.app.urlopen', return_value=mock_response):
-            result = self.poller._check_single_service(
+        with patch('backend.services.urlopen', return_value=mock_response):
+            result = services_module._check_single_service(
                 url='https://test.example.com',
                 name='Test',
                 service_id='test',
@@ -395,8 +391,8 @@ class TestSingleServiceCheck(unittest.TestCase):
         mock_response.status = 302
         mock_response.close = MagicMock()
         
-        with patch('backend.app.urlopen', return_value=mock_response):
-            result = self.poller._check_single_service(
+        with patch('backend.services.urlopen', return_value=mock_response):
+            result = services_module._check_single_service(
                 url='https://test.example.com',
                 name='Test',
                 service_id='test',
@@ -416,8 +412,8 @@ class TestSingleServiceCheck(unittest.TestCase):
             fp=None
         )
         
-        with patch('backend.app.urlopen', side_effect=mock_error):
-            result = self.poller._check_single_service(
+        with patch('backend.services.urlopen', side_effect=mock_error):
+            result = services_module._check_single_service(
                 url='https://test.example.com',
                 name='Test',
                 service_id='test',
@@ -432,8 +428,8 @@ class TestSingleServiceCheck(unittest.TestCase):
         """Test _check_single_service returns DOWN for timeout"""
         mock_error = URLError('timed out')
         
-        with patch('backend.app.urlopen', side_effect=mock_error):
-            result = self.poller._check_single_service(
+        with patch('backend.services.urlopen', side_effect=mock_error):
+            result = services_module._check_single_service(
                 url='https://test.example.com',
                 name='Test',
                 service_id='test',
@@ -448,8 +444,8 @@ class TestSingleServiceCheck(unittest.TestCase):
         """Test _check_single_service returns DOWN for connection refused"""
         mock_error = URLError('Connection refused')
         
-        with patch('backend.app.urlopen', side_effect=mock_error):
-            result = self.poller._check_single_service(
+        with patch('backend.services.urlopen', side_effect=mock_error):
+            result = services_module._check_single_service(
                 url='https://test.example.com',
                 name='Test',
                 service_id='test',
@@ -465,8 +461,8 @@ class TestSingleServiceCheck(unittest.TestCase):
         mock_response.status = 200
         mock_response.close = MagicMock()
         
-        with patch('backend.app.urlopen', return_value=mock_response):
-            result = self.poller._check_single_service(
+        with patch('backend.services.urlopen', return_value=mock_response):
+            result = services_module._check_single_service(
                 url='https://test.example.com',
                 name='Test',
                 service_id='test',

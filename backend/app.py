@@ -2,81 +2,69 @@
 """
 GitLab Dashboard Backend Server
 Python 3.10 stdlib-only implementation using http.server and urllib
+
+This is the main entry point for the DSO-Dashboard backend server.
+It imports functionality from modular components:
+- config_loader: Configuration loading from config.json and environment variables
+- gitlab_client: GitLab API client and data processing functions
+- services: External service health checks
 """
 
 import json
 import os
-import ssl
-import time
+import sys
 import threading
 from datetime import datetime, timedelta
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from urllib.request import Request, urlopen
-from urllib.error import URLError, HTTPError
-from urllib.parse import urlparse, parse_qs, urlencode, unquote
+from urllib.parse import urlparse, parse_qs, unquote
 import logging
 
-# Compute project root directory (parent of backend/)
-# This ensures paths work correctly regardless of where the script is run from
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Add parent directory to path to allow direct execution (python3 backend/app.py)
+# This is needed because when running directly, Python doesn't see the backend package
+_parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _parent_dir not in sys.path:
+    sys.path.insert(0, _parent_dir)
 
-# Valid log level names (case-insensitive)
-VALID_LOG_LEVELS = ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')
+# Import from modular components
+from backend.config_loader import (
+    configure_logging,
+    load_config,
+    load_mock_data,
+    validate_config,
+    PROJECT_ROOT,
+)
+from backend.gitlab_client import (
+    GitLabAPIClient,
+    enrich_projects_with_pipelines,
+    get_summary,
+    MAX_PROJECTS_FOR_PIPELINES,
+    PIPELINES_PER_PROJECT,
+)
+from backend.services import (
+    get_service_statuses,
+)
 
-
-def get_log_level():
-    """Get log level from environment variable LOG_LEVEL
-    
-    Returns:
-        int: Logging level constant (e.g., logging.INFO)
-        
-    Environment Variables:
-        LOG_LEVEL: One of DEBUG, INFO, WARNING, ERROR, CRITICAL (case-insensitive)
-                   Defaults to INFO if not set or invalid
-    """
-    level_str = os.environ.get('LOG_LEVEL', 'INFO').upper()
-    if level_str not in VALID_LOG_LEVELS:
-        # Fall back to INFO for invalid values
-        return logging.INFO
-    return getattr(logging, level_str)
-
-
-def configure_logging():
-    """Configure logging with level from environment
-    
-    Returns:
-        str: The configured log level name (e.g., 'INFO')
-    """
-    level = get_log_level()
-    logging.basicConfig(
-        level=level,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
-    return logging.getLevelName(level)
-
+# Re-export symbols for backward compatibility with tests
+# These are used in tests that import from backend.app (as 'server')
+from backend.config_loader import (
+    get_log_level,
+    parse_csv_list,
+    parse_int_config,
+    VALID_LOG_LEVELS,
+)
+from backend.services import DEFAULT_SERVICE_CHECK_TIMEOUT
+from backend.gitlab_client import EPOCH_TIMESTAMP, DEFAULT_BRANCH_NAME
 
 # Configure logging at module load (can be reconfigured in main())
 _configured_level = configure_logging()
 logger = logging.getLogger(__name__)
 
-# Pipeline fetching configuration constants
-MAX_PROJECTS_FOR_PIPELINES = 20  # Max projects to fetch pipelines from
-PIPELINES_PER_PROJECT = 10       # Pipelines to fetch per project
-MAX_TOTAL_PIPELINES = 50         # Default max for /api/pipelines response (deprecated in storage)
-
 # API query parameter constants
 DEFAULT_PIPELINE_LIMIT = 50      # Default limit for /api/pipelines endpoint
 MAX_PIPELINE_LIMIT = 1000        # Maximum limit for /api/pipelines endpoint
 
-# Timestamp fallback constants
-EPOCH_TIMESTAMP = '1970-01-01T00:00:00Z'  # Fallback for missing timestamps
-
-# Default branch constant
-DEFAULT_BRANCH_NAME = 'main'     # Default branch name fallback
-
-# Pipeline statuses to ignore when calculating consecutive failures and success rates
-# These statuses represent pipelines that didn't actually test the code
-IGNORED_PIPELINE_STATUSES = ('skipped', 'manual', 'canceled', 'cancelled')
+# Deprecated constant kept for backward compatibility
+MAX_TOTAL_PIPELINES = 50         # Default max for /api/pipelines response (deprecated in storage)
 
 # Default summary structure for empty/error states
 DEFAULT_SUMMARY = {
@@ -92,415 +80,7 @@ DEFAULT_SUMMARY = {
 }
 
 
-class GitLabAPIClient:
-    """GitLab API client using urllib with retry, rate limiting, and pagination support"""
-    
-    def __init__(self, gitlab_url, api_token, per_page=100, insecure_skip_verify=False, 
-                 max_retries=3, initial_retry_delay=1.0, ca_bundle_path=None):
-        self.gitlab_url = gitlab_url.rstrip('/')
-        self.api_token = api_token
-        self.base_url = f"{self.gitlab_url}/api/v4"
-        self.per_page = per_page
-        self.insecure_skip_verify = insecure_skip_verify
-        self.ca_bundle_path = ca_bundle_path
-        self.max_retries = max_retries
-        self.initial_retry_delay = initial_retry_delay
-        
-        # Create SSL context based on configuration
-        if self.ca_bundle_path:
-            # Use custom CA bundle (preferred for internal GitLab)
-            try:
-                logger.info("=" * 70)
-                logger.info("USING CUSTOM CA BUNDLE")
-                logger.info(f"CA bundle path: {self.ca_bundle_path}")
-                logger.info("=" * 70)
-                self.ssl_context = ssl.create_default_context(cafile=self.ca_bundle_path)
-            except FileNotFoundError:
-                logger.error("=" * 70)
-                logger.error(f"CA BUNDLE FILE NOT FOUND: {self.ca_bundle_path}")
-                logger.error("Falling back to default SSL verification")
-                logger.error("=" * 70)
-                self.ssl_context = None
-            except (ssl.SSLError, OSError, IOError) as e:
-                logger.error("=" * 70)
-                logger.error(f"FAILED TO LOAD CA BUNDLE: {self.ca_bundle_path}")
-                logger.error(f"Error: {e}")
-                logger.error("Falling back to default SSL verification")
-                logger.error("=" * 70)
-                self.ssl_context = None
-        elif self.insecure_skip_verify:
-            # Disable SSL verification (use only on trusted networks)
-            self.ssl_context = ssl.create_default_context()
-            self.ssl_context.check_hostname = False
-            self.ssl_context.verify_mode = ssl.CERT_NONE
-            logger.warning("=" * 70)
-            logger.warning("SSL VERIFICATION DISABLED - SECURITY RISK")
-            logger.warning("Using unverified SSL context for self-signed certificates")
-            logger.warning("Only use this setting on trusted internal networks")
-            logger.warning("=" * 70)
-        else:
-            # Use default SSL verification
-            self.ssl_context = None
-    
-    def _mask_url(self, url):
-        """Return URL for logging
-        
-        Currently returns URL unchanged since the API token is sent in headers,
-        not in the URL query string. This helper is provided for consistency
-        and potential future use if masking becomes necessary.
-        """
-        return url
-    
-    def gitlab_request(self, endpoint, params=None, retry_count=0):
-        """Make a request to GitLab API with retry and rate limiting
-        
-        This is the central retry/backoff handler for all GitLab API calls.
-        Handles:
-        - Exponential backoff for transient errors (5xx, timeouts, connection resets)
-        - Rate limiting (429) with Retry-After header support
-        - Max retry attempts (default: 3)
-        
-        Args:
-            endpoint: GitLab API endpoint path (e.g., 'projects', 'projects/123/pipelines')
-            params: Optional query parameters dict
-            retry_count: Current retry attempt (internal use)
-        
-        Returns:
-            dict: Response with 'data', 'next_page', 'total_pages', 'total' keys
-            None: If API error occurred after all retries
-        """
-        url = f"{self.base_url}/{endpoint}"
-        
-        if params:
-            query_string = urlencode(params)
-            url = f"{url}?{query_string}"
-        
-        headers = {
-            'PRIVATE-TOKEN': self.api_token,
-            'Content-Type': 'application/json'
-        }
-        
-        # Record start time for timing
-        start_time = time.monotonic()
-        masked_url = self._mask_url(url)
-        
-        try:
-            request = Request(url, headers=headers)
-            
-            # Open with SSL context if configured
-            if self.ssl_context:
-                with urlopen(request, timeout=30, context=self.ssl_context) as response:
-                    result = self._process_response(response)
-                    elapsed_ms = (time.monotonic() - start_time) * 1000
-                    logger.debug(f"GET {endpoint} -> {response.status} in {elapsed_ms:.1f}ms url={masked_url}")
-                    return result
-            else:
-                with urlopen(request, timeout=30) as response:
-                    result = self._process_response(response)
-                    elapsed_ms = (time.monotonic() - start_time) * 1000
-                    logger.debug(f"GET {endpoint} -> {response.status} in {elapsed_ms:.1f}ms url={masked_url}")
-                    return result
-                    
-        except HTTPError as e:
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            
-            # Handle rate limiting (429)
-            if e.code == 429:
-                retry_after = e.headers.get('Retry-After')
-                if retry_after:
-                    try:
-                        wait_time = int(retry_after)
-                    except (ValueError, TypeError):
-                        # If Retry-After is not a valid integer, use exponential backoff
-                        wait_time = self.initial_retry_delay * (2 ** retry_count)
-                        logger.warning(f"GET {endpoint} -> 429 in {elapsed_ms:.1f}ms - Invalid Retry-After: {retry_after}. Using exponential backoff: {wait_time}s")
-                    else:
-                        logger.warning(f"GET {endpoint} -> 429 in {elapsed_ms:.1f}ms - Rate limited. Waiting {wait_time}s before retry...")
-                    time.sleep(wait_time)
-                else:
-                    # Exponential backoff
-                    wait_time = self.initial_retry_delay * (2 ** retry_count)
-                    logger.warning(f"GET {endpoint} -> 429 in {elapsed_ms:.1f}ms - Rate limited. Using exponential backoff: {wait_time}s")
-                    time.sleep(wait_time)
-                
-                if retry_count < self.max_retries:
-                    return self.gitlab_request(endpoint, params, retry_count + 1)
-                else:
-                    logger.error(f"GET {endpoint} -> 429 - Max retries exceeded in {elapsed_ms:.1f}ms url={masked_url}")
-                    return None
-            
-            # Handle server errors (5xx) with retry
-            elif 500 <= e.code < 600:
-                if retry_count < self.max_retries:
-                    wait_time = self.initial_retry_delay * (2 ** retry_count)
-                    logger.warning(f"GET {endpoint} -> {e.code} in {elapsed_ms:.1f}ms - Retrying in {wait_time}s (attempt {retry_count + 1}/{self.max_retries})")
-                    time.sleep(wait_time)
-                    return self.gitlab_request(endpoint, params, retry_count + 1)
-                else:
-                    logger.error(f"GET {endpoint} -> {e.code} {e.reason} in {elapsed_ms:.1f}ms after {self.max_retries} retries url={masked_url}")
-                    return None
-            else:
-                logger.error(f"GET {endpoint} -> {e.code} {e.reason} in {elapsed_ms:.1f}ms url={masked_url}")
-                return None
-                
-        except URLError as e:
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            # Handle timeout and connection errors with retry
-            if retry_count < self.max_retries:
-                wait_time = self.initial_retry_delay * (2 ** retry_count)
-                logger.warning(f"GET {endpoint} -> URLError in {elapsed_ms:.1f}ms: {e.reason}. Retrying in {wait_time}s (attempt {retry_count + 1}/{self.max_retries})")
-                time.sleep(wait_time)
-                return self.gitlab_request(endpoint, params, retry_count + 1)
-            else:
-                logger.error(f"GET {endpoint} -> URLError in {elapsed_ms:.1f}ms: {e.reason} after {self.max_retries} retries url={masked_url}")
-                return None
-                
-        except Exception as e:
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            logger.error(f"GET {endpoint} -> Error in {elapsed_ms:.1f}ms: {e} url={masked_url}")
-            return None
-    
-    def _parse_link_header(self, link_header):
-        """Parse RFC 5988 Link header to extract next page URL
-        
-        Example Link header:
-        <https://gitlab.com/api/v4/projects?page=2>; rel="next", <https://gitlab.com/api/v4/projects?page=5>; rel="last"
-        
-        Returns:
-            str: Next page number or None
-        """
-        if not link_header:
-            return None
-        
-        # Parse Link header for rel="next"
-        for link in link_header.split(','):
-            link = link.strip()
-            # Check for rel="next" or rel='next' (case-insensitive, handle whitespace)
-            if 'rel' in link.lower():
-                # Split by semicolon to separate URL from rel parameter
-                parts = link.split(';')
-                if len(parts) < 2:
-                    continue
-                
-                # Check if this is the "next" link
-                rel_part = parts[1].strip().lower()
-                if 'next' not in rel_part:
-                    continue
-                
-                # Extract URL from <URL>
-                url_part = parts[0].strip()
-                if not url_part.startswith('<'):
-                    continue
-                
-                # Find the first '>' to handle URLs with query params
-                end_bracket = url_part.find('>')
-                if end_bracket == -1:
-                    continue
-                
-                url = url_part[1:end_bracket]
-                
-                # Extract page number from URL query params
-                try:
-                    parsed = urlparse(url)
-                    query_params = parse_qs(parsed.query)
-                    if 'page' in query_params and query_params['page']:
-                        page_value = query_params['page'][0]
-                        # Validate that page is numeric
-                        if page_value.isdigit():
-                            return page_value
-                except Exception as e:
-                    logger.debug(f"Failed to parse Link header URL: {e}")
-                    continue
-        
-        return None
-    
-    def _process_response(self, response):
-        """Process HTTP response and extract data and headers"""
-        try:
-            data = response.read().decode('utf-8')
-            parsed_data = json.loads(data)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON response: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Error processing response: {e}")
-            return None
-        
-        # Extract pagination info from headers
-        headers = response.headers
-        
-        # GitLab provides pagination via X-Next-Page header (preferred) or Link header (RFC 5988)
-        next_page = headers.get('X-Next-Page')
-        if not next_page:
-            # Fallback to parsing Link header
-            next_page = self._parse_link_header(headers.get('Link'))
-        
-        return {
-            'data': parsed_data,
-            'next_page': next_page,
-            'total_pages': headers.get('X-Total-Pages'),
-            'total': headers.get('X-Total')
-        }
-    
-    def _make_paginated_request(self, endpoint, params=None, max_pages=None):
-        """Make paginated requests, following X-Next-Page/Link headers until exhausted
-        
-        This is the core pagination helper that fetches all pages of results from a GitLab API endpoint.
-        It automatically handles:
-        - X-Next-Page header (GitLab's preferred pagination method)
-        - Link header with rel="next" (RFC 5988 standard)
-        - Exponential backoff and retry logic (via gitlab_request)
-        - Rate limiting (429 responses)
-        
-        Args:
-            endpoint: GitLab API endpoint path (e.g., 'projects', 'groups/123/projects')
-            params: Optional query parameters dict (e.g., {'membership': 'true'})
-            max_pages: Optional maximum number of pages to fetch (None = unlimited)
-        
-        Returns:
-            list: All items collected across all pages
-            None: If API error occurred on any page
-        
-        Logging:
-            - INFO: Page fetch progress (no secrets logged)
-            - ERROR: API failures
-        """
-        if params is None:
-            params = {}
-        
-        # Set per_page in params
-        params['per_page'] = self.per_page
-        
-        all_items = []
-        page = 1
-        
-        while True:
-            params['page'] = page
-            logger.debug(f"Fetching {endpoint} page {page}")
-            
-            result = self.gitlab_request(endpoint, params)
-            if result is None:
-                logger.error(f"Failed to fetch {endpoint} page {page}")
-                return None
-            
-            data = result.get('data')
-            if not data:
-                break
-            
-            all_items.extend(data)
-            logger.info(f"Fetched page {page} of {endpoint}: {len(data)} items (total so far: {len(all_items)})")
-            
-            # Check if there's a next page
-            next_page = result.get('next_page')
-            if not next_page:
-                break
-            
-            # Check if we've hit max pages limit
-            if max_pages and page >= max_pages:
-                logger.info(f"Reached max pages limit ({max_pages}) for {endpoint}")
-                break
-            
-            page += 1
-        
-        logger.info(f"Completed fetching {endpoint}: {len(all_items)} total items across {page} pages")
-        return all_items
-    
-    def gitlab_get_all_pages(self, endpoint, params=None):
-        """Public helper: Get all pages of results from a GitLab API endpoint
-        
-        This is a convenience wrapper around _make_paginated_request that provides
-        a clear, public interface for fetching all pages of data. It reads X-Next-Page
-        and Link headers to iterate through all pages until exhausted.
-        
-        Args:
-            endpoint: GitLab API endpoint path (e.g., 'projects', 'groups/123/projects')
-            params: Optional query parameters dict
-        
-        Returns:
-            list: All items collected across all pages
-            None: If API error occurred
-        
-        Example:
-            # Fetch all projects
-            projects = client.gitlab_get_all_pages('projects', {'membership': 'true'})
-            
-            # Fetch all group projects
-            projects = client.gitlab_get_all_pages('groups/123/projects')
-        """
-        return self._make_paginated_request(endpoint, params)
-    
-    def get_projects(self, per_page=None):
-        """Get list of projects with pagination support"""
-        if per_page:
-            # For backward compatibility, use single page request
-            result = self.gitlab_request('projects', {'per_page': per_page, 'membership': 'true'})
-            if result is None:
-                return None
-            return result.get('data', None)
-        else:
-            # Full pagination for all projects
-            return self._make_paginated_request('projects', {'membership': 'true'})
-    
-    def get_group_projects(self, group_id):
-        """Get all projects in a group with pagination"""
-        return self._make_paginated_request(f'groups/{group_id}/projects')
-    
-    def get_project(self, project_id):
-        """Get single project details"""
-        result = self.gitlab_request(f'projects/{project_id}')
-        if result is None:
-            return None
-        return result.get('data', None)
-    
-    def get_pipelines(self, project_id, per_page=None):
-        """Get pipelines for a project with pagination"""
-        if per_page:
-            # For backward compatibility, use single page request
-            result = self.gitlab_request(f'projects/{project_id}/pipelines', {'per_page': per_page})
-            if result is None:
-                return None
-            return result.get('data', None)
-        else:
-            # Full pagination for all pipelines
-            return self._make_paginated_request(f'projects/{project_id}/pipelines')
-    
-    def get_all_pipelines(self, per_page=20):
-        """Get recent pipelines across all projects
-        
-        Note: To optimize API calls, we fetch from a limited number of projects.
-        We retrieve pipelines from up to 10 projects, requesting enough per project
-        to meet the per_page requirement.
-        """
-        # Always fetch from a reasonable number of projects (5-10) for good distribution
-        # Scale based on request size but maintain reasonable bounds
-        num_projects = min(10, max(5, per_page // 5))
-        projects = self.get_projects(per_page=num_projects)
-        if projects is None:
-            return None  # Propagate API failure
-        if not projects:
-            return []  # No projects available (valid empty state)
-        
-        # Calculate how many pipelines to fetch per project
-        # Fetch extra to account for projects with fewer pipelines
-        # Protected from division by zero since we've confirmed projects is not empty
-        pipelines_per_project = max(5, (per_page // len(projects)) + 2)
-        
-        all_pipelines = []
-        for project in projects:
-            pipelines = self.get_pipelines(project['id'], per_page=pipelines_per_project)
-            if pipelines is None:
-                # Propagate API failure from per-project pipeline fetch
-                return None
-            if pipelines:
-                for pipeline in pipelines:
-                    pipeline['project_name'] = project['name']
-                    pipeline['project_id'] = project['id']
-                    pipeline['project_path'] = project.get('path_with_namespace', '')
-                    all_pipelines.append(pipeline)
-        
-        # Sort by created_at descending
-        all_pipelines.sort(key=lambda x: x.get('created_at', ''), reverse=True)
-        return all_pipelines[:per_page]
+# Note: GitLabAPIClient is now imported from backend.gitlab_client
 
 
 class DataCache:
@@ -552,9 +132,6 @@ STATE = {
     'error': None
 }
 STATE_LOCK = threading.Lock()
-
-# Default timeout for external service checks (seconds)
-DEFAULT_SERVICE_CHECK_TIMEOUT = 10
 
 # Global flag to track if server is running in mock mode
 MOCK_MODE_ENABLED = False
@@ -960,331 +537,32 @@ class BackgroundPoller(threading.Thread):
     def _enrich_projects_with_pipelines(self, projects, per_project_pipelines, poll_id=None):
         """Enrich project data with pipeline health metrics
         
-        Args:
-            projects: List of project dicts
-            per_project_pipelines: Dict mapping project_id -> list of pipelines for that project
-            poll_id: Poll cycle identifier for logging context
-        
-        Returns:
-            List of enriched project dicts with pipeline health data
+        Delegates to the gitlab_client module's enrich_projects_with_pipelines function.
         """
-        log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
-        
-        if not projects:
-            logger.debug(f"{log_prefix}No projects to enrich")
-            return []
-        
-        # Sort pipelines by created_at for each project (newest first)
-        # ISO 8601 timestamps sort correctly lexicographically
-        for project_id in per_project_pipelines:
-            per_project_pipelines[project_id].sort(
-                key=lambda p: p.get('created_at') or EPOCH_TIMESTAMP, 
-                reverse=True
-            )
-        
-        # Enrich each project with pipeline data
-        enriched_projects = []
-        for project in projects:
-            project_id = project.get('id')
-            enriched = dict(project)  # Create a copy
-            
-            # Get pipelines for this project
-            pipelines_for_project = per_project_pipelines.get(project_id, [])
-            
-            if pipelines_for_project:
-                # Last pipeline info
-                last_pipeline = pipelines_for_project[0]
-                enriched['last_pipeline_status'] = last_pipeline.get('status')
-                enriched['last_pipeline_ref'] = last_pipeline.get('ref')
-                enriched['last_pipeline_duration'] = last_pipeline.get('duration')
-                enriched['last_pipeline_updated_at'] = last_pipeline.get('updated_at')
-                
-                # Calculate recent success rate using the last N pipelines across ALL branches
-                # (excluding skipped/manual/canceled). This allows noisy feature branches
-                # to drag a repo's health down, giving a more complete picture.
-                recent_pipelines = pipelines_for_project[:PIPELINES_PER_PROJECT]
-                # Filter out statuses that should be ignored
-                meaningful_pipelines = [
-                    p for p in recent_pipelines 
-                    if p.get('status') not in IGNORED_PIPELINE_STATUSES
-                ]
-                if meaningful_pipelines:
-                    success_count = sum(1 for p in meaningful_pipelines if p.get('status') == 'success')
-                    enriched['recent_success_rate'] = success_count / len(meaningful_pipelines)
-                else:
-                    # No meaningful pipelines (all were skipped/manual/canceled)
-                    enriched['recent_success_rate'] = None
-                
-                # Calculate consecutive failures on DEFAULT BRANCH ONLY
-                # This metric intentionally ignores other branches, providing a pure signal
-                # for the health of the main development branch.
-                # Ignore skipped/manual/canceled statuses when counting consecutive failures
-                default_branch = project.get('default_branch', DEFAULT_BRANCH_NAME)
-                default_branch_pipelines = [
-                    p for p in pipelines_for_project 
-                    if p.get('ref') == default_branch
-                ]
-                consecutive_failures = 0
-                for pipeline in default_branch_pipelines:
-                    status = pipeline.get('status')
-                    if status == 'failed':
-                        consecutive_failures += 1
-                    elif status in IGNORED_PIPELINE_STATUSES:
-                        # Ignore these statuses - they don't break the consecutive failure count
-                        continue
-                    else:
-                        # Stop counting at first actual success/running/pending
-                        break
-                enriched['consecutive_default_branch_failures'] = consecutive_failures
-            else:
-                # No pipelines for this project
-                enriched['last_pipeline_status'] = None
-                enriched['last_pipeline_ref'] = None
-                enriched['last_pipeline_duration'] = None
-                enriched['last_pipeline_updated_at'] = None
-                enriched['recent_success_rate'] = None
-                enriched['consecutive_default_branch_failures'] = 0
-            
-            enriched_projects.append(enriched)
-        
-        logger.debug(f"{log_prefix}Enriched {len(enriched_projects)} projects with pipeline data")
-        return enriched_projects
+        return enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id)
     
     def _calculate_summary(self, projects, pipelines):
         """Calculate summary statistics
         
-        Note: This should only be called when both projects and pipelines
-        were successfully fetched (not None). The caller is responsible for
-        ensuring valid data.
-        
-        Metrics distinction:
-        - Repo-level `recent_success_rate` is based on recent pipelines across ALL branches.
-        - Summary-level `pipeline_success_rate` is based on ALL fetched pipelines.
-        
-        Returns summary dict without timestamp (caller adds it from STATE).
+        Delegates to the gitlab_client module's get_summary function.
         """
-        # Use empty lists if None (should not happen in normal flow)
-        if projects is None:
-            logger.warning("_calculate_summary called with None projects - using empty list")
-            projects = []
-        if pipelines is None:
-            logger.warning("_calculate_summary called with None pipelines - using empty list")
-            pipelines = []
-        
-        total_repos = len(projects)
-        active_repos = len([p for p in projects if p.get('last_activity_at')])
-        
-        # Pipeline statistics
-        pipeline_statuses = {}
-        for pipeline in pipelines:
-            status = pipeline.get('status', 'unknown')
-            pipeline_statuses[status] = pipeline_statuses.get(status, 0) + 1
-        
-        # Calculate success rate
-        total_pipelines = len(pipelines)
-        successful_pipelines = pipeline_statuses.get('success', 0)
-        pipeline_success_rate = successful_pipelines / total_pipelines if total_pipelines > 0 else 0.0
-        
-        return {
-            'total_repositories': total_repos,
-            'active_repositories': active_repos,
-            'total_pipelines': total_pipelines,
-            'successful_pipelines': successful_pipelines,
-            'failed_pipelines': pipeline_statuses.get('failed', 0),
-            'running_pipelines': pipeline_statuses.get('running', 0),
-            'pending_pipelines': pipeline_statuses.get('pending', 0),
-            'pipeline_success_rate': pipeline_success_rate,
-            'pipeline_statuses': pipeline_statuses
-        }
+        return get_summary(projects, pipelines)
     
     def _check_external_services(self, poll_id=None):
         """Check health of configured external services
         
-        For each configured external service:
-        - Makes a HEAD request (fallback to GET if needed)
-        - Classifies the result as UP or DOWN
-        - Captures latency, status code, and any error message
-        
-        Args:
-            poll_id: Poll cycle identifier for logging context
-        
-        Returns:
-            list: List of dicts with service health data
+        Delegates to the services module's get_service_statuses function.
         """
-        log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
-        
-        if not self.external_services:
-            logger.debug(f"{log_prefix}No external services configured")
-            return []
-        
-        results = []
-        
-        for service_config in self.external_services:
-            # Skip invalid entries
-            if not isinstance(service_config, dict):
-                logger.warning(f"{log_prefix}Skipping invalid service config (not a dict): {service_config}")
-                continue
-            
-            url = service_config.get('url')
-            if not url:
-                logger.warning(f"{log_prefix}Skipping service config with missing URL: {service_config}")
-                continue
-            
-            # Resolve human-readable name (prefer name, then id, then url)
-            name = service_config.get('name') or service_config.get('id') or url
-            
-            # Generate stable service ID
-            service_id = service_config.get('id')
-            if not service_id:
-                # Normalize name to create a stable ID
-                service_id = name.lower().replace(' ', '-').replace('/', '-')
-            
-            # Get timeout (use default if not provided)
-            timeout = service_config.get('timeout', DEFAULT_SERVICE_CHECK_TIMEOUT)
-            try:
-                timeout = int(timeout)
-                if timeout <= 0:
-                    timeout = DEFAULT_SERVICE_CHECK_TIMEOUT
-            except (ValueError, TypeError):
-                timeout = DEFAULT_SERVICE_CHECK_TIMEOUT
-            
-            # Check the service
-            result = self._check_single_service(
-                url=url,
-                name=name,
-                service_id=service_id,
-                timeout=timeout,
-                poll_id=poll_id
-            )
-            results.append(result)
-        
-        # Log summary
-        up_count = sum(1 for r in results if r.get('status') == 'UP')
-        down_count = len(results) - up_count
-        logger.info(f"{log_prefix}Checked {len(results)} external services: {up_count} UP, {down_count} DOWN")
-        
-        return results
-    
-    def _check_single_service(self, url, name, service_id, timeout, poll_id=None):
-        """Check health of a single external service
-        
-        Performs a HEAD request first, falling back to GET if HEAD is not allowed.
-        
-        Args:
-            url: Service URL to check
-            name: Human-readable service name
-            service_id: Stable service identifier
-            timeout: Request timeout in seconds
-            poll_id: Poll cycle identifier for logging context
-        
-        Returns:
-            dict: Service health data with id, name, url, status, latency_ms, 
-                  last_checked, http_status, and error fields
-        """
-        log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
-        
-        result = {
-            'id': service_id,
-            'name': name,
-            'url': url,
-            'status': 'DOWN',
-            'latency_ms': None,
-            'last_checked': datetime.now().isoformat(),
-            'http_status': None,
-            'error': None
-        }
-        
-        # Use same SSL context as GitLab client if available
+        # Get SSL context from GitLab client if available
         ssl_context = None
         if self.gitlab_client:
             ssl_context = self.gitlab_client.ssl_context
         
-        start_time = time.monotonic()
-        
-        try:
-            # Try HEAD request first (lighter weight)
-            request = Request(url, method='HEAD')
-            request.add_header('User-Agent', 'DSO-Dashboard-ServiceCheck/1.0')
-            
-            try:
-                if ssl_context:
-                    response = urlopen(request, timeout=timeout, context=ssl_context)
-                else:
-                    response = urlopen(request, timeout=timeout)
-                
-                elapsed_ms = (time.monotonic() - start_time) * 1000
-                http_status = response.status
-                response.close()
-                
-            except HTTPError as e:
-                # HEAD might return 405 Method Not Allowed, try GET
-                if e.code == 405:
-                    logger.debug(f"{log_prefix}HEAD not allowed for {name}, trying GET")
-                    start_time = time.monotonic()  # Reset timer for GET
-                    request = Request(url)
-                    request.add_header('User-Agent', 'DSO-Dashboard-ServiceCheck/1.0')
-                    
-                    if ssl_context:
-                        response = urlopen(request, timeout=timeout, context=ssl_context)
-                    else:
-                        response = urlopen(request, timeout=timeout)
-                    
-                    elapsed_ms = (time.monotonic() - start_time) * 1000
-                    http_status = response.status
-                    response.close()
-                else:
-                    # Other HTTP errors
-                    elapsed_ms = (time.monotonic() - start_time) * 1000
-                    http_status = e.code
-                    
-                    # 2xx and 3xx are considered UP
-                    if 200 <= http_status < 400:
-                        result['status'] = 'UP'
-                    else:
-                        result['error'] = f"HTTP {http_status}: {e.reason}"
-                    
-                    result['latency_ms'] = round(elapsed_ms, 2)
-                    result['http_status'] = http_status
-                    logger.debug(f"{log_prefix}Service {name}: HTTP {http_status} in {elapsed_ms:.1f}ms")
-                    return result
-            
-            # Successful response (2xx or 3xx)
-            result['latency_ms'] = round(elapsed_ms, 2)
-            result['http_status'] = http_status
-            
-            if 200 <= http_status < 400:
-                result['status'] = 'UP'
-            else:
-                result['status'] = 'DOWN'
-                result['error'] = f"HTTP {http_status}"
-            
-            logger.debug(f"{log_prefix}Service {name}: {result['status']} HTTP {http_status} in {elapsed_ms:.1f}ms")
-            
-        except HTTPError as e:
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            result['latency_ms'] = round(elapsed_ms, 2)
-            result['http_status'] = e.code
-            result['error'] = f"HTTP {e.code}: {e.reason}"
-            
-            # 2xx and 3xx are considered UP
-            if 200 <= e.code < 400:
-                result['status'] = 'UP'
-            
-            logger.debug(f"{log_prefix}Service {name}: DOWN HTTP {e.code} in {elapsed_ms:.1f}ms")
-            
-        except URLError as e:
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            result['latency_ms'] = round(elapsed_ms, 2)
-            result['error'] = str(e.reason)
-            logger.debug(f"{log_prefix}Service {name}: DOWN URLError {e.reason} in {elapsed_ms:.1f}ms")
-            
-        except Exception as e:
-            elapsed_ms = (time.monotonic() - start_time) * 1000
-            result['latency_ms'] = round(elapsed_ms, 2)
-            result['error'] = str(e)
-            logger.debug(f"{log_prefix}Service {name}: DOWN Error {e} in {elapsed_ms:.1f}ms")
-        
-        return result
+        return get_service_statuses(
+            self.external_services,
+            ssl_context=ssl_context,
+            poll_id=poll_id
+        )
     
     def stop(self):
         """Stop the polling thread"""
@@ -1806,257 +1084,8 @@ class DashboardServer(HTTPServer):
         self.gitlab_client = gitlab_client
 
 
-def parse_int_config(value, default, name):
-    """Parse integer configuration value with error handling"""
-    try:
-        return int(value)
-    except (ValueError, TypeError):
-        logger.warning(f"Invalid {name} value: {value}. Using default: {default}")
-        return default
-
-
-def parse_csv_list(value):
-    """Parse comma-separated list from environment variable"""
-    if not value:
-        return []
-    return [item.strip() for item in value.split(',') if item.strip()]
-
-
-def load_config():
-    """Load configuration from config.json or environment variables"""
-    config = {}
-    config_source = "environment variables"
-    
-    # Try to load from config.json first (in project root)
-    config_file = os.path.join(PROJECT_ROOT, 'config.json')
-    if os.path.exists(config_file):
-        try:
-            with open(config_file, 'r') as f:
-                config = json.load(f)
-            config_source = "config.json"
-            logger.info(f"Configuration loaded from {config_file}")
-        except Exception as e:
-            logger.warning(f"Failed to load {config_file}: {e}. Falling back to environment variables.")
-            config = {}
-    
-    # Log level configuration (environment variable takes precedence)
-    # LOG_LEVEL env var is handled by get_log_level(), but we also support config.json
-    if 'LOG_LEVEL' in os.environ:
-        config['log_level'] = os.environ['LOG_LEVEL'].upper()
-    elif 'log_level' in config:
-        config['log_level'] = str(config['log_level']).upper()
-    else:
-        config['log_level'] = 'INFO'
-    
-    # Validate and set the log level
-    if config['log_level'] not in VALID_LOG_LEVELS:
-        logger.warning(f"Invalid LOG_LEVEL '{config['log_level']}'. Using default: INFO")
-        config['log_level'] = 'INFO'
-    
-    # Reconfigure logging with the resolved level
-    log_level = getattr(logging, config['log_level'])
-    logging.getLogger().setLevel(log_level)
-    logger.setLevel(log_level)
-    
-    # Environment variables take precedence over config.json
-    config['gitlab_url'] = os.environ.get('GITLAB_URL', config.get('gitlab_url', 'https://gitlab.com'))
-    config['api_token'] = os.environ.get('GITLAB_API_TOKEN', config.get('api_token', ''))
-    
-    # For group_ids and project_ids, check if env var is explicitly set (even if empty)
-    # to allow overriding config.json with empty scope
-    if 'GITLAB_GROUP_IDS' in os.environ:
-        config['group_ids'] = parse_csv_list(os.environ['GITLAB_GROUP_IDS'])
-    else:
-        config['group_ids'] = config.get('group_ids', [])
-    
-    if 'GITLAB_PROJECT_IDS' in os.environ:
-        config['project_ids'] = parse_csv_list(os.environ['GITLAB_PROJECT_IDS'])
-    else:
-        config['project_ids'] = config.get('project_ids', [])
-    
-    config['port'] = parse_int_config(os.environ.get('PORT'), config.get('port', 8080), 'PORT')
-    config['cache_ttl_sec'] = parse_int_config(os.environ.get('CACHE_TTL'), config.get('cache_ttl_sec', 300), 'CACHE_TTL')
-    config['poll_interval_sec'] = parse_int_config(os.environ.get('POLL_INTERVAL'), config.get('poll_interval_sec', 60), 'POLL_INTERVAL')
-    config['per_page'] = parse_int_config(os.environ.get('PER_PAGE'), config.get('per_page', 100), 'PER_PAGE')
-    
-    # SSL/TLS Configuration
-    # CA bundle path (preferred for custom/internal CA certificates)
-    config['ca_bundle_path'] = os.environ.get('CA_BUNDLE_PATH', config.get('ca_bundle_path', None))
-    
-    # For insecure_skip_verify, check if env var is explicitly set to allow overriding
-    if 'INSECURE_SKIP_VERIFY' in os.environ:
-        config['insecure_skip_verify'] = os.environ['INSECURE_SKIP_VERIFY'].lower() in ['true', '1', 'yes']
-    else:
-        config['insecure_skip_verify'] = config.get('insecure_skip_verify', False)
-    
-    # For use_mock_data, check if env var is explicitly set to allow overriding
-    if 'USE_MOCK_DATA' in os.environ:
-        config['use_mock_data'] = os.environ['USE_MOCK_DATA'].lower() in ['true', '1', 'yes']
-    else:
-        config['use_mock_data'] = config.get('use_mock_data', False)
-    
-    # Mock scenario selection - which mock file to load
-    config['mock_scenario'] = os.environ.get('MOCK_SCENARIO', config.get('mock_scenario', ''))
-    
-    # External services configuration (for uptime monitoring)
-    # Normalize: if missing, null, or not a list, use empty list
-    external_services = config.get('external_services')
-    if external_services is None or not isinstance(external_services, list):
-        if external_services is not None:
-            logger.warning(f"Invalid external_services (not a list): {type(external_services).__name__}. Using empty list.")
-        config['external_services'] = []
-    else:
-        config['external_services'] = external_services
-    
-    # Ensure lists are clean (filter config.json values that might have empty strings or numeric IDs)
-    if isinstance(config['group_ids'], list):
-        config['group_ids'] = [str(gid).strip() for gid in config['group_ids'] if gid and str(gid).strip()]
-    if isinstance(config['project_ids'], list):
-        config['project_ids'] = [str(pid).strip() for pid in config['project_ids'] if pid and str(pid).strip()]
-    
-    # Log configuration (without secrets)
-    logger.info(f"Configuration loaded from: {config_source}")
-    logger.info(f"  Log level: {config['log_level']}")
-    logger.info(f"  GitLab URL: {config['gitlab_url']}")
-    logger.info(f"  Port: {config['port']}")
-    logger.info(f"  Poll interval: {config['poll_interval_sec']}s")
-    logger.info(f"  Cache TTL: {config['cache_ttl_sec']}s")
-    logger.info(f"  Per page: {config['per_page']}")
-    logger.info(f"  Group IDs: {config['group_ids'] if config['group_ids'] else 'None (using all accessible projects)'}")
-    logger.info(f"  Project IDs: {config['project_ids'] if config['project_ids'] else 'None'}")
-    logger.info(f"  CA bundle path: {config['ca_bundle_path'] if config['ca_bundle_path'] else 'None (using system default)'}")
-    logger.info(f"  Insecure skip verify: {config['insecure_skip_verify']}")
-    logger.info(f"  Use mock data: {config['use_mock_data']}")
-    if config['use_mock_data']:
-        logger.info(f"  Mock scenario: {config['mock_scenario'] if config['mock_scenario'] else 'default (mock_data.json)'}")
-    logger.info(f"  External services: {len(config['external_services'])} configured")
-    logger.info(f"  API token: {'***' if config['api_token'] else 'NOT SET'}")
-    
-    return config
-
-
-def validate_config(config):
-    """Validate configuration values and fail-fast if invalid
-    
-    Validates:
-    - API token must be provided if mock mode is disabled
-    - poll_interval_sec must be a positive integer (≥5 recommended)
-    - cache_ttl_sec must not be negative
-    - per_page must be positive
-    
-    Args:
-        config: Configuration dict from load_config()
-    
-    Returns:
-        bool: True if configuration is valid, False otherwise
-    
-    Side effects:
-        Logs error messages describing which key is invalid and how to fix it
-    """
-    is_valid = True
-    
-    # Skip API token validation if mock mode is enabled
-    if not config.get('use_mock_data', False):
-        # API token is required in non-mock mode
-        if not config.get('api_token'):
-            logger.error("Configuration error: 'api_token' is required when mock mode is disabled")
-            logger.error("  Fix: Set GITLAB_API_TOKEN environment variable or add 'api_token' to config.json")
-            is_valid = False
-    
-    # Validate poll_interval_sec is a positive integer
-    poll_interval = config.get('poll_interval_sec')
-    if poll_interval is None or not isinstance(poll_interval, int) or poll_interval <= 0:
-        logger.error(f"Configuration error: 'poll_interval_sec' must be a positive integer, got: {poll_interval}")
-        logger.error("  Fix: Set POLL_INTERVAL environment variable or 'poll_interval_sec' in config.json to a positive integer")
-        is_valid = False
-    elif poll_interval < 5:
-        logger.warning(f"Configuration warning: 'poll_interval_sec' is {poll_interval}s, which is very short. Recommend ≥5s to avoid rate limiting.")
-    
-    # Validate cache_ttl_sec is not negative
-    cache_ttl = config.get('cache_ttl_sec')
-    if cache_ttl is None or not isinstance(cache_ttl, int) or cache_ttl < 0:
-        logger.error(f"Configuration error: 'cache_ttl_sec' must be a non-negative integer, got: {cache_ttl}")
-        logger.error("  Fix: Set CACHE_TTL environment variable or 'cache_ttl_sec' in config.json to 0 or a positive integer")
-        is_valid = False
-    
-    # Validate per_page is positive
-    per_page = config.get('per_page')
-    if per_page is None or not isinstance(per_page, int) or per_page <= 0:
-        logger.error(f"Configuration error: 'per_page' must be a positive integer, got: {per_page}")
-        logger.error("  Fix: Set PER_PAGE environment variable or 'per_page' in config.json to a positive integer (1-100)")
-        is_valid = False
-    
-    # Validate external_services entries
-    external_services = config.get('external_services', [])
-    if external_services:
-        for i, service in enumerate(external_services):
-            if not isinstance(service, dict):
-                logger.error(f"Configuration error: external_services[{i}] must be a dict, got: {type(service).__name__}")
-                logger.error("  Fix: Each entry in external_services must be an object with at least a 'url' field")
-                is_valid = False
-            elif not service.get('url'):
-                logger.error(f"Configuration error: external_services[{i}] is missing required 'url' field")
-                logger.error("  Fix: Each entry in external_services must have a 'url' field")
-                is_valid = False
-    
-    # Log validation result
-    if is_valid:
-        logger.info("Configuration validation passed")
-    else:
-        logger.error("Configuration validation failed - see errors above")
-    
-    return is_valid
-
-
-def load_mock_data(scenario=''):
-    """Load mock data from mock_data.json file or a specific scenario file
-    
-    Args:
-        scenario: Optional scenario name (e.g., 'healthy', 'failing', 'running').
-                  If provided, loads from data/mock_scenarios/{scenario}.json
-                  If empty, loads from mock_data.json in root directory.
-    
-    Returns:
-        dict: Mock data with 'summary', 'repositories', and 'pipelines' keys
-        None: If file not found or JSON parsing fails
-    """
-    if scenario:
-        # Load from scenario file in data/mock_scenarios/
-        mock_data_file = os.path.join(PROJECT_ROOT, 'data', 'mock_scenarios', f'{scenario}.json')
-    else:
-        # Load from default mock_data.json
-        mock_data_file = os.path.join(PROJECT_ROOT, 'mock_data.json')
-    
-    if not os.path.exists(mock_data_file):
-        logger.error(f"Mock data file not found: {mock_data_file}")
-        if scenario:
-            logger.error(f"Available scenarios: healthy, failing, running")
-            logger.error(f"Check that the file exists in data/mock_scenarios/ directory")
-        return None
-    
-    try:
-        with open(mock_data_file, 'r') as f:
-            data = json.load(f)
-        
-        # Validate required keys
-        required_keys = ['summary', 'repositories', 'pipelines']
-        for key in required_keys:
-            if key not in data:
-                logger.error(f"Mock data file missing required key: {key}")
-                return None
-        
-        logger.info(f"Successfully loaded mock data from {mock_data_file}")
-        logger.info(f"  Repositories: {len(data['repositories'])}")
-        logger.info(f"  Pipelines: {len(data['pipelines'])}")
-        
-        return data
-        
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse mock data JSON: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"Error loading mock data: {e}")
-        return None
+# Note: parse_int_config, parse_csv_list, load_config, validate_config, and load_mock_data
+# are now imported from backend.config_loader
 
 
 def main():
