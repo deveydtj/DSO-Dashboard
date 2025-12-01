@@ -353,10 +353,35 @@ class TestMainWithValidation(unittest.TestCase):
                 'per_page': 100,
                 'mock_scenario': ''
             }
-            
+
             result = server.main()
             self.assertEqual(result, 1)
-    
+
+    def test_main_exits_with_nonzero_when_mock_data_missing(self):
+        """Test that main() returns nonzero when mock data fails to load"""
+        config = {
+            'use_mock_data': True,
+            'api_token': '',
+            'poll_interval_sec': 60,
+            'cache_ttl_sec': 300,
+            'per_page': 100,
+            'mock_scenario': '',
+            'port': 8080,
+            'gitlab_url': 'https://gitlab.com',
+            'insecure_skip_verify': False,
+            'ca_bundle_path': None,
+            'group_ids': [],
+            'project_ids': []
+        }
+
+        with patch.object(server, 'load_config', return_value=config), \
+                patch.object(server, 'load_mock_data', return_value=None), \
+                patch.object(server, 'DashboardServer') as mock_server:
+            result = server.main()
+
+        self.assertEqual(result, 1)
+        mock_server.assert_not_called()
+
     def test_main_continues_on_valid_config(self):
         """Test that main() continues past validation when config is valid"""
         mock_data = {
