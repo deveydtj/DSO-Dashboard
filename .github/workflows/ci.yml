@@ -189,13 +189,15 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-    
+
     - name: Test server startup
+      env:
+        USE_MOCK_DATA: "true"
       run: |
         echo "Testing server startup (without API token)..."
         # Start server in background
@@ -216,8 +218,10 @@ jobs:
         # Stop server
         kill $SERVER_PID 2>/dev/null || true
         wait $SERVER_PID 2>/dev/null || true
-    
+
     - name: Test API endpoints respond
+      env:
+        USE_MOCK_DATA: "true"
       run: |
         echo "Testing API endpoints..."
         # Start server in background
