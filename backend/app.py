@@ -1130,7 +1130,7 @@ def main():
         mock_data = load_mock_data(MOCK_SCENARIO)
         if mock_data is None:
             logger.error("Failed to load mock data. Exiting.")
-            return
+            return 1
         
         # Initialize STATE with mock data
         # Use services from mock data if present, otherwise empty list
