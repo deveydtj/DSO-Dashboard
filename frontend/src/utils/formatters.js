@@ -7,8 +7,8 @@
  * @returns {string} - HTML-escaped text
  */
 export function escapeHtml(text) {
-    if (!text) return '';
-    
+    if (text === null || text === undefined) return '';
+
     const map = {
         '&': '&amp;',
         '<': '&lt;',
