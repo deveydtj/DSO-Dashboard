@@ -574,6 +574,19 @@ class BackgroundPoller(threading.Thread):
 class DashboardRequestHandler(SimpleHTTPRequestHandler):
     """Custom HTTP request handler for the dashboard"""
     
+    # Explicit MIME type mappings for JavaScript files
+    # This fixes the "MIME type text/plain" error on systems where mimetypes.guess_type()
+    # doesn't return the correct MIME type for .js files (e.g., some Windows/macOS configs)
+    # The browser's strict MIME type checking requires application/javascript for ES modules
+    extensions_map = {
+        **SimpleHTTPRequestHandler.extensions_map,
+        '.js': 'application/javascript',
+        '.mjs': 'application/javascript',
+        '.css': 'text/css',
+        '.html': 'text/html',
+        '.json': 'application/json',
+    }
+    
     def __init__(self, *args, **kwargs):
         # Set the directory to serve static files from (relative to project root)
         frontend_dir = os.path.join(PROJECT_ROOT, 'frontend')
