@@ -1,4 +1,4 @@
-# GitLab DSO Dashboard
+# DSO Dashboard
 
 A zero-dependency dashboard for monitoring GitLab repositories and CI/CD pipelines. Built with **Python standard library only** and **vanilla JavaScript**.
 

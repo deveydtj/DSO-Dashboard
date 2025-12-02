@@ -44,7 +44,7 @@ export class DashboardApp {
     }
 
     init() {
-        console.log('🚀 Initializing GitLab DSO Dashboard...');
+        console.log('🚀 Initializing DSO Dashboard...');
         // Initialize header toggles (TV, Compact, Wallboard)
         initHeaderToggles();
         this.checkHealth();
