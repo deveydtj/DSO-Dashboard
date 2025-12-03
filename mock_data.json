@@ -431,7 +431,7 @@
       "error": null,
       "average_latency_ms": 115,
       "latency_ratio": 1.11,
-      "latency_trend": "stable"
+      "latency_trend": "warning"
     },
     {
       "id": "jira",

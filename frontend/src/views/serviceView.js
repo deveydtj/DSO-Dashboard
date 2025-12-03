@@ -24,6 +24,9 @@ export function createServiceCard(service) {
     const status = normalizeServiceStatus(service.status);
     const statusClass = `service-status-${status.toLowerCase()}`;
     
+    // Latency warning class when latency_trend is "warning"
+    const latencyWarningClass = service.latency_trend === 'warning' ? 'service-latency-warning' : '';
+    
     // Latency display - current latency
     const currentLatency = formatLatency(service.latency_ms);
     
@@ -50,9 +53,19 @@ export function createServiceCard(service) {
     const linkHtml = service.url 
         ? `<a href="${escapeHtml(service.url)}" target="_blank" rel="noopener noreferrer" class="service-link" title="Open ${escapeHtml(name)}">Open →</a>`
         : '';
+    
+    // Latency warning badge (shown when latency_trend is "warning")
+    const latencyWarningBadgeHtml = service.latency_trend === 'warning'
+        ? '<span class="service-latency-warning-badge">Latency elevated</span>'
+        : '';
+
+    // Combine CSS classes, filtering out empty strings to avoid extra whitespace
+    const cardClasses = ['service-card', statusClass, latencyWarningClass]
+        .filter(Boolean)
+        .join(' ');
 
     return `
-        <div class="service-card ${statusClass}">
+        <div class="${cardClasses}">
             <div class="service-header">
                 <h3 class="service-name">${escapeHtml(name)}</h3>
                 <span class="service-status-chip ${status.toLowerCase()}">
@@ -60,6 +73,7 @@ export function createServiceCard(service) {
                     <span>${escapeHtml(status)}</span>
                 </span>
             </div>
+            ${latencyWarningBadgeHtml}
             <div class="service-latency-section">
                 <div class="service-latency-item">
                     <span class="latency-label">Current</span>

@@ -151,5 +151,99 @@ console.log(JSON.stringify({{ hasCurrentLatency, hasNAValue }}));
         self.assertTrue(result['hasNAValue'], 'Should display N/A when no latency value')
 
 
+class TestServiceCardLatencyWarning(unittest.TestCase):
+    """Verify createServiceCard properly renders latency warning style."""
+
+    def test_service_card_with_latency_warning(self):
+        project_root = Path(__file__).resolve().parents[2]
+        service_view_path = project_root / 'frontend' / 'src' / 'views' / 'serviceView.js'
+
+        script = f"""
+import {{ createServiceCard }} from 'file://{service_view_path}';
+const service = {{
+    name: 'Test Service',
+    status: 'up',
+    latency_ms: 150,
+    average_latency_ms: 100,
+    latency_trend: 'warning'
+}};
+const html = createServiceCard(service);
+const hasWarningClass = html.includes('service-latency-warning');
+const hasWarningBadge = html.includes('service-latency-warning-badge') && html.includes('Latency elevated');
+console.log(JSON.stringify({{ hasWarningClass, hasWarningBadge }}));
+"""
+
+        completed = subprocess.run(
+            ['node', '--input-type=module', '-e', script],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        result = json.loads(completed.stdout.strip())
+        self.assertTrue(result['hasWarningClass'], 'Should have service-latency-warning class when latency_trend is warning')
+        self.assertTrue(result['hasWarningBadge'], 'Should display Latency elevated badge when latency_trend is warning')
+
+    def test_service_card_without_latency_warning(self):
+        project_root = Path(__file__).resolve().parents[2]
+        service_view_path = project_root / 'frontend' / 'src' / 'views' / 'serviceView.js'
+
+        script = f"""
+import {{ createServiceCard }} from 'file://{service_view_path}';
+const service = {{
+    name: 'Test Service',
+    status: 'up',
+    latency_ms: 50,
+    average_latency_ms: 55,
+    latency_trend: 'stable'
+}};
+const html = createServiceCard(service);
+const hasWarningClass = html.includes('service-latency-warning');
+const hasWarningBadge = html.includes('Latency elevated');
+console.log(JSON.stringify({{ hasWarningClass, hasWarningBadge }}));
+"""
+
+        completed = subprocess.run(
+            ['node', '--input-type=module', '-e', script],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        result = json.loads(completed.stdout.strip())
+        self.assertFalse(result['hasWarningClass'], 'Should not have service-latency-warning class when latency_trend is not warning')
+        self.assertFalse(result['hasWarningBadge'], 'Should not display Latency elevated badge when latency_trend is not warning')
+
+    def test_service_card_latency_warning_with_status_up(self):
+        """Test that warning style is additive with status-up class."""
+        project_root = Path(__file__).resolve().parents[2]
+        service_view_path = project_root / 'frontend' / 'src' / 'views' / 'serviceView.js'
+
+        script = f"""
+import {{ createServiceCard }} from 'file://{service_view_path}';
+const service = {{
+    name: 'Test Service',
+    status: 'up',
+    latency_ms: 200,
+    latency_trend: 'warning'
+}};
+const html = createServiceCard(service);
+const hasStatusUpClass = html.includes('service-status-up');
+const hasWarningClass = html.includes('service-latency-warning');
+console.log(JSON.stringify({{ hasStatusUpClass, hasWarningClass }}));
+"""
+
+        completed = subprocess.run(
+            ['node', '--input-type=module', '-e', script],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+
+        result = json.loads(completed.stdout.strip())
+        self.assertTrue(result['hasStatusUpClass'], 'Should have service-status-up class')
+        self.assertTrue(result['hasWarningClass'], 'Should also have service-latency-warning class')
+
+
 if __name__ == '__main__':
     unittest.main()
