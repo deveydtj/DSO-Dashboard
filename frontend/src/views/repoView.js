@@ -114,7 +114,7 @@ export function getRepoKey(repo) {
  * @returns {string} - HTML string for the repo card
  */
 export function createRepoCard(repo, extraClasses = '') {
-    const description = repo.description || 'No description available';
+    const description = repo.description || '';
     const pipelineStatus = repo.last_pipeline_status || null;
     const normalizedStatus = normalizeStatus(pipelineStatus);
     
@@ -197,6 +197,9 @@ export function createRepoCard(repo, extraClasses = '') {
     // Combine status class with any extra attention classes
     const cardClasses = `repo-card ${statusClass}${extraClasses}`;
 
+    // Only display description if repo has one
+    const descriptionHtml = description ? `<p class="repo-description">${escapeHtml(description)}</p>` : '';
+
     return `
         <div class="${cardClasses}">
             <div class="repo-header">
@@ -205,7 +208,7 @@ export function createRepoCard(repo, extraClasses = '') {
                 </div>
                 <span class="repo-visibility">${escapeHtml(repo.visibility)}</span>
             </div>
-            <p class="repo-description">${escapeHtml(description)}</p>
+            ${descriptionHtml}
             ${indicatorsHtml}
             ${pipelineInfo}
             ${successRateSection}
