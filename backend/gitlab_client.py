@@ -565,7 +565,8 @@ def get_summary(projects, pipelines):
     ensuring valid data.
     
     Metrics distinction:
-    - Repo-level `recent_success_rate` is based on recent pipelines across ALL branches.
+    - Repo-level `recent_success_rate` is based on recent pipelines on the DEFAULT branch only (DSO primary).
+    - Repo-level `recent_success_rate_all_branches` is based on all branches (legacy/comprehensive).
     - Summary-level `pipeline_success_rate` is based on ALL fetched pipelines.
     
     Args:

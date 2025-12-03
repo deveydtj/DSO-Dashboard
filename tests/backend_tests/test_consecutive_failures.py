@@ -248,7 +248,14 @@ class TestConsecutiveFailureLogic(unittest.TestCase):
 
 
 class TestSuccessRateCalculation(unittest.TestCase):
-    """Test that success rate uses ALL branches and excludes skipped/manual/canceled"""
+    """Test success rate calculations for both default branch and all branches
+    
+    Tests verify:
+    - recent_success_rate_default_branch: Based on default branch only (DSO primary metric)
+    - recent_success_rate_all_branches: Based on all branches (legacy/comprehensive)
+    - recent_success_rate: Backward compatible, maps to default-branch rate
+    - Both rates correctly exclude skipped/manual/canceled statuses
+    """
     
     def test_success_rate_ignores_skipped_manual_canceled(self):
         """Test that success rate calculation ignores skipped/manual/canceled"""
