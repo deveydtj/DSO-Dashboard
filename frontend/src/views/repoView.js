@@ -56,7 +56,8 @@ export function getDsoStatus(repo) {
     }
     
     // Priority 4: Use default-branch success rate
-    // Note: recent_success_rate is now default-branch rate (see backend)
+    // The backend's recent_success_rate field now reflects default-branch rate
+    // (set by enrich_projects_with_pipelines in gitlab_client.py)
     const successRate = repo.recent_success_rate;
     if (successRate == null) {
         return DSO_STATUS.UNKNOWN;
