@@ -328,6 +328,10 @@ class BackgroundPoller(threading.Thread):
         # This ensures service health is always updated, even during GitLab outages
         services = self._check_external_services(poll_id)
         
+        # Annotate services with latency metrics (running average, trend)
+        # This must happen before any update to STATE
+        services = self._annotate_services_with_latency_metrics(services, poll_id)
+        
         # Fetch projects and pipelines
         projects = self._fetch_projects(poll_id)
         if projects is None:
@@ -613,6 +617,107 @@ class BackgroundPoller(threading.Thread):
             ssl_context=ssl_context,
             poll_id=poll_id
         )
+    
+    def _annotate_services_with_latency_metrics(self, services, poll_id=None):
+        """Annotate services with running average latency and trend
+        
+        Updates per-service latency state and adds computed metrics to each 
+        service dict when latency monitoring is enabled.
+        
+        Args:
+            services: List of service dicts from get_service_statuses()
+            poll_id: Poll cycle identifier for logging context
+        
+        Returns:
+            list: The same services list, with added latency metrics fields
+                  when monitoring is enabled. Existing fields are preserved.
+        
+        Added fields (when enabled and latency_ms is available):
+            - average_latency_ms: Running average latency in milliseconds
+            - latency_ratio: current latency / average (if average > 0)
+            - latency_trend: "normal" or "warning" based on degradation threshold
+        """
+        log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
+        
+        # Check if latency monitoring is enabled
+        if not self.service_latency_config.get('enabled', True):
+            logger.debug(f"{log_prefix}Service latency monitoring disabled, skipping annotation")
+            return services
+        
+        window_size = self.service_latency_config.get('window_size', 10)
+        threshold_ratio = self.service_latency_config.get('degradation_threshold_ratio', 1.5)
+        
+        for service in services:
+            service_id = service.get('id')
+            if not service_id:
+                continue
+            
+            latency_ms = service.get('latency_ms')
+            
+            # Skip services without valid latency (timeout, error, or None)
+            if latency_ms is None or not isinstance(latency_ms, (int, float)):
+                logger.debug(f"{log_prefix}Service {service_id}: no valid latency, skipping annotation")
+                continue
+            
+            # Get or initialize per-service latency history
+            if service_id not in self._service_latency_history:
+                # First sample for this service
+                self._service_latency_history[service_id] = {
+                    'average_ms': latency_ms,
+                    'sample_count': 1,
+                    'recent_samples': [latency_ms]
+                }
+                # For first sample, average equals current, ratio is 1.0, trend is normal
+                service['average_latency_ms'] = round(latency_ms, 2)
+                service['latency_ratio'] = 1.0
+                service['latency_trend'] = 'normal'
+                continue
+            
+            history = self._service_latency_history[service_id]
+            
+            # Update recent_samples (bounded by window_size)
+            recent_samples = history.get('recent_samples', [])
+            recent_samples.append(latency_ms)
+            if len(recent_samples) > window_size:
+                recent_samples = recent_samples[-window_size:]
+            
+            # Compute running average from recent samples
+            sample_count = len(recent_samples)
+            average_ms = sum(recent_samples) / sample_count if sample_count > 0 else latency_ms
+            
+            # Store updated history
+            self._service_latency_history[service_id] = {
+                'average_ms': average_ms,
+                'sample_count': sample_count,
+                'recent_samples': recent_samples
+            }
+            
+            # Compute latency ratio (current / average)
+            if average_ms > 0:
+                latency_ratio = latency_ms / average_ms
+            else:
+                latency_ratio = 1.0
+            
+            # Determine latency trend
+            previous_trend = service.get('latency_trend')
+            if latency_ratio > threshold_ratio:
+                latency_trend = 'warning'
+                # Log at debug level when transitioning into warning
+                if previous_trend != 'warning':
+                    logger.debug(
+                        f"{log_prefix}Service {service_id} latency degraded: "
+                        f"{latency_ms:.1f}ms vs avg {average_ms:.1f}ms "
+                        f"(ratio {latency_ratio:.2f} > threshold {threshold_ratio})"
+                    )
+            else:
+                latency_trend = 'normal'
+            
+            # Add computed fields to service dict
+            service['average_latency_ms'] = round(average_ms, 2)
+            service['latency_ratio'] = round(latency_ratio, 2)
+            service['latency_trend'] = latency_trend
+        
+        return services
     
     def stop(self):
         """Stop the polling thread"""
