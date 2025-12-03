@@ -73,6 +73,8 @@ body {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .header-info {
