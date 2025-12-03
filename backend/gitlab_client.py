@@ -444,6 +444,123 @@ class GitLabAPIClient:
         # Sort by created_at descending
         all_pipelines.sort(key=lambda x: x.get('created_at', ''), reverse=True)
         return all_pipelines[:per_page]
+    
+    def get_merge_request(self, project_id, mr_iid):
+        """Get a single merge request by project ID and MR IID
+        
+        Args:
+            project_id: GitLab project ID
+            mr_iid: Merge request internal ID (IID) within the project
+        
+        Returns:
+            dict: Merge request data from GitLab API, or None on error
+        """
+        result = self.gitlab_request(f'projects/{project_id}/merge_requests/{mr_iid}')
+        if result is None:
+            logger.warning(f"Failed to fetch merge request {mr_iid} for project {project_id}")
+            return None
+        return result.get('data', None)
+    
+    def resolve_merge_request_refs(self, pipelines, poll_id=None):
+        """Resolve merge request pipeline refs to their source branch names
+        
+        For pipelines with refs like `refs/merge-requests/<iid>/head`, this method
+        fetches the corresponding merge request to get the actual source branch name.
+        
+        Args:
+            pipelines: List of pipeline dicts (will be mutated in place)
+            poll_id: Optional poll cycle identifier for logging context
+        
+        Returns:
+            None (mutates pipelines in place)
+        
+        Side effects:
+            For MR pipelines, modifies each pipeline dict:
+            - Sets `original_ref` to the raw MR ref (e.g., `refs/merge-requests/481/head`)
+            - Sets `merge_request_iid` to the MR IID as a string (e.g., "481")
+            - Replaces `ref` with the MR's `source_branch` (e.g., `feature/foo`)
+        """
+        import re
+        
+        log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
+        
+        if not pipelines:
+            return
+        
+        # Pattern to match MR refs: refs/merge-requests/<iid>/head
+        mr_ref_pattern = re.compile(r'^refs/merge-requests/(\d+)/head$')
+        
+        # Group MR refs by project_id for batch lookup
+        # Structure: {project_id: {mr_iid: [pipeline_indices...]}}
+        mr_refs_by_project = {}
+        
+        for idx, pipeline in enumerate(pipelines):
+            ref = pipeline.get('ref') or ''  # Handle None refs
+            match = mr_ref_pattern.match(ref)
+            if match:
+                mr_iid = match.group(1)
+                project_id = pipeline.get('project_id')
+                if project_id:
+                    if project_id not in mr_refs_by_project:
+                        mr_refs_by_project[project_id] = {}
+                    if mr_iid not in mr_refs_by_project[project_id]:
+                        mr_refs_by_project[project_id][mr_iid] = []
+                    mr_refs_by_project[project_id][mr_iid].append(idx)
+        
+        # Count total MR refs discovered
+        total_mr_refs = sum(
+            len(iids) for iids in mr_refs_by_project.values()
+            for iids in [mr_refs_by_project[pid] for pid in []]  # placeholder
+        )
+        # Correct count: number of pipeline indices across all projects
+        total_mr_refs = sum(
+            len(indices)
+            for project_iids in mr_refs_by_project.values()
+            for indices in project_iids.values()
+        )
+        
+        if total_mr_refs == 0:
+            logger.debug(f"{log_prefix}No merge request refs to resolve")
+            return
+        
+        logger.info(f"{log_prefix}MR ref resolution: discovered {total_mr_refs} MR pipeline(s) across {len(mr_refs_by_project)} project(s)")
+        
+        # Build mapping: (project_id, mr_iid) -> source_branch
+        mr_source_branches = {}
+        successful_lookups = 0
+        failed_lookups = 0
+        
+        for project_id, mr_iids in mr_refs_by_project.items():
+            for mr_iid in mr_iids.keys():
+                try:
+                    mr_data = self.get_merge_request(project_id, mr_iid)
+                    if mr_data and 'source_branch' in mr_data:
+                        mr_source_branches[(project_id, mr_iid)] = mr_data['source_branch']
+                        successful_lookups += 1
+                    else:
+                        failed_lookups += 1
+                        logger.warning(f"{log_prefix}MR {mr_iid} in project {project_id}: no source_branch found")
+                except Exception as e:
+                    failed_lookups += 1
+                    logger.warning(f"{log_prefix}Failed to fetch MR {mr_iid} for project {project_id}: {e}")
+        
+        # Apply the resolved branch names to pipelines
+        resolved_count = 0
+        for project_id, mr_iids in mr_refs_by_project.items():
+            for mr_iid, pipeline_indices in mr_iids.items():
+                source_branch = mr_source_branches.get((project_id, mr_iid))
+                if source_branch:
+                    for idx in pipeline_indices:
+                        pipeline = pipelines[idx]
+                        # Store original ref for debugging
+                        pipeline['original_ref'] = pipeline['ref']
+                        # Store the MR IID
+                        pipeline['merge_request_iid'] = mr_iid
+                        # Replace ref with source branch
+                        pipeline['ref'] = source_branch
+                        resolved_count += 1
+        
+        logger.info(f"{log_prefix}MR ref resolution complete: {resolved_count} resolved, {failed_lookups} failed")
 
 
 def get_summary(projects, pipelines):

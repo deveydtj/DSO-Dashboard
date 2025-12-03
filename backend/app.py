@@ -494,6 +494,13 @@ class BackgroundPoller(threading.Thread):
                     logger.error(f"{log_prefix}All pipeline fetches failed")
                     return None
             
+            # Resolve merge request refs to their source branch names
+            # This must happen before sorting so resolved refs are used in sorted results
+            try:
+                self.gitlab_client.resolve_merge_request_refs(all_pipelines, poll_id=poll_id)
+            except Exception as e:
+                logger.warning(f"{log_prefix}MR ref resolution failed, continuing with unmodified refs: {e}")
+            
             # Sort by created_at descending for /api/pipelines
             # ISO 8601 string sorting works correctly; empty values sort to bottom
             all_pipelines.sort(key=lambda x: x.get('created_at') or '', reverse=True)
@@ -519,6 +526,13 @@ class BackgroundPoller(threading.Thread):
             
             if not pipelines:
                 logger.info(f"{log_prefix}No pipelines found")
+            
+            # Resolve merge request refs to their source branch names
+            # This must happen before building the per-project map
+            try:
+                self.gitlab_client.resolve_merge_request_refs(pipelines, poll_id=poll_id)
+            except Exception as e:
+                logger.warning(f"{log_prefix}MR ref resolution failed, continuing with unmodified refs: {e}")
             
             # Build per-project map from the fetched pipelines
             per_project_pipelines = {}
@@ -866,6 +880,11 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     'updated_at': pipeline.get('updated_at'),
                     'duration': pipeline.get('duration')
                 }
+                # Add MR-specific fields only if present (for merge request pipelines)
+                if 'original_ref' in pipeline:
+                    formatted['original_ref'] = pipeline['original_ref']
+                if 'merge_request_iid' in pipeline:
+                    formatted['merge_request_iid'] = pipeline['merge_request_iid']
                 filtered_pipelines.append(formatted)
             
             # Apply limit
