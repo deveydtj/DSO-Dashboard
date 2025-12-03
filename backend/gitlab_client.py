@@ -624,6 +624,11 @@ def get_repositories(projects):
         - recent_success_rate: Default-branch success rate (backward compatible, DSO primary)
         - recent_success_rate_default_branch: Default-branch success rate (explicit naming)
         - recent_success_rate_all_branches: All-branches success rate (comprehensive/legacy)
+    
+    DSO health fields included (for dashboard tiles):
+        - has_failing_jobs: Whether recent default-branch pipelines have failures
+        - failing_jobs_count: Count of failed default-branch pipelines
+        - has_runner_issues: Whether failures are runner-related
     """
     if projects is None:
         projects = []
@@ -654,7 +659,14 @@ def get_repositories(projects):
             'recent_success_rate': project.get('recent_success_rate'),
             'recent_success_rate_default_branch': project.get('recent_success_rate_default_branch'),
             'recent_success_rate_all_branches': project.get('recent_success_rate_all_branches'),
-            'consecutive_default_branch_failures': project.get('consecutive_default_branch_failures', 0)
+            'consecutive_default_branch_failures': project.get('consecutive_default_branch_failures', 0),
+            # DSO health fields (for dashboard tiles):
+            # - has_failing_jobs: True if recent default-branch pipelines contain failed jobs
+            # - failing_jobs_count: Count of failed pipelines on default branch
+            # - has_runner_issues: True if pipelines are failing due to runner problems
+            'has_failing_jobs': project.get('has_failing_jobs', False),
+            'failing_jobs_count': project.get('failing_jobs_count', 0),
+            'has_runner_issues': project.get('has_runner_issues', False)
         }
         repos.append(repo)
     
@@ -749,6 +761,15 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
     The field `recent_success_rate` is provided for backward compatibility
     and points to the default-branch rate (the DSO primary metric).
     
+    DSO Health Fields (for dashboard tiles):
+        - has_failing_jobs (bool): True if recent default-branch pipelines contain failed jobs.
+          Used for DSO dashboard to highlight repos with failing CI.
+        - failing_jobs_count (int): Count of failed pipelines on default branch in the recent window.
+          Used for DSO dashboard to show severity of failures.
+        - has_runner_issues (bool): True if pipelines are failing due to runner problems.
+          Detected via pipeline status 'stuck' or failure_reason containing runner-related errors.
+          Used for DSO dashboard to distinguish infrastructure issues from code issues.
+    
     Args:
         projects: List of project dicts
         per_project_pipelines: Dict mapping project_id -> list of pipelines for that project
@@ -759,6 +780,9 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
         - recent_success_rate: Default-branch success rate (for backward compatibility)
         - recent_success_rate_default_branch: Default-branch success rate (DSO primary)
         - recent_success_rate_all_branches: All-branches success rate (legacy/comprehensive)
+        - has_failing_jobs: Whether recent default-branch pipelines have failures (DSO health)
+        - failing_jobs_count: Count of failed default-branch pipelines (DSO health)
+        - has_runner_issues: Whether failures are runner-related (DSO health)
     """
     log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
     
@@ -862,6 +886,54 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
                     # Stop counting at first actual success/running/pending
                     break
             enriched['consecutive_default_branch_failures'] = consecutive_failures
+            
+            # ---------------------------------------------------------------
+            # DSO HEALTH FIELDS: FAILING JOBS AND RUNNER ISSUES
+            # ---------------------------------------------------------------
+            # These fields are used for DSO dashboard tiles to provide quick visibility
+            # into CI health issues at a glance.
+            
+            # has_failing_jobs: True if any recent default-branch pipeline has failed status.
+            # This indicates the presence of failing jobs in the CI pipeline.
+            # Used for: DSO dashboard "failing jobs" indicator tile.
+            failed_default_pipelines = [
+                p for p in meaningful_pipelines_default 
+                if p.get('status') == 'failed'
+            ]
+            enriched['has_failing_jobs'] = len(failed_default_pipelines) > 0
+            
+            # failing_jobs_count: Raw count of failed pipelines on default branch.
+            # Provides severity context for the dashboard (1 failure vs 5 failures).
+            # Used for: DSO dashboard showing count of failing jobs.
+            enriched['failing_jobs_count'] = len(failed_default_pipelines)
+            
+            # has_runner_issues: True if pipelines are failing due to runner-related problems.
+            # Detection methods:
+            # 1. Pipeline status is 'stuck' (runner not picking up jobs)
+            # 2. Pipeline failure_reason contains runner-related keywords
+            #    (e.g., 'runner_system_failure', 'stuck_or_timeout_failure', 'runner_unsupported')
+            # Used for: DSO dashboard to distinguish infrastructure issues from code issues.
+            runner_issue_statuses = ('stuck',)
+            runner_issue_reasons = (
+                'runner_system_failure',
+                'stuck_or_timeout_failure',
+                'runner_unsupported',
+                'scheduler_failure',
+                'data_integrity_failure',
+            )
+            
+            has_runner_issues = False
+            for pipeline in meaningful_pipelines_default:
+                # Check for stuck status
+                if pipeline.get('status') in runner_issue_statuses:
+                    has_runner_issues = True
+                    break
+                # Check failure_reason if available (GitLab API may include this field)
+                failure_reason = pipeline.get('failure_reason', '')
+                if failure_reason and any(reason in failure_reason.lower() for reason in runner_issue_reasons):
+                    has_runner_issues = True
+                    break
+            enriched['has_runner_issues'] = has_runner_issues
         else:
             # No pipelines for this project
             enriched['last_pipeline_status'] = None
@@ -872,6 +944,10 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
             enriched['recent_success_rate_all_branches'] = None
             enriched['recent_success_rate_default_branch'] = None
             enriched['consecutive_default_branch_failures'] = 0
+            # DSO health fields - no pipelines means no failures or runner issues
+            enriched['has_failing_jobs'] = False
+            enriched['failing_jobs_count'] = 0
+            enriched['has_runner_issues'] = False
         
         enriched_projects.append(enriched)
     
