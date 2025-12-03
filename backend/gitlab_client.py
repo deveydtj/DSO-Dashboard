@@ -12,6 +12,7 @@ This module uses only Python standard library (no pip dependencies).
 
 import json
 import logging
+import re
 import ssl
 import time
 from urllib.error import HTTPError, URLError
@@ -480,8 +481,6 @@ class GitLabAPIClient:
             - Sets `merge_request_iid` to the MR IID as a string (e.g., "481")
             - Replaces `ref` with the MR's `source_branch` (e.g., `feature/foo`)
         """
-        import re
-        
         log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
         
         if not pipelines:
