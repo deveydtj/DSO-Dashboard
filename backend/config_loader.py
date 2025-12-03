@@ -238,10 +238,10 @@ def load_config():
         service_latency_raw = {}
     
     # Build service_latency config with defaults applied for missing keys
+    # Environment variables take precedence over config.json values
     service_latency = {}
     
-    # enabled: bool, default True
-    # When False, latency tracking is disabled entirely
+    # enabled: bool, default True - when False, latency tracking is disabled entirely
     if 'SERVICE_LATENCY_ENABLED' in os.environ:
         service_latency['enabled'] = parse_bool_config(
             os.environ['SERVICE_LATENCY_ENABLED'],
@@ -249,11 +249,10 @@ def load_config():
             'SERVICE_LATENCY_ENABLED'
         )
     else:
+        raw_enabled = service_latency_raw.get('enabled', DEFAULT_SERVICE_LATENCY_CONFIG['enabled'])
         service_latency['enabled'] = parse_bool_config(
-            service_latency_raw.get('enabled'),
-            DEFAULT_SERVICE_LATENCY_CONFIG['enabled'],
-            'service_latency.enabled'
-        ) if 'enabled' in service_latency_raw else DEFAULT_SERVICE_LATENCY_CONFIG['enabled']
+            raw_enabled, DEFAULT_SERVICE_LATENCY_CONFIG['enabled'], 'service_latency.enabled'
+        )
     
     # window_size: int, approximate number of samples for running average
     if 'SERVICE_LATENCY_WINDOW_SIZE' in os.environ:
@@ -263,11 +262,10 @@ def load_config():
             'SERVICE_LATENCY_WINDOW_SIZE'
         )
     else:
+        raw_window = service_latency_raw.get('window_size', DEFAULT_SERVICE_LATENCY_CONFIG['window_size'])
         service_latency['window_size'] = parse_int_config(
-            service_latency_raw.get('window_size'),
-            DEFAULT_SERVICE_LATENCY_CONFIG['window_size'],
-            'service_latency.window_size'
-        ) if 'window_size' in service_latency_raw else DEFAULT_SERVICE_LATENCY_CONFIG['window_size']
+            raw_window, DEFAULT_SERVICE_LATENCY_CONFIG['window_size'], 'service_latency.window_size'
+        )
     
     # degradation_threshold_ratio: float, e.g. 1.5 = warn if current > 1.5 × average
     if 'SERVICE_LATENCY_DEGRADATION_THRESHOLD_RATIO' in os.environ:
@@ -277,11 +275,10 @@ def load_config():
             'SERVICE_LATENCY_DEGRADATION_THRESHOLD_RATIO'
         )
     else:
+        raw_ratio = service_latency_raw.get('degradation_threshold_ratio', DEFAULT_SERVICE_LATENCY_CONFIG['degradation_threshold_ratio'])
         service_latency['degradation_threshold_ratio'] = parse_float_config(
-            service_latency_raw.get('degradation_threshold_ratio'),
-            DEFAULT_SERVICE_LATENCY_CONFIG['degradation_threshold_ratio'],
-            'service_latency.degradation_threshold_ratio'
-        ) if 'degradation_threshold_ratio' in service_latency_raw else DEFAULT_SERVICE_LATENCY_CONFIG['degradation_threshold_ratio']
+            raw_ratio, DEFAULT_SERVICE_LATENCY_CONFIG['degradation_threshold_ratio'], 'service_latency.degradation_threshold_ratio'
+        )
     
     config['service_latency'] = service_latency
     
