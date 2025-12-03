@@ -313,6 +313,95 @@ body {
     border-left-color: #6b7280; /* Neutral gray for unknown */
 }
 
+/* DSO-focused status card accents */
+.repo-card.status-healthy {
+    border-left-color: var(--accent-success);
+}
+
+.repo-card.status-degraded {
+    border-left-color: var(--accent-warning);
+}
+
+.repo-card.status-warning {
+    border-left-color: var(--accent-warning);
+    box-shadow: 
+        6px 6px 12px var(--shadow-dark),
+        -6px -6px 12px var(--shadow-light),
+        0 0 8px rgba(245, 158, 11, 0.15);
+}
+
+.repo-card.status-failing {
+    border-left-color: var(--accent-error);
+    box-shadow: 
+        6px 6px 12px var(--shadow-dark),
+        -6px -6px 12px var(--shadow-light),
+        0 0 10px rgba(239, 68, 68, 0.15);
+}
+
+.repo-card.status-runner-issue {
+    border-left-color: #dc2626; /* Red-600 for critical */
+    box-shadow: 
+        6px 6px 12px var(--shadow-dark),
+        -6px -6px 12px var(--shadow-light),
+        0 0 12px rgba(220, 38, 38, 0.25);
+}
+
+.repo-card.status-unknown {
+    border-left-color: var(--text-secondary);
+}
+
+/* DSO indicator badges */
+.dso-indicators {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-sm);
+}
+
+.dso-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+}
+
+.dso-badge-runner {
+    background: rgba(220, 38, 38, 0.15);
+    color: #dc2626;
+    border: 1px solid rgba(220, 38, 38, 0.3);
+}
+
+.dso-badge-failing {
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--accent-error);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.dso-badge-warning {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--accent-warning);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+/* Success rate bar color variants */
+.success-rate-fill.rate-healthy {
+    background: linear-gradient(90deg, var(--accent-success), #059669);
+}
+
+.success-rate-fill.rate-degraded {
+    background: linear-gradient(90deg, var(--accent-warning), #d97706);
+}
+
+.success-rate-fill.rate-warning {
+    background: linear-gradient(90deg, var(--accent-error), #dc2626);
+}
+
 .repo-header {
     display: flex;
     justify-content: space-between;
@@ -1206,6 +1295,17 @@ body.compact .repo-link {
     margin-top: 0.5rem;
     padding: 0.4rem 0.75rem;
     font-size: 0.8rem;
+}
+
+/* Compact mode DSO indicator styles */
+body.compact .dso-indicators {
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+}
+
+body.compact .dso-badge {
+    padding: 0.15rem 0.35rem;
+    font-size: 0.6rem;
 }
 
 /* Compact mode service styles */

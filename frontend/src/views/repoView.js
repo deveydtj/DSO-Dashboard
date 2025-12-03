@@ -5,6 +5,88 @@ import { escapeHtml, formatDate, formatDuration } from '../utils/formatters.js';
 import { normalizeStatus } from '../utils/status.js';
 
 /**
+ * DSO Status priority levels for repo card status determination.
+ * Reflects what DSO members actually care about:
+ * - Default-branch health
+ * - Runner issues
+ * - Failing jobs
+ * NOT noisy dev/feature branch flakiness.
+ */
+const DSO_STATUS = {
+    RUNNER_ISSUE: 'runner-issue',   // High-priority: infrastructure problem
+    FAILING: 'failing',             // Default branch has consecutive failures
+    WARNING: 'warning',             // Default branch has some failures
+    DEGRADED: 'degraded',           // Default branch success rate below threshold
+    HEALTHY: 'healthy',             // Default branch is healthy
+    UNKNOWN: 'unknown'              // No data available
+};
+
+// Thresholds for DSO status determination
+const DSO_THRESHOLDS = {
+    HEALTHY_MIN_RATE: 0.9,   // 90%+ success rate = healthy
+    WARNING_MIN_RATE: 0.7    // 70-89% = degraded, below 70% = warning
+};
+
+/**
+ * Get success rate color class based on DSO thresholds
+ * @param {number} successRate - Success rate as decimal (0-1)
+ * @returns {string} - CSS class for the color (rate-healthy, rate-degraded, rate-warning)
+ */
+function getSuccessRateColorClass(successRate) {
+    if (successRate >= DSO_THRESHOLDS.HEALTHY_MIN_RATE) {
+        return 'rate-healthy';
+    } else if (successRate >= DSO_THRESHOLDS.WARNING_MIN_RATE) {
+        return 'rate-degraded';
+    }
+    return 'rate-warning';
+}
+
+/**
+ * Determine the DSO-focused status for a repository.
+ * Priority order:
+ * 1. has_runner_issues → high-priority error (runner-issue)
+ * 2. consecutive_default_branch_failures > 0 → failing
+ * 3. has_failing_jobs on default branch → warning
+ * 4. Otherwise use default-branch success rate for healthy/warning/degraded
+ * 
+ * @param {Object} repo - Repository data with DSO fields
+ * @returns {string} - DSO status (runner-issue, failing, warning, degraded, healthy, unknown)
+ */
+export function getDsoStatus(repo) {
+    // Priority 1: Runner issues are high-priority errors
+    if (repo.has_runner_issues) {
+        return DSO_STATUS.RUNNER_ISSUE;
+    }
+    
+    // Priority 2: Consecutive default-branch failures indicate broken state
+    const consecutiveFailures = repo.consecutive_default_branch_failures || 0;
+    if (consecutiveFailures > 0) {
+        return DSO_STATUS.FAILING;
+    }
+    
+    // Priority 3: Has failing jobs on default branch (but not consecutive)
+    if (repo.has_failing_jobs) {
+        return DSO_STATUS.WARNING;
+    }
+    
+    // Priority 4: Use default-branch success rate
+    // The backend's recent_success_rate field now reflects default-branch rate
+    // (set by enrich_projects_with_pipelines in gitlab_client.py)
+    const successRate = repo.recent_success_rate;
+    if (successRate == null) {
+        return DSO_STATUS.UNKNOWN;
+    }
+    
+    if (successRate >= DSO_THRESHOLDS.HEALTHY_MIN_RATE) {
+        return DSO_STATUS.HEALTHY;
+    } else if (successRate >= DSO_THRESHOLDS.WARNING_MIN_RATE) {
+        return DSO_STATUS.DEGRADED;
+    } else {
+        return DSO_STATUS.WARNING;
+    }
+}
+
+/**
  * Get a stable unique key for a repository
  * @param {Object} repo - Repository object
  * @returns {string} - Stable key for the repository
@@ -22,6 +104,11 @@ export function getRepoKey(repo) {
 
 /**
  * Create HTML for a single repository card
+ * Uses DSO-focused status for card styling based on:
+ * - Runner issues (high priority)
+ * - Default branch failures
+ * - Default branch success rate
+ * 
  * @param {Object} repo - Repository data
  * @param {string} [extraClasses=''] - Additional CSS classes (e.g., for attention animations)
  * @returns {string} - HTML string for the repo card
@@ -30,9 +117,37 @@ export function createRepoCard(repo, extraClasses = '') {
     const description = repo.description || 'No description available';
     const pipelineStatus = repo.last_pipeline_status || null;
     const normalizedStatus = normalizeStatus(pipelineStatus);
-    const statusClass = pipelineStatus ? `status-${normalizedStatus}` : 'status-none';
     
-    // Pipeline info section
+    // Get DSO-focused status for card styling
+    const dsoStatus = getDsoStatus(repo);
+    const statusClass = `status-${dsoStatus}`;
+    
+    // Generate DSO indicator badges
+    let dsoIndicators = '';
+    
+    // Runner issue badge (high priority)
+    if (repo.has_runner_issues) {
+        dsoIndicators += '<span class="dso-badge dso-badge-runner" title="Runner infrastructure issue detected">⚠️ Runner Issue</span>';
+    }
+    
+    // Consecutive failures badge
+    const consecutiveFailures = repo.consecutive_default_branch_failures || 0;
+    if (consecutiveFailures > 0) {
+        dsoIndicators += `<span class="dso-badge dso-badge-failing" title="${escapeHtml(String(consecutiveFailures))} consecutive failure(s) on default branch">🔴 ${escapeHtml(String(consecutiveFailures))} Consecutive Failure${consecutiveFailures > 1 ? 's' : ''}</span>`;
+    }
+    
+    // Failing jobs indicator (if not already showing consecutive failures)
+    if (repo.has_failing_jobs && consecutiveFailures === 0) {
+        const failingCount = repo.failing_jobs_count || 0;
+        if (failingCount > 0) {
+            dsoIndicators += `<span class="dso-badge dso-badge-warning" title="${escapeHtml(String(failingCount))} failed pipeline(s) on default branch">⚠️ ${escapeHtml(String(failingCount))} Failed</span>`;
+        }
+    }
+    
+    // Wrap indicators if any
+    const indicatorsHtml = dsoIndicators ? `<div class="dso-indicators" role="status" aria-label="Repository health indicators">${dsoIndicators}</div>` : '';
+    
+    // Pipeline info section (shows last pipeline regardless of branch)
     let pipelineInfo = '';
     if (pipelineStatus) {
         const ref = repo.last_pipeline_ref || 'unknown';
@@ -58,18 +173,22 @@ export function createRepoCard(repo, extraClasses = '') {
         `;
     }
     
-    // Success rate section
+    // Success rate section - now shows default-branch rate as primary
     let successRateSection = '';
     if (repo.recent_success_rate != null) {
-        const successPercent = Math.round(repo.recent_success_rate * 100);
+        const successPercent = Math.min(100, Math.max(0, Math.round(repo.recent_success_rate * 100)));
+        
+        // Determine bar color class based on success rate using shared threshold logic
+        const barColorClass = getSuccessRateColorClass(repo.recent_success_rate);
+        
         successRateSection = `
-            <div class="repo-success-rate" title="Recent success rate across all branches (excludes skipped/manual/canceled pipelines)">
+            <div class="repo-success-rate" title="Default branch success rate (excludes skipped/manual/canceled pipelines)">
                 <div class="success-rate-label">
-                    <span>Recent Success Rate</span>
+                    <span>Default Branch</span>
                     <span class="success-rate-value">${successPercent}%</span>
                 </div>
                 <div class="success-rate-bar">
-                    <div class="success-rate-fill" style="width: ${successPercent}%"></div>
+                    <div class="success-rate-fill ${barColorClass}" style="width: ${successPercent}%"></div>
                 </div>
             </div>
         `;
@@ -87,6 +206,7 @@ export function createRepoCard(repo, extraClasses = '') {
                 <span class="repo-visibility">${escapeHtml(repo.visibility)}</span>
             </div>
             <p class="repo-description">${escapeHtml(description)}</p>
+            ${indicatorsHtml}
             ${pipelineInfo}
             ${successRateSection}
             ${repo.web_url ? `<a href="${repo.web_url}" target="_blank" rel="noopener noreferrer" class="repo-link">View on GitLab →</a>` : ''}
@@ -95,24 +215,40 @@ export function createRepoCard(repo, extraClasses = '') {
 }
 
 /**
- * Sort repositories by priority:
- * (1) consecutive default-branch failures
- * (2) recent all-branch success rate
- * (3) last pipeline status
- * (4) name alphabetically
+ * Sort repositories by DSO priority:
+ * (1) runner issues (highest priority - infrastructure problem)
+ * (2) consecutive default-branch failures
+ * (3) has failing jobs
+ * (4) recent default-branch success rate (lower is worse)
+ * (5) last pipeline status
+ * (6) name alphabetically
  * @param {Array} repos - Array of repository objects
  * @returns {Array} - Sorted array of repositories
  */
 function sortRepositories(repos) {
     return [...repos].sort((a, b) => {
-        // First priority: consecutive_default_branch_failures DESC
+        // First priority: runner issues are infrastructure problems - highest priority
+        const runnerA = a.has_runner_issues ? 1 : 0;
+        const runnerB = b.has_runner_issues ? 1 : 0;
+        if (runnerB !== runnerA) {
+            return runnerB - runnerA;
+        }
+        
+        // Second priority: consecutive_default_branch_failures DESC
         const failuresA = a.consecutive_default_branch_failures || 0;
         const failuresB = b.consecutive_default_branch_failures || 0;
         if (failuresB !== failuresA) {
             return failuresB - failuresA;
         }
+        
+        // Third priority: has_failing_jobs (repos with failures come first)
+        const hasFailingA = a.has_failing_jobs ? 1 : 0;
+        const hasFailingB = b.has_failing_jobs ? 1 : 0;
+        if (hasFailingB !== hasFailingA) {
+            return hasFailingB - hasFailingA;
+        }
 
-        // Second priority: recent_success_rate (lower is worse, so sort ascending)
+        // Fourth priority: recent_success_rate (lower is worse, so sort ascending)
         // Repos with no success rate data (null/undefined) sort after those with data
         const successA = typeof a.recent_success_rate === 'number' ? a.recent_success_rate : null;
         const successB = typeof b.recent_success_rate === 'number' ? b.recent_success_rate : null;
@@ -130,7 +266,7 @@ function sortRepositories(repos) {
         }
         // Both null or equal - fall through to next priority
 
-        // Third priority: failed/running pipelines first (using normalized status)
+        // Fifth priority: failed/running pipelines first (using normalized status)
         const normalizedStatusA = normalizeStatus(a.last_pipeline_status);
         const normalizedStatusB = normalizeStatus(b.last_pipeline_status);
         
@@ -151,7 +287,7 @@ function sortRepositories(repos) {
             return priorityA - priorityB;
         }
 
-        // Fourth priority: alphabetical by name
+        // Sixth priority: alphabetical by name
         const nameA = (a.name || '').toLowerCase();
         const nameB = (b.name || '').toLowerCase();
         return nameA.localeCompare(nameB);
@@ -160,8 +296,10 @@ function sortRepositories(repos) {
 
 /**
  * Render repositories to the DOM
+ * Uses DSO status for degradation detection (e.g., healthy → failing triggers animation)
+ * 
  * @param {Array} repos - Array of repository objects
- * @param {Map} previousState - Map of previous repo states { status, index }
+ * @param {Map} previousState - Map of previous repo states { dsoStatus, index }
  * @returns {Map} - Updated state map for next render cycle
  */
 export function renderRepositories(repos, previousState) {
@@ -177,17 +315,29 @@ export function renderRepositories(repos, previousState) {
     const prevState = previousState;
     const nextState = new Map();
 
-    // Sort repositories
+    // Sort repositories by DSO priority
     const sortedRepos = sortRepositories(repos);
+
+    // DSO status degradation priority (higher number = worse status)
+    const dsoStatusPriority = {
+        'healthy': 0,
+        'unknown': 1,
+        'degraded': 2,
+        'warning': 3,
+        'failing': 4,
+        'runner-issue': 5
+    };
 
     // Generate cards with attention classes based on state changes
     const cardsHtml = sortedRepos.map((repo, currentIndex) => {
         const key = getRepoKey(repo);
-        const normalizedStatus = normalizeStatus(repo.last_pipeline_status);
+        const dsoStatus = getDsoStatus(repo);
         const prev = prevState.get(key);
 
-        // Determine if status degraded (any status -> failed is considered degradation)
-        const hasDegradedStatus = prev && normalizedStatus === 'failed' && prev.status !== 'failed';
+        // Determine if DSO status degraded (any status -> worse status is considered degradation)
+        const prevPriority = prev ? (dsoStatusPriority[prev.dsoStatus] ?? 0) : 0;
+        const currentPriority = dsoStatusPriority[dsoStatus] ?? 0;
+        const hasDegradedStatus = prev && currentPriority > prevPriority;
 
         // Determine if position changed
         const hasMoved = prev && prev.index !== currentIndex;
@@ -200,8 +350,8 @@ export function renderRepositories(repos, previousState) {
             attentionClass = ' repo-moved';
         }
 
-        // Store new state for next refresh
-        nextState.set(key, { status: normalizedStatus, index: currentIndex });
+        // Store new state for next refresh (use dsoStatus instead of normalizedStatus)
+        nextState.set(key, { dsoStatus: dsoStatus, index: currentIndex });
 
         return createRepoCard(repo, attentionClass);
     }).join('');
