@@ -35,6 +35,49 @@ EPOCH_TIMESTAMP = '1970-01-01T00:00:00Z'  # Fallback for missing timestamps
 # Default branch constant
 DEFAULT_BRANCH_NAME = 'main'     # Default branch name fallback
 
+# Runner issue detection constants
+# These statuses indicate runner-related problems (pipeline level)
+RUNNER_ISSUE_STATUSES = ('stuck',)
+
+# These failure_reason values indicate runner-related problems (from GitLab API)
+RUNNER_ISSUE_FAILURE_REASONS = (
+    'runner_system_failure',
+    'stuck_or_timeout_failure',
+    'runner_unsupported',
+    'scheduler_failure',
+    'data_integrity_failure',
+)
+
+
+def is_runner_related_failure(pipeline):
+    """Check if a pipeline failure is related to runner/infrastructure issues
+    
+    This helper function encapsulates the detection logic for runner-related
+    failures to improve readability and testability.
+    
+    Detection methods:
+    1. Pipeline status is 'stuck' (runner not picking up jobs)
+    2. Pipeline failure_reason contains runner-related keywords
+       (e.g., 'runner_system_failure', 'stuck_or_timeout_failure')
+    
+    Args:
+        pipeline: Pipeline dict from GitLab API
+        
+    Returns:
+        bool: True if the pipeline failure is runner-related
+    """
+    # Check for stuck status
+    if pipeline.get('status') in RUNNER_ISSUE_STATUSES:
+        return True
+    
+    # Check failure_reason if available (GitLab API may include this field)
+    failure_reason = pipeline.get('failure_reason', '')
+    if failure_reason:
+        failure_reason_lower = failure_reason.lower()
+        return any(reason in failure_reason_lower for reason in RUNNER_ISSUE_FAILURE_REASONS)
+    
+    return False
+
 
 class GitLabAPIClient:
     """GitLab API client using urllib with retry, rate limiting, and pagination support"""
@@ -893,47 +936,26 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
             # These fields are used for DSO dashboard tiles to provide quick visibility
             # into CI health issues at a glance.
             
-            # has_failing_jobs: True if any recent default-branch pipeline has failed status.
-            # This indicates the presence of failing jobs in the CI pipeline.
-            # Used for: DSO dashboard "failing jobs" indicator tile.
-            failed_default_pipelines = [
-                p for p in meaningful_pipelines_default 
+            # failing_jobs_count: Count of failed pipelines on default branch.
+            # Uses generator expression for memory efficiency.
+            # Used for: DSO dashboard showing count/severity of failing jobs.
+            failing_jobs_count = sum(
+                1 for p in meaningful_pipelines_default 
                 if p.get('status') == 'failed'
-            ]
-            enriched['has_failing_jobs'] = len(failed_default_pipelines) > 0
+            )
+            enriched['failing_jobs_count'] = failing_jobs_count
             
-            # failing_jobs_count: Raw count of failed pipelines on default branch.
-            # Provides severity context for the dashboard (1 failure vs 5 failures).
-            # Used for: DSO dashboard showing count of failing jobs.
-            enriched['failing_jobs_count'] = len(failed_default_pipelines)
+            # has_failing_jobs: Derived from failing_jobs_count.
+            # True if any recent default-branch pipeline has failed status.
+            # Used for: DSO dashboard "failing jobs" indicator tile.
+            enriched['has_failing_jobs'] = failing_jobs_count > 0
             
             # has_runner_issues: True if pipelines are failing due to runner-related problems.
-            # Detection methods:
-            # 1. Pipeline status is 'stuck' (runner not picking up jobs)
-            # 2. Pipeline failure_reason contains runner-related keywords
-            #    (e.g., 'runner_system_failure', 'stuck_or_timeout_failure', 'runner_unsupported')
+            # Uses the is_runner_related_failure helper for encapsulated detection logic.
             # Used for: DSO dashboard to distinguish infrastructure issues from code issues.
-            runner_issue_statuses = ('stuck',)
-            runner_issue_reasons = (
-                'runner_system_failure',
-                'stuck_or_timeout_failure',
-                'runner_unsupported',
-                'scheduler_failure',
-                'data_integrity_failure',
+            enriched['has_runner_issues'] = any(
+                is_runner_related_failure(p) for p in meaningful_pipelines_default
             )
-            
-            has_runner_issues = False
-            for pipeline in meaningful_pipelines_default:
-                # Check for stuck status
-                if pipeline.get('status') in runner_issue_statuses:
-                    has_runner_issues = True
-                    break
-                # Check failure_reason if available (GitLab API may include this field)
-                failure_reason = pipeline.get('failure_reason', '')
-                if failure_reason and any(reason in failure_reason.lower() for reason in runner_issue_reasons):
-                    has_runner_issues = True
-                    break
-            enriched['has_runner_issues'] = has_runner_issues
         else:
             # No pipelines for this project
             enriched['last_pipeline_status'] = None

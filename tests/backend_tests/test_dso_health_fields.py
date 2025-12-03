@@ -13,6 +13,66 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from backend import app as server
+from backend.gitlab_client import is_runner_related_failure
+
+
+class TestIsRunnerRelatedFailureHelper(unittest.TestCase):
+    """Test the is_runner_related_failure helper function directly"""
+    
+    def test_returns_true_for_stuck_status(self):
+        """Test helper returns True for 'stuck' pipeline status"""
+        pipeline = {'status': 'stuck', 'ref': 'main'}
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
+    def test_returns_true_for_runner_system_failure(self):
+        """Test helper returns True for runner_system_failure reason"""
+        pipeline = {'status': 'failed', 'failure_reason': 'runner_system_failure'}
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
+    def test_returns_true_for_stuck_or_timeout_failure(self):
+        """Test helper returns True for stuck_or_timeout_failure reason"""
+        pipeline = {'status': 'failed', 'failure_reason': 'stuck_or_timeout_failure'}
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
+    def test_returns_true_for_runner_unsupported(self):
+        """Test helper returns True for runner_unsupported reason"""
+        pipeline = {'status': 'failed', 'failure_reason': 'runner_unsupported'}
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
+    def test_returns_true_for_scheduler_failure(self):
+        """Test helper returns True for scheduler_failure reason"""
+        pipeline = {'status': 'failed', 'failure_reason': 'scheduler_failure'}
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
+    def test_returns_true_for_data_integrity_failure(self):
+        """Test helper returns True for data_integrity_failure reason"""
+        pipeline = {'status': 'failed', 'failure_reason': 'data_integrity_failure'}
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
+    def test_returns_false_for_script_failure(self):
+        """Test helper returns False for regular script_failure"""
+        pipeline = {'status': 'failed', 'failure_reason': 'script_failure'}
+        self.assertFalse(is_runner_related_failure(pipeline))
+    
+    def test_returns_false_for_no_failure_reason(self):
+        """Test helper returns False when no failure_reason is present"""
+        pipeline = {'status': 'failed'}
+        self.assertFalse(is_runner_related_failure(pipeline))
+    
+    def test_returns_false_for_success_status(self):
+        """Test helper returns False for success status"""
+        pipeline = {'status': 'success'}
+        self.assertFalse(is_runner_related_failure(pipeline))
+    
+    def test_case_insensitive_matching(self):
+        """Test helper matches failure_reason case-insensitively"""
+        pipeline = {'status': 'failed', 'failure_reason': 'RUNNER_SYSTEM_FAILURE'}
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
+    def test_partial_match_in_reason(self):
+        """Test helper matches when reason is contained within failure_reason"""
+        pipeline = {'status': 'failed', 'failure_reason': 'some_prefix_runner_system_failure_suffix'}
+        self.assertTrue(is_runner_related_failure(pipeline))
 
 
 class TestDSOHealthFieldsHasFailingJobs(unittest.TestCase):
