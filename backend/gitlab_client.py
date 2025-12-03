@@ -507,12 +507,7 @@ class GitLabAPIClient:
                         mr_refs_by_project[project_id][mr_iid] = []
                     mr_refs_by_project[project_id][mr_iid].append(idx)
         
-        # Count total MR refs discovered
-        total_mr_refs = sum(
-            len(iids) for iids in mr_refs_by_project.values()
-            for iids in [mr_refs_by_project[pid] for pid in []]  # placeholder
-        )
-        # Correct count: number of pipeline indices across all projects
+        # Count total MR refs discovered (number of pipeline indices across all projects)
         total_mr_refs = sum(
             len(indices)
             for project_iids in mr_refs_by_project.values()
