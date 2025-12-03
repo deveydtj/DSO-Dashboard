@@ -253,6 +253,12 @@ class BackgroundPoller(threading.Thread):
             - enabled (bool): Whether latency tracking is enabled
             - window_size (int): Number of samples for running average
             - degradation_threshold_ratio (float): Warn if current > ratio × average
+        _service_latency_history: Internal dict tracking per-service latency state.
+            Keyed by service ID (string). Each entry contains:
+            - average_ms (float): Running average latency in milliseconds
+            - sample_count (int): Number of samples contributing to the average
+            - recent_samples (list): Fixed-size list of most recent latency samples (ms)
+            State persists across polls for the lifetime of the process.
     """
     
     def __init__(self, gitlab_client, poll_interval_sec, group_ids=None, project_ids=None,
@@ -269,6 +275,18 @@ class BackgroundPoller(threading.Thread):
         self.running = True
         self.stop_event = threading.Event()
         self.poll_counter = 0
+        
+        # Per-service latency history for computing running averages and degradation detection
+        # This state survives across polls for the lifetime of the poller process.
+        # Structure per service ID:
+        #   {
+        #       'average_ms': <float>,       # Running average latency in milliseconds
+        #       'sample_count': <int>,       # Number of samples in the running average
+        #       'recent_samples': [<float>]  # Last N latency samples (bounded by window_size)
+        #   }
+        # If latency data is missing or malformed for a service, the current sample is used
+        # alone without updating the historical state.
+        self._service_latency_history = {}
         
     def _generate_poll_id(self):
         """Generate a unique poll cycle identifier"""
