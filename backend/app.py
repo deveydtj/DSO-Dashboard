@@ -917,8 +917,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     'recent_success_rate': project.get('recent_success_rate'),
                     'consecutive_default_branch_failures': project.get('consecutive_default_branch_failures', 0),
                     # DSO health fields (for dashboard tiles):
-                    # - has_failing_jobs: True if recent default-branch pipelines contain failed jobs
-                    # - failing_jobs_count: Count of failed pipelines on default branch
+                    # - has_failing_jobs: True if recent default-branch pipelines contain any with 'failed' status (excludes skipped/manual/canceled)
+                    # - failing_jobs_count: Count of pipelines with 'failed' status on default branch (excludes skipped/manual/canceled)
                     # - has_runner_issues: True if pipelines are failing due to runner problems
                     'has_failing_jobs': project.get('has_failing_jobs', False),
                     'failing_jobs_count': project.get('failing_jobs_count', 0),

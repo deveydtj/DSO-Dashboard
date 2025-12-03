@@ -669,8 +669,8 @@ def get_repositories(projects):
         - recent_success_rate_all_branches: All-branches success rate (comprehensive/legacy)
     
     DSO health fields included (for dashboard tiles):
-        - has_failing_jobs: Whether recent default-branch pipelines have failures
-        - failing_jobs_count: Count of failed default-branch pipelines
+        - has_failing_jobs: Whether recent default-branch pipelines contain any with 'failed' status (excludes skipped/manual/canceled)
+        - failing_jobs_count: Count of pipelines with 'failed' status on default branch (excludes skipped/manual/canceled)
         - has_runner_issues: Whether failures are runner-related
     """
     if projects is None:
@@ -805,9 +805,9 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
     and points to the default-branch rate (the DSO primary metric).
     
     DSO Health Fields (for dashboard tiles):
-        - has_failing_jobs (bool): True if recent default-branch pipelines contain failed jobs.
+        - has_failing_jobs (bool): True if recent default-branch pipelines contain any with 'failed' status (excludes skipped/manual/canceled).
           Used for DSO dashboard to highlight repos with failing CI.
-        - failing_jobs_count (int): Count of failed pipelines on default branch in the recent window.
+        - failing_jobs_count (int): Count of pipelines with 'failed' status on default branch (excludes skipped/manual/canceled).
           Used for DSO dashboard to show severity of failures.
         - has_runner_issues (bool): True if pipelines are failing due to runner problems.
           Detected via pipeline status 'stuck' or failure_reason containing runner-related errors.
@@ -936,7 +936,8 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
             # These fields are used for DSO dashboard tiles to provide quick visibility
             # into CI health issues at a glance.
             
-            # failing_jobs_count: Count of failed pipelines on default branch.
+            # failing_jobs_count: Count of pipelines with 'failed' status on default branch
+            # (among meaningful pipelines, excluding skipped/manual/canceled).
             # Uses generator expression for memory efficiency.
             # Used for: DSO dashboard showing count/severity of failing jobs.
             failing_jobs_count = sum(
@@ -946,7 +947,7 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
             enriched['failing_jobs_count'] = failing_jobs_count
             
             # has_failing_jobs: Derived from failing_jobs_count.
-            # True if any recent default-branch pipeline has failed status.
+            # True if any meaningful recent default-branch pipeline has 'failed' status (excludes skipped/manual/canceled).
             # Used for: DSO dashboard "failing jobs" indicator tile.
             enriched['has_failing_jobs'] = failing_jobs_count > 0
             

@@ -551,6 +551,41 @@ class TestDSOHealthFieldsIntegration(unittest.TestCase):
         # Note: 'stuck' is not 'failed' so it breaks consecutive failure counting
         self.assertEqual(enriched[0]['consecutive_default_branch_failures'], 2)
     
+    def test_only_stuck_pipelines_edge_case(self):
+        """Test edge case: only 'stuck' pipelines with no 'failed' ones
+        
+        This documents the behavior where:
+        - has_runner_issues = True (detects 'stuck' status as runner issue)
+        - has_failing_jobs = False (only counts 'failed' status)
+        - failing_jobs_count = 0 (only counts 'failed' status)
+        
+        This is intentional: 'stuck' indicates runner problems but is not a 'failed' job.
+        """
+        project = {
+            'id': 1,
+            'name': 'test-project',
+            'default_branch': 'main'
+        }
+        
+        # Only stuck pipelines - no 'failed' status
+        pipelines = [
+            {'status': 'stuck', 'ref': 'main', 'created_at': '2024-01-20T10:00:00Z'},
+            {'status': 'stuck', 'ref': 'main', 'created_at': '2024-01-20T09:00:00Z'},
+            {'status': 'success', 'ref': 'main', 'created_at': '2024-01-20T08:00:00Z'},
+        ]
+        
+        per_project_pipelines = {1: pipelines}
+        
+        poller = server.BackgroundPoller(None, 60)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        
+        # has_runner_issues is True because 'stuck' indicates runner problems
+        self.assertTrue(enriched[0]['has_runner_issues'])
+        # has_failing_jobs is False because only 'failed' status is counted
+        self.assertFalse(enriched[0]['has_failing_jobs'])
+        # failing_jobs_count is 0 because only 'failed' status is counted
+        self.assertEqual(enriched[0]['failing_jobs_count'], 0)
+    
     def test_fields_consistent_with_success_rate(self):
         """Test DSO health fields are consistent with success rate calculation"""
         project = {
