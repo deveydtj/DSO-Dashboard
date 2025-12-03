@@ -5,6 +5,16 @@ import { escapeHtml, formatDate } from '../utils/formatters.js';
 import { normalizeServiceStatus } from '../utils/status.js';
 
 /**
+ * Format latency value for display
+ * @param {number|null|undefined} latencyMs - Latency in milliseconds
+ * @returns {string} - Formatted latency string (e.g., "42 ms" or "N/A")
+ */
+export function formatLatency(latencyMs) {
+    if (latencyMs == null) return 'N/A';
+    return `${Math.round(latencyMs)} ms`;
+}
+
+/**
  * Create HTML for a single service card
  * @param {Object} service - Service data
  * @returns {string} - HTML string for the service card
@@ -14,10 +24,12 @@ export function createServiceCard(service) {
     const status = normalizeServiceStatus(service.status);
     const statusClass = `service-status-${status.toLowerCase()}`;
     
-    // Latency display
-    const latency = service.latency_ms != null 
-        ? `${Math.round(service.latency_ms)}ms`
-        : '--';
+    // Latency display - current latency
+    const currentLatency = formatLatency(service.latency_ms);
+    
+    // Average latency (may not be available on first sample)
+    const hasAverageLatency = service.average_latency_ms != null;
+    const averageLatency = formatLatency(service.average_latency_ms);
     
     // Last checked display
     const lastChecked = service.last_checked 
@@ -48,11 +60,19 @@ export function createServiceCard(service) {
                     <span>${escapeHtml(status)}</span>
                 </span>
             </div>
-            <div class="service-metrics">
-                <div class="service-metric">
-                    <span class="metric-label">Latency</span>
-                    <span class="metric-value">${latency}</span>
+            <div class="service-latency-section">
+                <div class="service-latency-item">
+                    <span class="latency-label">Current</span>
+                    <span class="latency-value">${currentLatency}</span>
                 </div>
+                ${hasAverageLatency ? `
+                <div class="service-latency-item">
+                    <span class="latency-label">Average</span>
+                    <span class="latency-value">${averageLatency}</span>
+                </div>
+                ` : ''}
+            </div>
+            <div class="service-metrics">
                 <div class="service-metric">
                     <span class="metric-label">Last Check</span>
                     <span class="metric-value">${lastChecked}</span>
