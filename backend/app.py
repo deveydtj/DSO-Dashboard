@@ -994,7 +994,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     if project_id:
                         project_metadata_map[project_id] = {
                             'path_with_namespace': project.get('path_with_namespace', ''),
-                            'default_branch': project.get('default_branch', 'main'),
+                            'default_branch': project.get('default_branch', DEFAULT_BRANCH_NAME),
                             'has_runner_issues': project.get('has_runner_issues', False),
                             'has_failing_jobs': project.get('has_failing_jobs', False),
                         }
@@ -1012,7 +1012,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 project_id = pipeline.get('project_id')
                 project_metadata = project_metadata_map.get(project_id, {})
                 project_path = project_metadata.get('path_with_namespace', '')
-                default_branch = project_metadata.get('default_branch', 'main')
+                default_branch = project_metadata.get('default_branch', DEFAULT_BRANCH_NAME)
                 pipeline_ref = pipeline.get('ref', '')
                 is_default_branch = (pipeline_ref == default_branch)
                 

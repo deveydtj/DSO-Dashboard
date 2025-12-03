@@ -5,6 +5,17 @@ import { escapeHtml, formatDate, formatDuration } from '../utils/formatters.js';
 import { normalizeStatus } from '../utils/status.js';
 
 /**
+ * Determine if failing jobs emphasis should be shown
+ * Only show for failing jobs on default branch (DSO priority)
+ * @param {boolean} hasFailingJobs - Whether project has failing jobs
+ * @param {boolean} isDefaultBranch - Whether pipeline is on default branch
+ * @returns {boolean} - True if failing jobs emphasis should be shown
+ */
+function shouldShowFailingJobsEmphasis(hasFailingJobs, isDefaultBranch) {
+    return hasFailingJobs && isDefaultBranch;
+}
+
+/**
  * Build CSS class list for pipeline row based on DSO emphasis requirements
  * @param {string} normalizedStatus - Normalized pipeline status
  * @param {boolean} isDefaultBranch - Whether pipeline is on default branch
@@ -25,8 +36,8 @@ function buildRowClasses(normalizedStatus, isDefaultBranch, hasRunnerIssues, has
         classes.push('row-runner-issue');
     }
     
-    // Add failing-jobs class for job failures (esp. on default branch)
-    if (hasFailingJobs && isDefaultBranch) {
+    // Add failing-jobs class for job failures on default branch
+    if (shouldShowFailingJobsEmphasis(hasFailingJobs, isDefaultBranch)) {
         classes.push('row-failing-jobs');
     }
     
@@ -47,7 +58,7 @@ function createIssueBadges(hasRunnerIssues, hasFailingJobs, isDefaultBranch) {
         badges.push('<span class="pipeline-issue-badge runner-issue" title="Runner/infrastructure issue detected">⚙️</span>');
     }
     
-    if (hasFailingJobs && isDefaultBranch) {
+    if (shouldShowFailingJobsEmphasis(hasFailingJobs, isDefaultBranch)) {
         badges.push('<span class="pipeline-issue-badge failing-jobs" title="Failing jobs on default branch">⚠️</span>');
     }
     

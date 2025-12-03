@@ -525,18 +525,23 @@ body {
 }
 
 /* DSO Emphasis: Default branch pipelines - gentle highlight */
+/* Note: Colors derived from CSS variables with transparency for subtle emphasis */
+/* --accent-primary (#6366f1) -> rgba(99, 102, 241, 0.08) */
 .pipeline-table tbody tr.row-default-branch {
     background: rgba(99, 102, 241, 0.08);
 }
 
+/* --accent-success (#10b981) -> rgba(16, 185, 129, 0.1) */
 .pipeline-table tbody tr.row-default-branch.row-status-success {
     background: rgba(16, 185, 129, 0.1);
 }
 
+/* --accent-error (#ef4444) -> rgba(239, 68, 68, 0.1) */
 .pipeline-table tbody tr.row-default-branch.row-status-failed {
     background: rgba(239, 68, 68, 0.1);
 }
 
+/* --accent-info (#3b82f6) -> rgba(59, 130, 246, 0.1) */
 .pipeline-table tbody tr.row-default-branch.row-status-running {
     background: rgba(59, 130, 246, 0.1);
 }
