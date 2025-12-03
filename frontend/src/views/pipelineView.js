@@ -55,11 +55,11 @@ function createIssueBadges(hasRunnerIssues, hasFailingJobs, isDefaultBranch) {
     const badges = [];
     
     if (hasRunnerIssues) {
-        badges.push('<span class="pipeline-issue-badge runner-issue" title="Runner/infrastructure issue detected">⚙️</span>');
+        badges.push('<span class="pipeline-issue-badge runner-issue" title="Project has runner/infrastructure issues on default branch" aria-label="Runner issue">⚙️</span>');
     }
     
     if (shouldShowFailingJobsEmphasis(hasFailingJobs, isDefaultBranch)) {
-        badges.push('<span class="pipeline-issue-badge failing-jobs" title="Failing jobs on default branch">⚠️</span>');
+        badges.push('<span class="pipeline-issue-badge failing-jobs" title="Project has failing jobs on default branch" aria-label="Failing jobs">⚠️</span>');
     }
     
     return badges.join(' ');
