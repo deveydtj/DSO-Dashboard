@@ -986,14 +986,18 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             ref_filter = query_params.get('ref', [None])[0] if query_params.get('ref') else None
             project_filter = query_params.get('project', [None])[0] if query_params.get('project') else None
             
-            # Build project_id to path_with_namespace map
-            project_path_map = {}
+            # Build project_id to metadata map for enriching pipelines
+            project_metadata_map = {}
             if projects:
                 for project in projects:
                     project_id = project.get('id')
-                    path_with_namespace = project.get('path_with_namespace', '')
                     if project_id:
-                        project_path_map[project_id] = path_with_namespace
+                        project_metadata_map[project_id] = {
+                            'path_with_namespace': project.get('path_with_namespace', ''),
+                            'default_branch': project.get('default_branch', 'main'),
+                            'has_runner_issues': project.get('has_runner_issues', False),
+                            'has_failing_jobs': project.get('has_failing_jobs', False),
+                        }
             
             # Format and filter pipeline data
             filtered_pipelines = []
@@ -1006,7 +1010,11 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 
                 project_name = pipeline.get('project_name', 'Unknown')
                 project_id = pipeline.get('project_id')
-                project_path = project_path_map.get(project_id, '')
+                project_metadata = project_metadata_map.get(project_id, {})
+                project_path = project_metadata.get('path_with_namespace', '')
+                default_branch = project_metadata.get('default_branch', 'main')
+                pipeline_ref = pipeline.get('ref', '')
+                is_default_branch = (pipeline_ref == default_branch)
                 
                 # Apply project filter (substring match on name or path)
                 if project_filter:
@@ -1026,7 +1034,11 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     'web_url': pipeline.get('web_url'),
                     'created_at': pipeline.get('created_at'),
                     'updated_at': pipeline.get('updated_at'),
-                    'duration': pipeline.get('duration')
+                    'duration': pipeline.get('duration'),
+                    # DSO emphasis fields for highlighting default-branch and infra issues
+                    'is_default_branch': is_default_branch,
+                    'has_runner_issues': project_metadata.get('has_runner_issues', False),
+                    'has_failing_jobs': project_metadata.get('has_failing_jobs', False),
                 }
                 # Add MR-specific fields only if present (for merge request pipelines)
                 if 'original_ref' in pipeline:

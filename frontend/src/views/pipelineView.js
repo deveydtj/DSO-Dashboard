@@ -5,6 +5,56 @@ import { escapeHtml, formatDate, formatDuration } from '../utils/formatters.js';
 import { normalizeStatus } from '../utils/status.js';
 
 /**
+ * Build CSS class list for pipeline row based on DSO emphasis requirements
+ * @param {string} normalizedStatus - Normalized pipeline status
+ * @param {boolean} isDefaultBranch - Whether pipeline is on default branch
+ * @param {boolean} hasRunnerIssues - Whether project has runner issues
+ * @param {boolean} hasFailingJobs - Whether project has failing jobs
+ * @returns {string} - Space-separated CSS class names
+ */
+function buildRowClasses(normalizedStatus, isDefaultBranch, hasRunnerIssues, hasFailingJobs) {
+    const classes = [`row-status-${normalizedStatus}`];
+    
+    // Add default-branch class for emphasis
+    if (isDefaultBranch) {
+        classes.push('row-default-branch');
+    }
+    
+    // Add runner-issue class for urgent infrastructure problems
+    if (hasRunnerIssues) {
+        classes.push('row-runner-issue');
+    }
+    
+    // Add failing-jobs class for job failures (esp. on default branch)
+    if (hasFailingJobs && isDefaultBranch) {
+        classes.push('row-failing-jobs');
+    }
+    
+    return classes.join(' ');
+}
+
+/**
+ * Create badge HTML for runner issues or job failures
+ * @param {boolean} hasRunnerIssues - Whether project has runner issues
+ * @param {boolean} hasFailingJobs - Whether project has failing jobs
+ * @param {boolean} isDefaultBranch - Whether pipeline is on default branch
+ * @returns {string} - HTML string for badges (empty if no issues)
+ */
+function createIssueBadges(hasRunnerIssues, hasFailingJobs, isDefaultBranch) {
+    const badges = [];
+    
+    if (hasRunnerIssues) {
+        badges.push('<span class="pipeline-issue-badge runner-issue" title="Runner/infrastructure issue detected">⚙️</span>');
+    }
+    
+    if (hasFailingJobs && isDefaultBranch) {
+        badges.push('<span class="pipeline-issue-badge failing-jobs" title="Failing jobs on default branch">⚠️</span>');
+    }
+    
+    return badges.join(' ');
+}
+
+/**
  * Create HTML for a single pipeline table row
  * @param {Object} pipeline - Pipeline data
  * @returns {string} - HTML string for the table row
@@ -19,14 +69,32 @@ export function createPipelineRow(pipeline) {
         ? formatDate(pipeline.created_at) 
         : '--';
     const fullTimestamp = pipeline.created_at || '';
+    
+    // DSO emphasis flags from backend
+    const isDefaultBranch = pipeline.is_default_branch === true;
+    const hasRunnerIssues = pipeline.has_runner_issues === true;
+    const hasFailingJobs = pipeline.has_failing_jobs === true;
+    
+    // Build row classes for styling
+    const rowClasses = buildRowClasses(normalizedStatus, isDefaultBranch, hasRunnerIssues, hasFailingJobs);
+    
+    // Create issue badges if applicable
+    const issueBadges = createIssueBadges(hasRunnerIssues, hasFailingJobs, isDefaultBranch);
+    
+    // Project name styling: bold for default branch
+    const projectNameClass = isDefaultBranch ? 'pipeline-project-name default-branch' : 'pipeline-project-name';
+    
+    // Branch/ref styling: bold for default branch
+    const refClass = isDefaultBranch ? 'pipeline-ref default-branch' : 'pipeline-ref';
 
     return `
-        <tr class="row-status-${normalizedStatus}">
+        <tr class="${rowClasses}">
             <td>
                 <span class="pipeline-status ${normalizedStatus}" title="Raw status: ${escapeHtml(status)}">${escapeHtml(status)}</span>
+                ${issueBadges}
             </td>
-            <td>${escapeHtml(pipeline.project_name)}</td>
-            <td>${escapeHtml(pipeline.ref || '--')}</td>
+            <td><span class="${projectNameClass}">${escapeHtml(pipeline.project_name)}</span></td>
+            <td><span class="${refClass}">${escapeHtml(pipeline.ref || '--')}</span></td>
             <td>
                 <span class="commit-sha">${escapeHtml(pipeline.sha || '--')}</span>
             </td>
