@@ -9,7 +9,6 @@ import unittest
 import sys
 import os
 from unittest.mock import patch, MagicMock
-import logging
 
 # Add parent directory to path to import backend modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -35,12 +34,6 @@ class TestServiceLatencyConfigDefaults(unittest.TestCase):
     
     def test_defaults_applied_for_missing_keys(self):
         """Test that defaults are applied for individual missing keys"""
-        mock_config = {
-            'service_latency': {
-                'enabled': False
-            }
-        }
-        
         with patch.dict(os.environ, {}, clear=True), \
              patch.object(config_loader, 'PROJECT_ROOT', '/tmp'), \
              patch('os.path.exists', return_value=True), \

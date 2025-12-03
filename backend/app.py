@@ -265,11 +265,7 @@ class BackgroundPoller(threading.Thread):
         self.external_services = external_services if isinstance(external_services, list) else []
         # Service latency monitoring configuration
         # Provides settings for computing running average and degradation warnings
-        self.service_latency_config = service_latency_config or {
-            'enabled': True,
-            'window_size': 10,
-            'degradation_threshold_ratio': 1.5,
-        }
+        self.service_latency_config = service_latency_config or DEFAULT_SERVICE_LATENCY_CONFIG
         self.running = True
         self.stop_event = threading.Event()
         self.poll_counter = 0
