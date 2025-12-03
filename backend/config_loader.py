@@ -85,6 +85,54 @@ def parse_csv_list(value):
     return [item.strip() for item in value.split(',') if item.strip()]
 
 
+def parse_float_config(value, default, name):
+    """Parse float configuration value with error handling
+    
+    Args:
+        value: Value to parse (string, float, int, or None)
+        default: Default value if parsing fails
+        name: Name of the config option for error messages
+        
+    Returns:
+        float: Parsed float value or default
+    """
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        logger.warning(f"Invalid {name} value: {value}. Using default: {default}")
+        return default
+
+
+def parse_bool_config(value, default, name):
+    """Parse boolean configuration value with error handling
+    
+    Args:
+        value: Value to parse (string, bool, or None)
+        default: Default value if parsing fails or value is None
+        name: Name of the config option for error messages
+        
+    Returns:
+        bool: Parsed boolean value or default
+    """
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ['true', '1', 'yes']
+    logger.warning(f"Invalid {name} value: {value}. Using default: {default}")
+    return default
+
+
+# Default service latency configuration
+# These values are used when the service_latency section is missing or incomplete
+DEFAULT_SERVICE_LATENCY_CONFIG = {
+    'enabled': True,                      # Whether latency tracking is enabled
+    'window_size': 10,                    # Number of samples for running average
+    'degradation_threshold_ratio': 1.5,   # Warn if current > ratio × average
+}
+
+
 def load_config():
     """Load configuration from config.json or environment variables
     
@@ -180,6 +228,60 @@ def load_config():
     else:
         config['external_services'] = external_services
     
+    # Service latency monitoring configuration
+    # Allows tuning of running average window and degradation threshold for
+    # determining when to warn about slow services (yellow highlight).
+    # Environment variables override config.json values for each sub-key.
+    service_latency_raw = config.get('service_latency', {})
+    if not isinstance(service_latency_raw, dict):
+        logger.warning(f"Invalid service_latency (not a dict): {type(service_latency_raw).__name__}. Using defaults.")
+        service_latency_raw = {}
+    
+    # Build service_latency config with defaults applied for missing keys
+    # Environment variables take precedence over config.json values
+    service_latency = {}
+    
+    # enabled: bool, default True - when False, latency tracking is disabled entirely
+    if 'SERVICE_LATENCY_ENABLED' in os.environ:
+        service_latency['enabled'] = parse_bool_config(
+            os.environ['SERVICE_LATENCY_ENABLED'],
+            DEFAULT_SERVICE_LATENCY_CONFIG['enabled'],
+            'SERVICE_LATENCY_ENABLED'
+        )
+    else:
+        raw_enabled = service_latency_raw.get('enabled', DEFAULT_SERVICE_LATENCY_CONFIG['enabled'])
+        service_latency['enabled'] = parse_bool_config(
+            raw_enabled, DEFAULT_SERVICE_LATENCY_CONFIG['enabled'], 'service_latency.enabled'
+        )
+    
+    # window_size: int, approximate number of samples for running average
+    if 'SERVICE_LATENCY_WINDOW_SIZE' in os.environ:
+        service_latency['window_size'] = parse_int_config(
+            os.environ['SERVICE_LATENCY_WINDOW_SIZE'],
+            DEFAULT_SERVICE_LATENCY_CONFIG['window_size'],
+            'SERVICE_LATENCY_WINDOW_SIZE'
+        )
+    else:
+        raw_window = service_latency_raw.get('window_size', DEFAULT_SERVICE_LATENCY_CONFIG['window_size'])
+        service_latency['window_size'] = parse_int_config(
+            raw_window, DEFAULT_SERVICE_LATENCY_CONFIG['window_size'], 'service_latency.window_size'
+        )
+    
+    # degradation_threshold_ratio: float, e.g. 1.5 = warn if current > 1.5 × average
+    if 'SERVICE_LATENCY_DEGRADATION_THRESHOLD_RATIO' in os.environ:
+        service_latency['degradation_threshold_ratio'] = parse_float_config(
+            os.environ['SERVICE_LATENCY_DEGRADATION_THRESHOLD_RATIO'],
+            DEFAULT_SERVICE_LATENCY_CONFIG['degradation_threshold_ratio'],
+            'SERVICE_LATENCY_DEGRADATION_THRESHOLD_RATIO'
+        )
+    else:
+        raw_ratio = service_latency_raw.get('degradation_threshold_ratio', DEFAULT_SERVICE_LATENCY_CONFIG['degradation_threshold_ratio'])
+        service_latency['degradation_threshold_ratio'] = parse_float_config(
+            raw_ratio, DEFAULT_SERVICE_LATENCY_CONFIG['degradation_threshold_ratio'], 'service_latency.degradation_threshold_ratio'
+        )
+    
+    config['service_latency'] = service_latency
+    
     # Ensure lists are clean (filter config.json values that might have empty strings or numeric IDs)
     if isinstance(config['group_ids'], list):
         config['group_ids'] = [str(gid).strip() for gid in config['group_ids'] if gid and str(gid).strip()]
@@ -202,6 +304,8 @@ def load_config():
     if config['use_mock_data']:
         logger.info(f"  Mock scenario: {config['mock_scenario'] if config['mock_scenario'] else 'default (mock_data.json)'}")
     logger.info(f"  External services: {len(config['external_services'])} configured")
+    sl_config = config['service_latency']
+    logger.info(f"  Service latency: enabled={sl_config['enabled']}, window_size={sl_config['window_size']}, degradation_threshold_ratio={sl_config['degradation_threshold_ratio']}")
     logger.info(f"  API token: {'***' if config['api_token'] else 'NOT SET'}")
     
     return config
@@ -270,6 +374,26 @@ def validate_config(config):
                 logger.error(f"Configuration error: external_services[{i}] is missing required 'url' field")
                 logger.error("  Fix: Each entry in external_services must have a 'url' field")
                 is_valid = False
+    
+    # Validate service_latency configuration
+    service_latency = config.get('service_latency', {})
+    if not isinstance(service_latency, dict):
+        logger.error(f"Configuration error: 'service_latency' must be a dict, got: {type(service_latency).__name__}")
+        is_valid = False
+    else:
+        # Validate window_size is a positive integer
+        window_size = service_latency.get('window_size')
+        if window_size is not None and (not isinstance(window_size, int) or window_size <= 0):
+            logger.error(f"Configuration error: 'service_latency.window_size' must be a positive integer, got: {window_size}")
+            logger.error("  Fix: Set SERVICE_LATENCY_WINDOW_SIZE environment variable or 'service_latency.window_size' in config.json to a positive integer")
+            is_valid = False
+        
+        # Validate degradation_threshold_ratio is a positive number
+        threshold_ratio = service_latency.get('degradation_threshold_ratio')
+        if threshold_ratio is not None and (not isinstance(threshold_ratio, (int, float)) or threshold_ratio <= 0):
+            logger.error(f"Configuration error: 'service_latency.degradation_threshold_ratio' must be a positive number, got: {threshold_ratio}")
+            logger.error("  Fix: Set SERVICE_LATENCY_DEGRADATION_THRESHOLD_RATIO environment variable or 'service_latency.degradation_threshold_ratio' in config.json to a positive number (e.g., 1.5)")
+            is_valid = False
     
     # Log validation result
     if is_valid:
