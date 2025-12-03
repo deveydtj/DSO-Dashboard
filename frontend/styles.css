@@ -589,6 +589,38 @@ body {
     border-left-color: var(--text-secondary);
 }
 
+/* Service latency warning - yellow highlight for degraded latency */
+.service-card.service-latency-warning {
+    box-shadow: 
+        6px 6px 12px var(--shadow-dark),
+        -6px -6px 12px var(--shadow-light),
+        0 0 12px rgba(245, 158, 11, 0.25),
+        inset 0 0 0 1px rgba(245, 158, 11, 0.3);
+}
+
+.service-card.service-latency-warning:hover {
+    box-shadow: 
+        8px 8px 16px var(--shadow-dark),
+        -8px -8px 16px var(--shadow-light),
+        0 0 16px rgba(245, 158, 11, 0.35),
+        inset 0 0 0 1px rgba(245, 158, 11, 0.4);
+}
+
+/* Latency warning badge */
+.service-latency-warning-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    margin-bottom: var(--spacing-sm);
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--accent-warning);
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
 .service-header {
     display: flex;
     justify-content: space-between;
@@ -1239,6 +1271,12 @@ body.compact .service-error {
 body.compact .service-link {
     padding: 0.3rem 0.6rem;
     font-size: 0.75rem;
+}
+
+body.compact .service-latency-warning-badge {
+    font-size: 0.6rem;
+    padding: 0.2rem 0.4rem;
+    margin-bottom: 0.5rem;
 }
 
 body.compact .table-container {
