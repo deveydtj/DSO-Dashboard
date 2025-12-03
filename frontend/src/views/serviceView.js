@@ -59,8 +59,13 @@ export function createServiceCard(service) {
         ? '<span class="service-latency-warning-badge">Latency elevated</span>'
         : '';
 
+    // Combine CSS classes, filtering out empty strings to avoid extra whitespace
+    const cardClasses = ['service-card', statusClass, latencyWarningClass]
+        .filter(Boolean)
+        .join(' ');
+
     return `
-        <div class="service-card ${statusClass} ${latencyWarningClass}">
+        <div class="${cardClasses}">
             <div class="service-header">
                 <h3 class="service-name">${escapeHtml(name)}</h3>
                 <span class="service-status-chip ${status.toLowerCase()}">
