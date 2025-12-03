@@ -35,6 +35,49 @@ EPOCH_TIMESTAMP = '1970-01-01T00:00:00Z'  # Fallback for missing timestamps
 # Default branch constant
 DEFAULT_BRANCH_NAME = 'main'     # Default branch name fallback
 
+# Runner issue detection constants
+# These statuses indicate runner-related problems (pipeline level)
+RUNNER_ISSUE_STATUSES = ('stuck',)
+
+# These failure_reason values indicate runner-related problems (from GitLab API)
+RUNNER_ISSUE_FAILURE_REASONS = (
+    'runner_system_failure',
+    'stuck_or_timeout_failure',
+    'runner_unsupported',
+    'scheduler_failure',
+    'data_integrity_failure',
+)
+
+
+def is_runner_related_failure(pipeline):
+    """Check if a pipeline failure is related to runner/infrastructure issues
+    
+    This helper function encapsulates the detection logic for runner-related
+    failures to improve readability and testability.
+    
+    Detection methods:
+    1. Pipeline status is 'stuck' (runner not picking up jobs)
+    2. Pipeline failure_reason contains runner-related keywords
+       (e.g., 'runner_system_failure', 'stuck_or_timeout_failure')
+    
+    Args:
+        pipeline: Pipeline dict from GitLab API
+        
+    Returns:
+        bool: True if the pipeline failure is runner-related
+    """
+    # Check for stuck status
+    if pipeline.get('status') in RUNNER_ISSUE_STATUSES:
+        return True
+    
+    # Check failure_reason if available (GitLab API may include this field)
+    failure_reason = pipeline.get('failure_reason', '')
+    if failure_reason:
+        failure_reason_lower = failure_reason.lower()
+        return any(reason in failure_reason_lower for reason in RUNNER_ISSUE_FAILURE_REASONS)
+    
+    return False
+
 
 class GitLabAPIClient:
     """GitLab API client using urllib with retry, rate limiting, and pagination support"""
@@ -624,6 +667,11 @@ def get_repositories(projects):
         - recent_success_rate: Default-branch success rate (backward compatible, DSO primary)
         - recent_success_rate_default_branch: Default-branch success rate (explicit naming)
         - recent_success_rate_all_branches: All-branches success rate (comprehensive/legacy)
+    
+    DSO health fields included (for dashboard tiles):
+        - has_failing_jobs: Whether recent default-branch pipelines contain any with 'failed' status (excludes skipped/manual/canceled)
+        - failing_jobs_count: Count of pipelines with 'failed' status on default branch (excludes skipped/manual/canceled)
+        - has_runner_issues: Whether failures are runner-related
     """
     if projects is None:
         projects = []
@@ -654,7 +702,14 @@ def get_repositories(projects):
             'recent_success_rate': project.get('recent_success_rate'),
             'recent_success_rate_default_branch': project.get('recent_success_rate_default_branch'),
             'recent_success_rate_all_branches': project.get('recent_success_rate_all_branches'),
-            'consecutive_default_branch_failures': project.get('consecutive_default_branch_failures', 0)
+            'consecutive_default_branch_failures': project.get('consecutive_default_branch_failures', 0),
+            # DSO health fields (for dashboard tiles):
+            # - has_failing_jobs: True if recent default-branch pipelines contain failed jobs
+            # - failing_jobs_count: Count of failed pipelines on default branch
+            # - has_runner_issues: True if pipelines are failing due to runner problems
+            'has_failing_jobs': project.get('has_failing_jobs', False),
+            'failing_jobs_count': project.get('failing_jobs_count', 0),
+            'has_runner_issues': project.get('has_runner_issues', False)
         }
         repos.append(repo)
     
@@ -749,6 +804,15 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
     The field `recent_success_rate` is provided for backward compatibility
     and points to the default-branch rate (the DSO primary metric).
     
+    DSO Health Fields (for dashboard tiles):
+        - has_failing_jobs (bool): True if recent default-branch pipelines contain any with 'failed' status (excludes skipped/manual/canceled).
+          Used for DSO dashboard to highlight repos with failing CI.
+        - failing_jobs_count (int): Count of pipelines with 'failed' status on default branch (excludes skipped/manual/canceled).
+          Used for DSO dashboard to show severity of failures.
+        - has_runner_issues (bool): True if pipelines are failing due to runner problems.
+          Detected via pipeline status 'stuck' or failure_reason containing runner-related errors.
+          Used for DSO dashboard to distinguish infrastructure issues from code issues.
+    
     Args:
         projects: List of project dicts
         per_project_pipelines: Dict mapping project_id -> list of pipelines for that project
@@ -759,6 +823,9 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
         - recent_success_rate: Default-branch success rate (for backward compatibility)
         - recent_success_rate_default_branch: Default-branch success rate (DSO primary)
         - recent_success_rate_all_branches: All-branches success rate (legacy/comprehensive)
+        - has_failing_jobs: Whether recent default-branch pipelines have failures (DSO health)
+        - failing_jobs_count: Count of failed default-branch pipelines (DSO health)
+        - has_runner_issues: Whether failures are runner-related (DSO health)
     """
     log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
     
@@ -862,6 +929,34 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
                     # Stop counting at first actual success/running/pending
                     break
             enriched['consecutive_default_branch_failures'] = consecutive_failures
+            
+            # ---------------------------------------------------------------
+            # DSO HEALTH FIELDS: FAILING JOBS AND RUNNER ISSUES
+            # ---------------------------------------------------------------
+            # These fields are used for DSO dashboard tiles to provide quick visibility
+            # into CI health issues at a glance.
+            
+            # failing_jobs_count: Count of pipelines with 'failed' status on default branch
+            # (among meaningful pipelines, excluding skipped/manual/canceled).
+            # Uses generator expression for memory efficiency.
+            # Used for: DSO dashboard showing count/severity of failing jobs.
+            failing_jobs_count = sum(
+                1 for p in meaningful_pipelines_default 
+                if p.get('status') == 'failed'
+            )
+            enriched['failing_jobs_count'] = failing_jobs_count
+            
+            # has_failing_jobs: Derived from failing_jobs_count.
+            # True if any meaningful recent default-branch pipeline has 'failed' status (excludes skipped/manual/canceled).
+            # Used for: DSO dashboard "failing jobs" indicator tile.
+            enriched['has_failing_jobs'] = failing_jobs_count > 0
+            
+            # has_runner_issues: True if pipelines are failing due to runner-related problems.
+            # Uses the is_runner_related_failure helper for encapsulated detection logic.
+            # Used for: DSO dashboard to distinguish infrastructure issues from code issues.
+            enriched['has_runner_issues'] = any(
+                is_runner_related_failure(p) for p in meaningful_pipelines_default
+            )
         else:
             # No pipelines for this project
             enriched['last_pipeline_status'] = None
@@ -872,6 +967,10 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
             enriched['recent_success_rate_all_branches'] = None
             enriched['recent_success_rate_default_branch'] = None
             enriched['consecutive_default_branch_failures'] = 0
+            # DSO health fields - no pipelines means no failures or runner issues
+            enriched['has_failing_jobs'] = False
+            enriched['failing_jobs_count'] = 0
+            enriched['has_runner_issues'] = False
         
         enriched_projects.append(enriched)
     
