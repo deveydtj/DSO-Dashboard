@@ -50,6 +50,9 @@ from backend.config_loader import (
     get_log_level,
     parse_csv_list,
     parse_int_config,
+    parse_float_config,
+    parse_bool_config,
+    DEFAULT_SERVICE_LATENCY_CONFIG,
     VALID_LOG_LEVELS,
 )
 from backend.services import DEFAULT_SERVICE_CHECK_TIMEOUT
@@ -238,16 +241,35 @@ def update_services_only(services):
 
 
 class BackgroundPoller(threading.Thread):
-    """Background thread that polls GitLab API and updates global STATE"""
+    """Background thread that polls GitLab API and updates global STATE
+    
+    Attributes:
+        gitlab_client: GitLabAPIClient instance for API calls
+        poll_interval: Seconds between poll cycles
+        group_ids: List of GitLab group IDs to fetch projects from
+        project_ids: List of specific GitLab project IDs to fetch
+        external_services: List of external service configs for health checks
+        service_latency_config: Configuration for service latency monitoring
+            - enabled (bool): Whether latency tracking is enabled
+            - window_size (int): Number of samples for running average
+            - degradation_threshold_ratio (float): Warn if current > ratio × average
+    """
     
     def __init__(self, gitlab_client, poll_interval_sec, group_ids=None, project_ids=None,
-                 external_services=None):
+                 external_services=None, service_latency_config=None):
         super().__init__(daemon=True)
         self.gitlab_client = gitlab_client
         self.poll_interval = poll_interval_sec
         self.group_ids = group_ids or []
         self.project_ids = project_ids or []
         self.external_services = external_services if isinstance(external_services, list) else []
+        # Service latency monitoring configuration
+        # Provides settings for computing running average and degradation warnings
+        self.service_latency_config = service_latency_config or {
+            'enabled': True,
+            'window_size': 10,
+            'degradation_threshold_ratio': 1.5,
+        }
         self.running = True
         self.stop_event = threading.Event()
         self.poll_counter = 0
@@ -1195,7 +1217,8 @@ def main():
             config['poll_interval_sec'],
             group_ids=config['group_ids'],
             project_ids=config['project_ids'],
-            external_services=config.get('external_services', [])
+            external_services=config.get('external_services', []),
+            service_latency_config=config.get('service_latency')
         )
         poller.start()
         logger.info(f"Background poller started (interval: {config['poll_interval_sec']}s)")

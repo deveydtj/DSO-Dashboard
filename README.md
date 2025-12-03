@@ -62,6 +62,26 @@ Environment variables override `config.json` values.
 
 Or as last resort: `"insecure_skip_verify": true`
 
+### Service Latency Monitoring
+
+Configure thresholds for detecting degraded service performance:
+
+```json
+{
+  "service_latency": {
+    "enabled": true,
+    "window_size": 10,
+    "degradation_threshold_ratio": 1.5
+  }
+}
+```
+
+| Setting | Environment Variable | Default | Description |
+|---------|---------------------|---------|-------------|
+| enabled | `SERVICE_LATENCY_ENABLED` | `true` | Enable/disable latency tracking |
+| window_size | `SERVICE_LATENCY_WINDOW_SIZE` | `10` | Number of samples for running average |
+| degradation_threshold_ratio | `SERVICE_LATENCY_DEGRADATION_THRESHOLD_RATIO` | `1.5` | Warn if current > ratio × average |
+
 ## API Endpoints
 
 | Endpoint | Description |
