@@ -28,6 +28,20 @@ const DSO_THRESHOLDS = {
 };
 
 /**
+ * Get success rate color class based on DSO thresholds
+ * @param {number} successRate - Success rate as decimal (0-1)
+ * @returns {string} - CSS class for the color (rate-healthy, rate-degraded, rate-warning)
+ */
+function getSuccessRateColorClass(successRate) {
+    if (successRate >= DSO_THRESHOLDS.HEALTHY_MIN_RATE) {
+        return 'rate-healthy';
+    } else if (successRate >= DSO_THRESHOLDS.WARNING_MIN_RATE) {
+        return 'rate-degraded';
+    }
+    return 'rate-warning';
+}
+
+/**
  * Determine the DSO-focused status for a repository.
  * Priority order:
  * 1. has_runner_issues → high-priority error (runner-issue)
@@ -119,19 +133,19 @@ export function createRepoCard(repo, extraClasses = '') {
     // Consecutive failures badge
     const consecutiveFailures = repo.consecutive_default_branch_failures || 0;
     if (consecutiveFailures > 0) {
-        dsoIndicators += `<span class="dso-badge dso-badge-failing" title="${consecutiveFailures} consecutive failure(s) on default branch">🔴 ${consecutiveFailures} Consecutive Failure${consecutiveFailures > 1 ? 's' : ''}</span>`;
+        dsoIndicators += `<span class="dso-badge dso-badge-failing" title="${escapeHtml(String(consecutiveFailures))} consecutive failure(s) on default branch">🔴 ${escapeHtml(String(consecutiveFailures))} Consecutive Failure${consecutiveFailures > 1 ? 's' : ''}</span>`;
     }
     
     // Failing jobs indicator (if not already showing consecutive failures)
     if (repo.has_failing_jobs && consecutiveFailures === 0) {
         const failingCount = repo.failing_jobs_count || 0;
         if (failingCount > 0) {
-            dsoIndicators += `<span class="dso-badge dso-badge-warning" title="${failingCount} failed pipeline(s) on default branch">⚠️ ${failingCount} Failed</span>`;
+            dsoIndicators += `<span class="dso-badge dso-badge-warning" title="${escapeHtml(String(failingCount))} failed pipeline(s) on default branch">⚠️ ${escapeHtml(String(failingCount))} Failed</span>`;
         }
     }
     
     // Wrap indicators if any
-    const indicatorsHtml = dsoIndicators ? `<div class="dso-indicators">${dsoIndicators}</div>` : '';
+    const indicatorsHtml = dsoIndicators ? `<div class="dso-indicators" role="status" aria-label="Repository health indicators">${dsoIndicators}</div>` : '';
     
     // Pipeline info section (shows last pipeline regardless of branch)
     let pipelineInfo = '';
@@ -162,17 +176,10 @@ export function createRepoCard(repo, extraClasses = '') {
     // Success rate section - now shows default-branch rate as primary
     let successRateSection = '';
     if (repo.recent_success_rate != null) {
-        const successPercent = Math.round(repo.recent_success_rate * 100);
+        const successPercent = Math.min(100, Math.max(0, Math.round(repo.recent_success_rate * 100)));
         
-        // Determine bar color class based on success rate
-        let barColorClass = '';
-        if (successPercent >= 90) {
-            barColorClass = 'rate-healthy';
-        } else if (successPercent >= 70) {
-            barColorClass = 'rate-degraded';
-        } else {
-            barColorClass = 'rate-warning';
-        }
+        // Determine bar color class based on success rate using shared threshold logic
+        const barColorClass = getSuccessRateColorClass(repo.recent_success_rate);
         
         successRateSection = `
             <div class="repo-success-rate" title="Default branch success rate (excludes skipped/manual/canceled pipelines)">
