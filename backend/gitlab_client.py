@@ -618,6 +618,11 @@ def get_repositories(projects):
         
     Returns:
         list: List of formatted repository dicts for API response
+        
+    Pipeline health metrics included:
+        - recent_success_rate: Default-branch success rate (backward compatible, DSO primary)
+        - recent_success_rate_default_branch: Default-branch success rate (explicit naming)
+        - recent_success_rate_all_branches: All-branches success rate (comprehensive/legacy)
     """
     if projects is None:
         projects = []
@@ -641,7 +646,13 @@ def get_repositories(projects):
             'last_pipeline_ref': project.get('last_pipeline_ref'),
             'last_pipeline_duration': project.get('last_pipeline_duration'),
             'last_pipeline_updated_at': project.get('last_pipeline_updated_at'),
+            # Success rate metrics:
+            # - recent_success_rate: Backward compatible, points to default-branch rate (DSO primary)
+            # - recent_success_rate_default_branch: Explicit default-branch rate for DSO consumption
+            # - recent_success_rate_all_branches: Comprehensive rate including all branches (legacy)
             'recent_success_rate': project.get('recent_success_rate'),
+            'recent_success_rate_default_branch': project.get('recent_success_rate_default_branch'),
+            'recent_success_rate_all_branches': project.get('recent_success_rate_all_branches'),
             'consecutive_default_branch_failures': project.get('consecutive_default_branch_failures', 0)
         }
         repos.append(repo)
@@ -723,13 +734,30 @@ def get_pipelines(pipelines, projects=None, limit=50, status_filter=None, ref_fi
 def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None):
     """Enrich project data with pipeline health metrics
     
+    This function computes two distinct success rate metrics:
+    
+    1. recent_success_rate_default_branch (DSO primary metric):
+       Based only on pipelines targeting the project's default branch.
+       This is the primary metric for DSO consumption as it reflects
+       the health of the main development branch.
+    
+    2. recent_success_rate_all_branches (legacy/comprehensive metric):
+       Based on all branches. Allows noisy feature branches to drag
+       a repo's health down, giving a more complete (but noisier) picture.
+    
+    The field `recent_success_rate` is provided for backward compatibility
+    and points to the default-branch rate (the DSO primary metric).
+    
     Args:
         projects: List of project dicts
         per_project_pipelines: Dict mapping project_id -> list of pipelines for that project
         poll_id: Poll cycle identifier for logging context
     
     Returns:
-        List of enriched project dicts with pipeline health data
+        List of enriched project dicts with pipeline health data including:
+        - recent_success_rate: Default-branch success rate (for backward compatibility)
+        - recent_success_rate_default_branch: Default-branch success rate (DSO primary)
+        - recent_success_rate_all_branches: All-branches success rate (legacy/comprehensive)
     """
     log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
     
@@ -762,31 +790,65 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
             enriched['last_pipeline_duration'] = last_pipeline.get('duration')
             enriched['last_pipeline_updated_at'] = last_pipeline.get('updated_at')
             
+            # Get the default branch name for this project
+            default_branch = project.get('default_branch', DEFAULT_BRANCH_NAME)
+            
+            # ---------------------------------------------------------------
+            # SUCCESS RATE CALCULATION: ALL BRANCHES (legacy/comprehensive)
+            # ---------------------------------------------------------------
             # Calculate recent success rate using the last N pipelines across ALL branches
             # (excluding skipped/manual/canceled). This allows noisy feature branches
             # to drag a repo's health down, giving a more complete picture.
             recent_pipelines = pipelines_for_project[:PIPELINES_PER_PROJECT]
             # Filter out statuses that should be ignored
-            meaningful_pipelines = [
+            meaningful_pipelines_all = [
                 p for p in recent_pipelines 
                 if p.get('status') not in IGNORED_PIPELINE_STATUSES
             ]
-            if meaningful_pipelines:
-                success_count = sum(1 for p in meaningful_pipelines if p.get('status') == 'success')
-                enriched['recent_success_rate'] = success_count / len(meaningful_pipelines)
+            if meaningful_pipelines_all:
+                success_count_all = sum(1 for p in meaningful_pipelines_all if p.get('status') == 'success')
+                enriched['recent_success_rate_all_branches'] = success_count_all / len(meaningful_pipelines_all)
             else:
                 # No meaningful pipelines (all were skipped/manual/canceled)
-                enriched['recent_success_rate'] = None
+                enriched['recent_success_rate_all_branches'] = None
             
-            # Calculate consecutive failures on DEFAULT BRANCH ONLY
-            # This metric intentionally ignores other branches, providing a pure signal
-            # for the health of the main development branch.
-            # Ignore skipped/manual/canceled statuses when counting consecutive failures
-            default_branch = project.get('default_branch', DEFAULT_BRANCH_NAME)
+            # ---------------------------------------------------------------
+            # SUCCESS RATE CALCULATION: DEFAULT BRANCH ONLY (DSO primary metric)
+            # ---------------------------------------------------------------
+            # Calculate success rate using only pipelines on the default branch.
+            # This metric is what DSO cares about - the health of the main branch.
             default_branch_pipelines = [
                 p for p in pipelines_for_project 
                 if p.get('ref') == default_branch
             ]
+            # Limit to the same window size as all-branches for consistency
+            recent_default_branch_pipelines = default_branch_pipelines[:PIPELINES_PER_PROJECT]
+            # Filter out statuses that should be ignored
+            meaningful_pipelines_default = [
+                p for p in recent_default_branch_pipelines 
+                if p.get('status') not in IGNORED_PIPELINE_STATUSES
+            ]
+            if meaningful_pipelines_default:
+                success_count_default = sum(1 for p in meaningful_pipelines_default if p.get('status') == 'success')
+                enriched['recent_success_rate_default_branch'] = success_count_default / len(meaningful_pipelines_default)
+            else:
+                # No meaningful default-branch pipelines in the fetched window
+                enriched['recent_success_rate_default_branch'] = None
+            
+            # ---------------------------------------------------------------
+            # BACKWARD COMPATIBILITY: recent_success_rate points to default-branch rate
+            # ---------------------------------------------------------------
+            # For DSO consumption, use the default-branch rate as the primary metric.
+            # This aligns with the issue requirement to base repo success rate on default branch.
+            enriched['recent_success_rate'] = enriched['recent_success_rate_default_branch']
+            
+            # ---------------------------------------------------------------
+            # CONSECUTIVE FAILURES: DEFAULT BRANCH ONLY
+            # ---------------------------------------------------------------
+            # Calculate consecutive failures on DEFAULT BRANCH ONLY
+            # This metric intentionally ignores other branches, providing a pure signal
+            # for the health of the main development branch.
+            # Ignore skipped/manual/canceled statuses when counting consecutive failures
             consecutive_failures = 0
             for pipeline in default_branch_pipelines:
                 status = pipeline.get('status')
@@ -806,6 +868,8 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
             enriched['last_pipeline_duration'] = None
             enriched['last_pipeline_updated_at'] = None
             enriched['recent_success_rate'] = None
+            enriched['recent_success_rate_all_branches'] = None
+            enriched['recent_success_rate_default_branch'] = None
             enriched['consecutive_default_branch_failures'] = 0
         
         enriched_projects.append(enriched)

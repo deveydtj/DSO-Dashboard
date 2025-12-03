@@ -298,8 +298,8 @@ class TestSuccessRateCalculation(unittest.TestCase):
         
         self.assertIsNone(enriched[0]['recent_success_rate'])
     
-    def test_success_rate_includes_all_branches(self):
-        """Test that success rate includes pipelines from ALL branches"""
+    def test_success_rate_default_branch_only(self):
+        """Test that recent_success_rate is based on default branch only (DSO primary metric)"""
         project = {
             'id': 1,
             'name': 'test-project',
@@ -307,10 +307,11 @@ class TestSuccessRateCalculation(unittest.TestCase):
         }
         
         # Mix of main and feature branch pipelines
-        # All branches are included in success rate (not just default branch)
+        # recent_success_rate should only count main branch (DSO primary metric)
+        # recent_success_rate_all_branches should count all branches (legacy)
         pipelines = [
             {'status': 'success', 'ref': 'main', 'created_at': '2024-01-20T10:00:00Z'},
-            {'status': 'failed', 'ref': 'feature/new', 'created_at': '2024-01-20T09:00:00Z'},  # now included in success rate
+            {'status': 'failed', 'ref': 'feature/new', 'created_at': '2024-01-20T09:00:00Z'},
             {'status': 'failed', 'ref': 'main', 'created_at': '2024-01-20T08:00:00Z'},
         ]
         
@@ -319,11 +320,15 @@ class TestSuccessRateCalculation(unittest.TestCase):
         poller = server.BackgroundPoller(None, 60)
         enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
         
-        # Should be 1 success / 3 total meaningful pipelines = 0.333...
-        self.assertAlmostEqual(enriched[0]['recent_success_rate'], 1/3)
+        # recent_success_rate (DSO primary) should be 1 success / 2 main pipelines = 0.5
+        self.assertEqual(enriched[0]['recent_success_rate'], 0.5)
+        self.assertEqual(enriched[0]['recent_success_rate_default_branch'], 0.5)
+        
+        # recent_success_rate_all_branches should be 1 success / 3 total = 0.333...
+        self.assertAlmostEqual(enriched[0]['recent_success_rate_all_branches'], 1/3)
     
-    def test_success_rate_all_branches_noisy_feature_drags_down_health(self):
-        """Test that noisy feature branches can drag a repo's health down"""
+    def test_success_rate_all_branches_vs_default_branch(self):
+        """Test difference between all-branches and default-branch success rates"""
         project = {
             'id': 1,
             'name': 'test-project',
@@ -344,9 +349,12 @@ class TestSuccessRateCalculation(unittest.TestCase):
         poller = server.BackgroundPoller(None, 60)
         enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
         
-        # Should be 2 successes / 5 total pipelines = 0.4
-        # Feature branch failures drag the health down
-        self.assertEqual(enriched[0]['recent_success_rate'], 0.4)
+        # DSO primary metric (recent_success_rate) should be 2/2 = 1.0 (default branch only)
+        self.assertEqual(enriched[0]['recent_success_rate'], 1.0)
+        self.assertEqual(enriched[0]['recent_success_rate_default_branch'], 1.0)
+        
+        # Legacy/comprehensive metric should be 2/5 = 0.4 (all branches)
+        self.assertEqual(enriched[0]['recent_success_rate_all_branches'], 0.4)
     
     def test_success_rate_respects_pipelines_per_project_limit(self):
         """Test that success rate uses only the first 10 pipelines (PIPELINES_PER_PROJECT)"""
@@ -374,10 +382,13 @@ class TestSuccessRateCalculation(unittest.TestCase):
         enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
         
         # Should only consider first 10 pipelines (all failed) = 0.0
+        # Both default-branch and all-branches rates should be 0.0
         self.assertEqual(enriched[0]['recent_success_rate'], 0.0)
+        self.assertEqual(enriched[0]['recent_success_rate_default_branch'], 0.0)
+        self.assertEqual(enriched[0]['recent_success_rate_all_branches'], 0.0)
     
     def test_consecutive_failures_still_default_branch_only(self):
-        """Test that consecutive failures is still default-branch-only even with all-branch success rate"""
+        """Test that both success rate and consecutive failures are default-branch-only"""
         project = {
             'id': 1,
             'name': 'test-project',
@@ -397,11 +408,41 @@ class TestSuccessRateCalculation(unittest.TestCase):
         poller = server.BackgroundPoller(None, 60)
         enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
         
-        # Success rate includes all branches: 1 success / 4 total = 0.25
-        self.assertEqual(enriched[0]['recent_success_rate'], 0.25)
+        # DSO primary metric: default branch only = 1 success / 1 main pipeline = 1.0
+        self.assertEqual(enriched[0]['recent_success_rate'], 1.0)
+        self.assertEqual(enriched[0]['recent_success_rate_default_branch'], 1.0)
         
-        # But consecutive failures is 0 (main branch has success)
+        # Legacy/comprehensive: all branches = 1 success / 4 total = 0.25
+        self.assertEqual(enriched[0]['recent_success_rate_all_branches'], 0.25)
+        
+        # Consecutive failures is 0 (main branch has success)
         self.assertEqual(enriched[0]['consecutive_default_branch_failures'], 0)
+    
+    def test_success_rate_default_branch_none_when_no_default_branch_pipelines(self):
+        """Test that default-branch success rate is None when no default-branch pipelines exist"""
+        project = {
+            'id': 1,
+            'name': 'test-project',
+            'default_branch': 'main'
+        }
+        
+        # Only feature branch pipelines, no main branch
+        pipelines = [
+            {'status': 'success', 'ref': 'feature/new', 'created_at': '2024-01-20T10:00:00Z'},
+            {'status': 'failed', 'ref': 'feature/another', 'created_at': '2024-01-20T09:00:00Z'},
+        ]
+        
+        per_project_pipelines = {1: pipelines}
+        
+        poller = server.BackgroundPoller(None, 60)
+        enriched = poller._enrich_projects_with_pipelines([project], per_project_pipelines)
+        
+        # Default-branch success rates should be None (no main branch pipelines)
+        self.assertIsNone(enriched[0]['recent_success_rate'])
+        self.assertIsNone(enriched[0]['recent_success_rate_default_branch'])
+        
+        # All-branches rate should still work: 1 success / 2 total = 0.5
+        self.assertEqual(enriched[0]['recent_success_rate_all_branches'], 0.5)
 
 
 if __name__ == '__main__':
