@@ -103,6 +103,49 @@ export function getRepoKey(repo) {
 }
 
 /**
+ * Compute the remaining error budget percentage for a repo.
+ * Formula: If observed >= target, budget = 100%. Otherwise, budget = max(0, 100 * (1 - (target - observed) / (1 - target)))
+ * 
+ * @param {number|null} observedRate - Repo's recent success rate (0-1)
+ * @param {number} targetRate - SLO target success rate (0-1), defaults to 0.99
+ * @returns {number|null} - Remaining budget percentage (0-100) or null if observedRate is null
+ */
+export function computeErrorBudgetRemaining(observedRate, targetRate = 0.99) {
+    if (observedRate === null || observedRate === undefined) {
+        return null;
+    }
+    // If observed rate meets or exceeds target, budget is 100%
+    if (observedRate >= targetRate) {
+        return 100;
+    }
+    // Error budget = 1 - target (the allowed error margin)
+    // Consumed = target - observed
+    // Remaining % = max(0, 100 * (1 - consumed / errorBudget))
+    const errorBudget = 1 - targetRate;
+    if (errorBudget <= 0) {
+        // Edge case: target is 100%, any failure exhausts budget
+        return 0;
+    }
+    const consumed = targetRate - observedRate;
+    const remainingPct = Math.max(0, Math.min(100, 100 * (1 - consumed / errorBudget)));
+    return remainingPct;
+}
+
+/**
+ * Get the CSS class for error budget bar color based on remaining percentage.
+ * @param {number} remaining - Remaining budget percentage (0-100)
+ * @returns {string} - CSS class name
+ */
+function getErrorBudgetColorClass(remaining) {
+    if (remaining >= 50) {
+        return 'budget-healthy';
+    } else if (remaining >= 20) {
+        return 'budget-warning';
+    }
+    return 'budget-critical';
+}
+
+/**
  * Create HTML for a single repository card
  * Uses DSO-focused status for card styling based on:
  * - Runner issues (high priority)
@@ -111,9 +154,11 @@ export function getRepoKey(repo) {
  * 
  * @param {Object} repo - Repository data
  * @param {string} [extraClasses=''] - Additional CSS classes (e.g., for attention animations)
+ * @param {Object} [sloConfig=null] - Optional SLO configuration
+ * @param {number} [sloConfig.defaultBranchSuccessTarget] - SLO target for default branch success rate (0-1)
  * @returns {string} - HTML string for the repo card
  */
-export function createRepoCard(repo, extraClasses = '') {
+export function createRepoCard(repo, extraClasses = '', sloConfig = null) {
     const description = repo.description || '';
     const pipelineStatus = repo.last_pipeline_status || null;
     const normalizedStatus = normalizeStatus(pipelineStatus);
@@ -194,6 +239,31 @@ export function createRepoCard(repo, extraClasses = '') {
         `;
     }
 
+    // Error budget section - shows remaining error budget based on SLO target
+    let errorBudgetSection = '';
+    const sloTarget = sloConfig?.defaultBranchSuccessTarget ?? 0.99;
+    const errorBudgetRemaining = computeErrorBudgetRemaining(repo.recent_success_rate, sloTarget);
+    
+    if (errorBudgetRemaining !== null) {
+        const remainingPct = Math.round(errorBudgetRemaining);
+        const budgetColorClass = getErrorBudgetColorClass(errorBudgetRemaining);
+        
+        errorBudgetSection = `
+            <div class="repo-error-budget" title="Error budget remaining based on SLO target of ${Math.round(sloTarget * 100)}%">
+                <span class="repo-error-budget-label">Error budget: ${remainingPct}% remaining</span>
+                <div class="repo-error-budget-bar-container">
+                    <div class="repo-error-budget-bar ${budgetColorClass}" data-remaining="${remainingPct}" style="width: ${remainingPct}%"></div>
+                </div>
+            </div>
+        `;
+    } else {
+        errorBudgetSection = `
+            <div class="repo-error-budget">
+                <span class="repo-error-budget-label">Error budget: N/A</span>
+            </div>
+        `;
+    }
+
     // Combine status class with any extra attention classes
     const cardClasses = `repo-card ${statusClass}${extraClasses}`;
 
@@ -212,6 +282,7 @@ export function createRepoCard(repo, extraClasses = '') {
             ${indicatorsHtml}
             ${pipelineInfo}
             ${successRateSection}
+            ${errorBudgetSection}
             ${repo.web_url ? `<a href="${repo.web_url}" target="_blank" rel="noopener noreferrer" class="repo-link">View on GitLab →</a>` : ''}
         </div>
     `;
@@ -303,9 +374,11 @@ function sortRepositories(repos) {
  * 
  * @param {Array} repos - Array of repository objects
  * @param {Map} previousState - Map of previous repo states { dsoStatus, index }
+ * @param {Object} [sloConfig=null] - Optional SLO configuration to pass to createRepoCard
+ * @param {number} [sloConfig.defaultBranchSuccessTarget] - SLO target for default branch success rate (0-1)
  * @returns {Map} - Updated state map for next render cycle
  */
-export function renderRepositories(repos, previousState) {
+export function renderRepositories(repos, previousState, sloConfig = null) {
     const container = document.getElementById('repoGrid');
     if (!container) return new Map();
 
@@ -356,7 +429,7 @@ export function renderRepositories(repos, previousState) {
         // Store new state for next refresh (use dsoStatus instead of normalizedStatus)
         nextState.set(key, { dsoStatus: dsoStatus, index: currentIndex });
 
-        return createRepoCard(repo, attentionClass);
+        return createRepoCard(repo, attentionClass, sloConfig);
     }).join('');
 
     container.innerHTML = cardsHtml;
