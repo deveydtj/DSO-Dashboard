@@ -130,7 +130,7 @@ export class DashboardApp {
             const data = await fetchRepos(this.apiBase, this.fetchTimeout);
             this.cachedData.repos = data.repositories;
             // Render repos and track state for attention animations (status degradation, position changes)
-            this.repoState = renderRepositories(data.repositories || [], this.repoState);
+            this.repoState = renderRepositories(data.repositories || [], this.repoState, this.sloConfig);
             console.log(`✅ Loaded ${data.repositories?.length || 0} repositories`);
             return true;
         } catch (error) {
@@ -138,7 +138,14 @@ export class DashboardApp {
             // Try to use cached data
             if (this.cachedData.repos) {
                 console.log('📦 Using cached repositories data');
-                this.repoState = renderRepositories(this.cachedData.repos, this.repoState);
+                // Rebuild sloConfig from cached summary if not already set
+                if (!this.sloConfig && this.cachedData.summary) {
+                    this.sloConfig = {
+                        defaultBranchSuccessTarget: this.cachedData.summary.pipeline_slo_target_default_branch_success_rate ?? 0.99,
+                        errorBudgetRemainingPct: this.cachedData.summary.pipeline_error_budget_remaining_pct ?? null
+                    };
+                }
+                this.repoState = renderRepositories(this.cachedData.repos, this.repoState, this.sloConfig);
             } else {
                 showError('Failed to load repositories', 'repoGrid');
             }
