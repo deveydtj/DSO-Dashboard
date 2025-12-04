@@ -6,19 +6,21 @@ from pathlib import Path
 
 
 class TestBuildAttentionItems(unittest.TestCase):
-    """Verify buildAttentionItems placeholder returns empty array."""
+    """Verify buildAttentionItems returns an array and handles healthy inputs."""
 
-    def test_build_attention_items_returns_empty_array(self):
+    def test_build_attention_items_returns_array(self):
+        """Test buildAttentionItems returns an array even with items."""
         project_root = Path(__file__).resolve().parents[2]
         attention_view_path = project_root / 'frontend' / 'src' / 'views' / 'attentionView.js'
 
         script = f"""
 import {{ buildAttentionItems }} from 'file://{attention_view_path}';
 const result = buildAttentionItems({{
-    summary: {{ total_repositories: 10 }},
-    repos: [{{ id: 1 }}],
-    services: [{{ name: 'svc' }}],
-    pipelines: [{{ id: 100 }}]
+    summary: {{ pipeline_slo_target_default_branch_success_rate: 0.9 }},
+    repos: [{{ id: 1, name: 'healthy-repo', path_with_namespace: 'group/healthy-repo', 
+               recent_success_rate: 1.0, consecutive_default_branch_failures: 0, has_runner_issues: false }}],
+    services: [{{ id: 'svc', name: 'Healthy Service', status: 'UP', latency_trend: 'stable' }}],
+    pipelines: [{{ id: 100, project_id: 1, ref: 'main' }}]
 }});
 console.log(JSON.stringify({{ isArray: Array.isArray(result), length: result.length }}));
 """
@@ -32,7 +34,8 @@ console.log(JSON.stringify({{ isArray: Array.isArray(result), length: result.len
 
         result = json.loads(completed.stdout.strip())
         self.assertTrue(result['isArray'], 'buildAttentionItems should return an array')
-        self.assertEqual(result['length'], 0, 'buildAttentionItems should return empty array')
+        # With healthy repos and services, no attention items should be generated
+        self.assertEqual(result['length'], 0, 'buildAttentionItems should return empty array for healthy inputs')
 
 
 class TestRenderAttentionStripEmpty(unittest.TestCase):

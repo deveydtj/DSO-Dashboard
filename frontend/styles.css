@@ -238,6 +238,92 @@ body {
         -4px -4px 8px var(--shadow-light);
 }
 
+/* Attention item internal structure */
+.attention-item-icon {
+    font-size: 0.9rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.attention-item-name {
+    font-weight: 600;
+    color: inherit;
+}
+
+.attention-item-reason {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+/* Severity-based styling */
+.attention-item--critical {
+    border-left: 3px solid var(--accent-error);
+    /* rgba(239, 68, 68, 0.15) is based on --accent-error (#ef4444) */
+    background: rgba(239, 68, 68, 0.15);
+    color: var(--accent-error);
+    box-shadow: 
+        3px 3px 6px var(--shadow-dark),
+        -3px -3px 6px var(--shadow-light),
+        /* rgba(239, 68, 68, 0.2) is based on --accent-error (#ef4444) */
+        0 0 8px rgba(239, 68, 68, 0.2);
+}
+
+.attention-item--critical .attention-item-reason {
+    color: rgba(239, 68, 68, 0.7);
+}
+
+.attention-item--high {
+    border-left: 3px solid var(--accent-warning);
+    /* rgba(245, 158, 11, 0.15) is based on --accent-warning (#f59e0b) */
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--accent-warning);
+    box-shadow: 
+        3px 3px 6px var(--shadow-dark),
+        -3px -3px 6px var(--shadow-light),
+        0 0 6px rgba(245, 158, 11, 0.15);
+}
+
+.attention-item--high .attention-item-reason {
+    color: rgba(245, 158, 11, 0.7);
+}
+
+.attention-item--medium {
+    border-left: 3px solid var(--accent-info);
+    /* rgba(59, 130, 246, 0.15) is based on --accent-info (#3b82f6) - using 0.15 for consistency */
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--accent-info);
+}
+
+.attention-item--medium .attention-item-reason {
+    color: rgba(59, 130, 246, 0.7);
+}
+
+.attention-item--low {
+    border-left: 3px solid var(--text-secondary);
+    /* rgba(160, 160, 176, 0.1) is --text-secondary (#a0a0b0) with opacity */
+    background: rgba(160, 160, 176, 0.1);
+    color: var(--text-secondary);
+}
+
+.attention-item--low .attention-item-reason {
+    color: var(--text-secondary);
+    opacity: 0.7;
+}
+
+/* Type-based icon styling (visual distinction) */
+.attention-item--repo .attention-item-icon {
+    color: var(--accent-primary);
+}
+
+.attention-item--service .attention-item-icon {
+    color: var(--accent-success);
+}
+
+.attention-item--pipeline .attention-item-icon {
+    color: var(--accent-warning);
+}
+
 /* KPI Cards */
 .kpi-section {
     display: grid;
@@ -1478,6 +1564,18 @@ body.compact .attention-clear-message {
 body.compact .attention-item {
     font-size: 0.75rem;
     padding: 0.3rem 0.6rem;
+}
+
+body.compact .attention-item-icon {
+    font-size: 0.75rem;
+}
+
+body.compact .attention-item-name {
+    font-size: 0.75rem;
+}
+
+body.compact .attention-item-reason {
+    font-size: 0.65rem;
 }
 
 body.compact .kpi-section {
