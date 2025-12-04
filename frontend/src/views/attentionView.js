@@ -124,14 +124,18 @@ function buildServiceAttentionItems(services) {
 /**
  * Build attention items from pipelines that need attention.
  * Only includes the most recent pipeline on default branch with issues.
- * @param {Array} pipelines - Pipeline list
- * @param {Array} repos - Repository list (to determine default branches)
+ * @param {Array} pipelines - Pipeline list (should be safe array)
+ * @param {Array} repos - Repository list (should be safe array, used to determine default branches)
  * @returns {Array} - Array of attention items for pipelines
  */
 function buildPipelineAttentionItems(pipelines, repos) {
+    // Ensure arrays are safe (this function is called from buildAttentionItems which already ensures safety)
+    const safePipelines = pipelines || [];
+    const safeRepos = repos || [];
+
     // Build a map of project_id to default_branch
     const defaultBranches = new Map();
-    for (const repo of repos) {
+    for (const repo of safeRepos) {
         if (repo.id && repo.default_branch) {
             defaultBranches.set(repo.id, repo.default_branch);
         }
@@ -139,7 +143,7 @@ function buildPipelineAttentionItems(pipelines, repos) {
 
     // Find pipelines on default branch with issues
     const pipelineIssues = [];
-    for (const pipeline of pipelines) {
+    for (const pipeline of safePipelines) {
         const defaultBranch = defaultBranches.get(pipeline.project_id);
         const isDefaultBranch = defaultBranch && pipeline.ref === defaultBranch;
 

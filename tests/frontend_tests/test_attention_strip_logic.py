@@ -274,12 +274,19 @@ class TestBuildAttentionItemsTruncation(unittest.TestCase):
         project_root = Path(__file__).resolve().parents[2]
         attention_view_path = project_root / 'frontend' / 'src' / 'views' / 'attentionView.js'
 
-        # Create 10 repos with issues
+        # Create 10 repos with issues using proper JSON serialization
         repos = [
-            f'{{ id: {i}, name: "repo-{i}", path_with_namespace: "group/repo-{i}", recent_success_rate: 0.5, consecutive_default_branch_failures: 0, has_runner_issues: false }}'
+            {
+                'id': i,
+                'name': f'repo-{i}',
+                'path_with_namespace': f'group/repo-{i}',
+                'recent_success_rate': 0.5,
+                'consecutive_default_branch_failures': 0,
+                'has_runner_issues': False
+            }
             for i in range(1, 11)
         ]
-        repos_json = '[' + ', '.join(repos) + ']'
+        repos_json = json.dumps(repos)
 
         script = f"""
 import {{ buildAttentionItems }} from 'file://{attention_view_path}';
