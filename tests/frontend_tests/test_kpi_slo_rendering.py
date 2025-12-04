@@ -63,12 +63,19 @@ console.log(JSON.stringify({{
         script = f"""
 import {{ renderSloKpis }} from 'file://{self.kpi_view_path}';
 
+// Create a parent progressbar element for ARIA testing
+const progressBarParent = {{
+    _attrs: {{}},
+    setAttribute: function(k, v) {{ this._attrs[k] = v; }},
+    hasAttribute: function(k) {{ return k === 'role'; }}
+}};
+
 // Set up minimal DOM
 globalThis.document = {{
     getElementById: function(id) {{
         if (!this._elements) this._elements = {{}};
         if (!this._elements[id]) {{
-            this._elements[id] = {{
+            const el = {{
                 textContent: '',
                 style: {{}},
                 _attrs: {{}},
@@ -81,6 +88,11 @@ globalThis.document = {{
                 setAttribute: function(k, v) {{ this._attrs[k] = v; }},
                 getAttribute: function(k) {{ return this._attrs[k]; }}
             }};
+            // Add parentElement for the budget bar element
+            if (id === 'pipelineErrorBudgetBar') {{
+                el.parentElement = progressBarParent;
+            }}
+            this._elements[id] = el;
         }}
         return this._elements[id];
     }}
@@ -107,7 +119,8 @@ console.log(JSON.stringify({{
     barWidth: budgetBarEl.style.width,
     hasHealthyClass: budgetBarEl.classList.has('budget-healthy'),
     hasWarningClass: budgetBarEl.classList.has('budget-warning'),
-    hasCriticalClass: budgetBarEl.classList.has('budget-critical')
+    hasCriticalClass: budgetBarEl.classList.has('budget-critical'),
+    ariaValueNow: progressBarParent._attrs['aria-valuenow']
 }}));
 """
         result = self.run_node_script(script)
@@ -119,17 +132,25 @@ console.log(JSON.stringify({{
         self.assertTrue(result['hasHealthyClass'], 'should have budget-healthy class for 75.5%')
         self.assertFalse(result['hasWarningClass'])
         self.assertFalse(result['hasCriticalClass'])
+        self.assertEqual(result['ariaValueNow'], '76', 'aria-valuenow should be rounded to 76')
 
     def test_render_slo_kpis_warning_threshold(self):
         """Test renderSloKpis applies warning class for 20-49% budget."""
         script = f"""
 import {{ renderSloKpis }} from 'file://{self.kpi_view_path}';
 
+// Create a parent progressbar element for ARIA testing
+const progressBarParent = {{
+    _attrs: {{}},
+    setAttribute: function(k, v) {{ this._attrs[k] = v; }},
+    hasAttribute: function(k) {{ return k === 'role'; }}
+}};
+
 globalThis.document = {{
     getElementById: function(id) {{
         if (!this._elements) this._elements = {{}};
         if (!this._elements[id]) {{
-            this._elements[id] = {{
+            const el = {{
                 textContent: '',
                 style: {{}},
                 _attrs: {{}},
@@ -142,6 +163,11 @@ globalThis.document = {{
                 setAttribute: function(k, v) {{ this._attrs[k] = v; }},
                 getAttribute: function(k) {{ return this._attrs[k]; }}
             }};
+            // Add parentElement for the budget bar element
+            if (id === 'pipelineErrorBudgetBar') {{
+                el.parentElement = progressBarParent;
+            }}
+            this._elements[id] = el;
         }}
         return this._elements[id];
     }}
@@ -161,7 +187,8 @@ console.log(JSON.stringify({{
     barDataRemaining: budgetBarEl._attrs['data-remaining'],
     hasHealthyClass: budgetBarEl.classList.has('budget-healthy'),
     hasWarningClass: budgetBarEl.classList.has('budget-warning'),
-    hasCriticalClass: budgetBarEl.classList.has('budget-critical')
+    hasCriticalClass: budgetBarEl.classList.has('budget-critical'),
+    ariaValueNow: progressBarParent._attrs['aria-valuenow']
 }}));
 """
         result = self.run_node_script(script)
@@ -169,17 +196,25 @@ console.log(JSON.stringify({{
         self.assertFalse(result['hasHealthyClass'])
         self.assertTrue(result['hasWarningClass'], 'should have budget-warning class for 35%')
         self.assertFalse(result['hasCriticalClass'])
+        self.assertEqual(result['ariaValueNow'], '35', 'aria-valuenow should be 35')
 
     def test_render_slo_kpis_critical_threshold(self):
         """Test renderSloKpis applies critical class for <20% budget."""
         script = f"""
 import {{ renderSloKpis }} from 'file://{self.kpi_view_path}';
 
+// Create a parent progressbar element for ARIA testing
+const progressBarParent = {{
+    _attrs: {{}},
+    setAttribute: function(k, v) {{ this._attrs[k] = v; }},
+    hasAttribute: function(k) {{ return k === 'role'; }}
+}};
+
 globalThis.document = {{
     getElementById: function(id) {{
         if (!this._elements) this._elements = {{}};
         if (!this._elements[id]) {{
-            this._elements[id] = {{
+            const el = {{
                 textContent: '',
                 style: {{}},
                 _attrs: {{}},
@@ -192,6 +227,11 @@ globalThis.document = {{
                 setAttribute: function(k, v) {{ this._attrs[k] = v; }},
                 getAttribute: function(k) {{ return this._attrs[k]; }}
             }};
+            // Add parentElement for the budget bar element
+            if (id === 'pipelineErrorBudgetBar') {{
+                el.parentElement = progressBarParent;
+            }}
+            this._elements[id] = el;
         }}
         return this._elements[id];
     }}
@@ -211,7 +251,8 @@ console.log(JSON.stringify({{
     barDataRemaining: budgetBarEl._attrs['data-remaining'],
     hasHealthyClass: budgetBarEl.classList.has('budget-healthy'),
     hasWarningClass: budgetBarEl.classList.has('budget-warning'),
-    hasCriticalClass: budgetBarEl.classList.has('budget-critical')
+    hasCriticalClass: budgetBarEl.classList.has('budget-critical'),
+    ariaValueNow: progressBarParent._attrs['aria-valuenow']
 }}));
 """
         result = self.run_node_script(script)
@@ -219,6 +260,7 @@ console.log(JSON.stringify({{
         self.assertFalse(result['hasHealthyClass'])
         self.assertFalse(result['hasWarningClass'])
         self.assertTrue(result['hasCriticalClass'], 'should have budget-critical class for 10%')
+        self.assertEqual(result['ariaValueNow'], '10', 'aria-valuenow should be 10')
 
     def test_render_slo_kpis_missing_values(self):
         """Test renderSloKpis handles missing SLO values gracefully."""
