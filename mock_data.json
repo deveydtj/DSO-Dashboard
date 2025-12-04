@@ -8,6 +8,9 @@
     "running_pipelines": 1,
     "pending_pipelines": 0,
     "pipeline_success_rate": 0.4444444444444444,
+    "pipeline_slo_target_default_branch_success_rate": 0.99,
+    "pipeline_slo_observed_default_branch_success_rate": 0.875,
+    "pipeline_error_budget_remaining_pct": 62.5,
     "pipeline_statuses": {
       "success": 8,
       "failed": 5,

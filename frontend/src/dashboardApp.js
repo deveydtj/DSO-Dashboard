@@ -37,6 +37,8 @@ export class DashboardApp {
             pipelines: null,
             services: null
         };
+        // SLO configuration derived from summary data
+        this.sloConfig = null;
         // Track per-repo state between refreshes for animation detection
         // Stores { status: normalizedStatus, index: sortedPosition } per repo key
         this.repoState = new Map();
@@ -101,6 +103,11 @@ export class DashboardApp {
         try {
             const data = await fetchSummary(this.apiBase, this.fetchTimeout);
             this.cachedData.summary = data;
+            // Build sloConfig from summary fields
+            this.sloConfig = {
+                defaultBranchSuccessTarget: data.pipeline_slo_target_default_branch_success_rate ?? 0.99,
+                errorBudgetRemainingPct: data.pipeline_error_budget_remaining_pct ?? null
+            };
             // Use view module to render KPIs
             renderSummaryKpis(data);
             console.log('✅ Summary data loaded', data);
