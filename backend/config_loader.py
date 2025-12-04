@@ -321,11 +321,8 @@ def load_config():
         if isinstance(raw_target, (int, float)):
             slo['default_branch_success_target'] = float(raw_target)
         else:
-            # Store the raw value (could be invalid string) for validation to catch
-            try:
-                slo['default_branch_success_target'] = float(raw_target)
-            except (ValueError, TypeError):
-                slo['default_branch_success_target'] = raw_target
+            # Store the raw value (could be invalid) for validation to catch
+            slo['default_branch_success_target'] = raw_target
     
     config['slo'] = slo
     
@@ -450,18 +447,23 @@ def validate_config(config):
     if not isinstance(slo, dict):
         logger.error(f"Configuration error: 'slo' must be a dict, got: {type(slo).__name__}")
         is_valid = False
-    else:
-        # Validate default_branch_success_target is a float > 0 and < 1
+    elif slo:
+        # Only validate if slo section is present and non-empty
+        # (load_config() always provides defaults, so empty slo means test config without slo section)
+        # Validate default_branch_success_target is present and a float > 0 and < 1
         success_target = slo.get('default_branch_success_target')
-        if success_target is not None:
-            if not isinstance(success_target, (int, float)):
-                logger.error(f"Configuration error: 'slo.default_branch_success_target' must be a number, got: {type(success_target).__name__}")
-                logger.error("  Fix: Set SLO_DEFAULT_BRANCH_SUCCESS_TARGET environment variable or 'slo.default_branch_success_target' in config.json to a decimal between 0 and 1 (e.g., 0.99)")
-                is_valid = False
-            elif success_target <= 0 or success_target >= 1:
-                logger.error(f"Configuration error: 'slo.default_branch_success_target' must be > 0 and < 1, got: {success_target}")
-                logger.error("  Fix: Set SLO_DEFAULT_BRANCH_SUCCESS_TARGET environment variable or 'slo.default_branch_success_target' in config.json to a decimal between 0 and 1 (e.g., 0.99)")
-                is_valid = False
+        if success_target is None:
+            logger.error("Configuration error: 'slo.default_branch_success_target' is missing or None")
+            logger.error("  Fix: Set SLO_DEFAULT_BRANCH_SUCCESS_TARGET environment variable or 'slo.default_branch_success_target' in config.json to a decimal between 0 and 1 (e.g., 0.99)")
+            is_valid = False
+        elif not isinstance(success_target, (int, float)):
+            logger.error(f"Configuration error: 'slo.default_branch_success_target' must be a number, got: {type(success_target).__name__}")
+            logger.error("  Fix: Set SLO_DEFAULT_BRANCH_SUCCESS_TARGET environment variable or 'slo.default_branch_success_target' in config.json to a decimal between 0 and 1 (e.g., 0.99)")
+            is_valid = False
+        elif success_target <= 0 or success_target >= 1:
+            logger.error(f"Configuration error: 'slo.default_branch_success_target' must be > 0 and < 1, got: {success_target}")
+            logger.error("  Fix: Set SLO_DEFAULT_BRANCH_SUCCESS_TARGET environment variable or 'slo.default_branch_success_target' in config.json to a decimal between 0 and 1 (e.g., 0.99)")
+            is_valid = False
     
     # Log validation result
     if is_valid:

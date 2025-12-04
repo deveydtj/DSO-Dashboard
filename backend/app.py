@@ -274,7 +274,8 @@ class BackgroundPoller(threading.Thread):
         self.external_services = external_services if isinstance(external_services, list) else []
         # Service latency monitoring configuration
         # Provides settings for computing running average and degradation warnings
-        self.service_latency_config = service_latency_config or DEFAULT_SERVICE_LATENCY_CONFIG
+        # Use shallow copy to prevent mutation of the module-level constant
+        self.service_latency_config = dict(service_latency_config) if service_latency_config else dict(DEFAULT_SERVICE_LATENCY_CONFIG)
         # SLO configuration for default-branch pipeline success rate target
         # Use shallow copy to prevent mutation of the module-level constant
         self.slo_config = dict(slo_config) if slo_config else dict(DEFAULT_SLO_CONFIG)
