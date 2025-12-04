@@ -579,5 +579,45 @@ class TestBackgroundPollerSloConfig(unittest.TestCase):
         self.assertEqual(server.DEFAULT_SLO_CONFIG['default_branch_success_target'], original_default)
 
 
+class TestSloConfigInvalidEnvVar(unittest.TestCase):
+    """Test that invalid SLO env var values fail validation (not silently defaulted)"""
+    
+    def setUp(self):
+        """Clear environment variables before each test"""
+        self.env_backup = os.environ.copy()
+        # Clear all GITLAB_* and SLO_* env vars
+        for key in list(os.environ.keys()):
+            if key.startswith('GITLAB_') or key.startswith('SLO_') or key in ['PORT', 'CACHE_TTL', 'POLL_INTERVAL', 'PER_PAGE', 'INSECURE_SKIP_VERIFY', 'USE_MOCK_DATA']:
+                del os.environ[key]
+    
+    def tearDown(self):
+        """Restore environment variables after each test"""
+        os.environ.clear()
+        os.environ.update(self.env_backup)
+    
+    def test_invalid_slo_env_var_preserved_for_validation(self):
+        """Test that invalid SLO env var like 'abc' is preserved (not silently defaulted)"""
+        os.environ['SLO_DEFAULT_BRANCH_SUCCESS_TARGET'] = 'abc'
+        
+        with patch('os.path.exists', return_value=False):
+            config = server.load_config()
+        
+        # The raw invalid value should be preserved, not silently replaced with default
+        # This allows validate_config to fail with a helpful error
+        self.assertEqual(config['slo']['default_branch_success_target'], 'abc')
+    
+    def test_invalid_slo_env_var_fails_validation(self):
+        """Test that invalid SLO env var causes validation to fail"""
+        os.environ['SLO_DEFAULT_BRANCH_SUCCESS_TARGET'] = 'not_a_number'
+        os.environ['USE_MOCK_DATA'] = 'true'  # Skip API token requirement
+        
+        with patch('os.path.exists', return_value=False):
+            config = server.load_config()
+        
+        # Validation should fail because the value is an invalid string
+        result = server.validate_config(config)
+        self.assertFalse(result, "Invalid SLO env var should cause validation to fail")
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -513,6 +513,28 @@ class TestValidateConfigSlo(unittest.TestCase):
             error_calls = [str(call) for call in mock_error.call_args_list]
             self.assertTrue(any('slo.default_branch_success_target' in call for call in error_calls))
             self.assertTrue(any('must be > 0 and < 1' in call for call in error_calls))
+    
+    def test_slo_target_invalid_string_fails_validation(self):
+        """Test that invalid string SLO target from raw config fails validation (not silently defaulted)"""
+        # This tests the fix for the issue where invalid strings like 'abc' were
+        # silently converted to defaults by parse_float_config, bypassing validation
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = 'invalid_string'
+        
+        result = server.validate_config(config)
+        self.assertFalse(result, "Invalid string SLO target should fail validation")
+    
+    def test_slo_target_invalid_string_logs_type_error(self):
+        """Test that invalid string SLO target logs 'must be a number' error"""
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = 'abc'
+        
+        with patch.object(config_loader.logger, 'error') as mock_error:
+            server.validate_config(config)
+            error_calls = [str(call) for call in mock_error.call_args_list]
+            # Should report type error, not silently accept as valid
+            self.assertTrue(any('must be a number' in call for call in error_calls),
+                           "Should log 'must be a number' error for string value")
 
 
 if __name__ == '__main__':

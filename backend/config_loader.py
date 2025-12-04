@@ -294,6 +294,8 @@ def load_config():
     # Defines default-branch pipeline success rate target for the fleet.
     # Used by summary computations to calculate error budgets.
     # Environment variables override config.json values.
+    # NOTE: We preserve the raw value here instead of using parse_float_config
+    # so that validate_config can fail-fast with helpful errors on invalid values.
     slo_raw = config.get('slo', {})
     if not isinstance(slo_raw, dict):
         logger.warning(f"Invalid slo config (not a dict): {type(slo_raw).__name__}. Using defaults.")
@@ -303,17 +305,27 @@ def load_config():
     slo = {}
     
     # default_branch_success_target: float, default 0.99 (99% success rate)
+    # Store raw value for validation - don't silently fallback to defaults here
     if 'SLO_DEFAULT_BRANCH_SUCCESS_TARGET' in os.environ:
-        slo['default_branch_success_target'] = parse_float_config(
-            os.environ['SLO_DEFAULT_BRANCH_SUCCESS_TARGET'],
-            DEFAULT_SLO_CONFIG['default_branch_success_target'],
-            'SLO_DEFAULT_BRANCH_SUCCESS_TARGET'
-        )
+        raw_target = os.environ['SLO_DEFAULT_BRANCH_SUCCESS_TARGET']
+        # Try to parse to float, but preserve original value if it fails
+        # so validate_config can report the error with the actual invalid value
+        try:
+            slo['default_branch_success_target'] = float(raw_target)
+        except (ValueError, TypeError):
+            # Store the invalid raw value so validate_config can detect and report it
+            slo['default_branch_success_target'] = raw_target
     else:
         raw_target = slo_raw.get('default_branch_success_target', DEFAULT_SLO_CONFIG['default_branch_success_target'])
-        slo['default_branch_success_target'] = parse_float_config(
-            raw_target, DEFAULT_SLO_CONFIG['default_branch_success_target'], 'slo.default_branch_success_target'
-        )
+        # If it's already a valid number type from config.json, use it directly
+        if isinstance(raw_target, (int, float)):
+            slo['default_branch_success_target'] = float(raw_target)
+        else:
+            # Store the raw value (could be invalid string) for validation to catch
+            try:
+                slo['default_branch_success_target'] = float(raw_target)
+            except (ValueError, TypeError):
+                slo['default_branch_success_target'] = raw_target
     
     config['slo'] = slo
     
