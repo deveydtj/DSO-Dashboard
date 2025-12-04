@@ -689,7 +689,8 @@ class BackgroundPoller(threading.Thread):
             observed_success_rate = 1.0
         
         # Compute error budget
-        # error_budget_total = 1 - target_rate (with minimum to avoid div by zero)
+        # error_budget_total = 1 - target_rate
+        # Use 1e-9 as minimum to avoid division by zero when target_rate is 1.0
         error_budget_total = max(1e-9, 1.0 - target_rate)
         
         # error_budget_spent_fraction = how much of the budget is consumed

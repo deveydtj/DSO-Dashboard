@@ -85,7 +85,7 @@ class TestSLOSummaryComputation(unittest.TestCase):
         
         # 90% success rate (9 success, 1 failure out of 10)
         pipelines = [
-            {'project_id': 1, 'status': 'success', 'ref': 'main', 'created_at': f'2024-01-20T1{i}:00:00Z'}
+            {'project_id': 1, 'status': 'success', 'ref': 'main', 'created_at': f'2024-01-20T{i+10:02d}:00:00Z'}
             for i in range(9)
         ] + [
             {'project_id': 1, 'status': 'failed', 'ref': 'main', 'created_at': '2024-01-20T00:00:00Z'}
