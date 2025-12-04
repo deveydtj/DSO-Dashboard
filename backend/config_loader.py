@@ -10,6 +10,7 @@ This module uses only Python standard library (no pip dependencies).
 
 import json
 import logging
+import math
 import os
 
 logger = logging.getLogger(__name__)
@@ -463,6 +464,10 @@ def validate_config(config):
             is_valid = False
         elif not isinstance(success_target, (int, float)):
             logger.error(f"Configuration error: 'slo.default_branch_success_target' must be a number, got: {type(success_target).__name__}")
+            logger.error("  Fix: Set SLO_DEFAULT_BRANCH_SUCCESS_TARGET environment variable or 'slo.default_branch_success_target' in config.json to a decimal between 0 and 1 (e.g., 0.99)")
+            is_valid = False
+        elif math.isnan(success_target):
+            logger.error("Configuration error: 'slo.default_branch_success_target' cannot be NaN")
             logger.error("  Fix: Set SLO_DEFAULT_BRANCH_SUCCESS_TARGET environment variable or 'slo.default_branch_success_target' in config.json to a decimal between 0 and 1 (e.g., 0.99)")
             is_valid = False
         elif success_target <= 0 or success_target >= 1:

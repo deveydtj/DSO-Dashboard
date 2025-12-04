@@ -535,6 +535,25 @@ class TestValidateConfigSlo(unittest.TestCase):
             # Should report type error, not silently accept as valid
             self.assertTrue(any('must be a number' in call for call in error_calls),
                            "Should log 'must be a number' error for string value")
+    
+    def test_slo_target_nan_fails_validation(self):
+        """Test that NaN SLO target fails validation"""
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = float('nan')
+        
+        result = server.validate_config(config)
+        self.assertFalse(result, "NaN SLO target should fail validation")
+    
+    def test_slo_target_nan_logs_helpful_error(self):
+        """Test that NaN SLO target logs 'cannot be NaN' error"""
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = float('nan')
+        
+        with patch.object(config_loader.logger, 'error') as mock_error:
+            server.validate_config(config)
+            error_calls = [str(call) for call in mock_error.call_args_list]
+            self.assertTrue(any('cannot be NaN' in call for call in error_calls),
+                           "Should log 'cannot be NaN' error for NaN value")
 
 
 if __name__ == '__main__':
