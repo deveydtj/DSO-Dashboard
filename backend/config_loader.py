@@ -321,8 +321,13 @@ def load_config():
         if isinstance(raw_target, (int, float)):
             slo['default_branch_success_target'] = float(raw_target)
         else:
-            # Store the raw value (could be invalid) for validation to catch
-            slo['default_branch_success_target'] = raw_target
+            # Try to parse numeric strings (e.g., from templating systems)
+            # This matches the behavior of env var parsing for consistency
+            try:
+                slo['default_branch_success_target'] = float(raw_target)
+            except (ValueError, TypeError):
+                # Store the invalid raw value so validate_config can detect and report it
+                slo['default_branch_success_target'] = raw_target
     
     config['slo'] = slo
     
