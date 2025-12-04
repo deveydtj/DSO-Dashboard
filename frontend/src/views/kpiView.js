@@ -84,6 +84,12 @@ export function renderSloKpis(data) {
         errorBudgetBar.setAttribute('data-remaining', remaining.toString());
         errorBudgetBar.style.width = remaining + '%';
 
+        // Update aria-valuenow on the parent progressbar for accessibility
+        const progressBar = errorBudgetBar.parentElement;
+        if (progressBar && progressBar.hasAttribute('role')) {
+            progressBar.setAttribute('aria-valuenow', Math.round(remaining).toString());
+        }
+
         // Set color class based on threshold
         errorBudgetBar.classList.remove('budget-healthy', 'budget-warning', 'budget-critical');
         if (remaining >= 50) {
