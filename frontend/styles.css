@@ -243,6 +243,82 @@ body {
     letter-spacing: 0.5px;
 }
 
+/* SLO KPI Card Styles */
+.kpi-card-slo {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-sm);
+}
+
+.kpi-card-slo .kpi-icon {
+    margin-bottom: var(--spacing-xs);
+}
+
+.kpi-slo-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-xs);
+}
+
+.kpi-slo-values {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-sm);
+}
+
+.kpi-slo-item {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.kpi-slo-item strong {
+    color: var(--accent-primary);
+    font-weight: 600;
+}
+
+.kpi-error-budget {
+    margin-top: var(--spacing-xs);
+}
+
+.kpi-error-budget-label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-xs);
+}
+
+.error-budget-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 
+        inset 2px 2px 4px var(--shadow-inset-dark),
+        inset -2px -2px 4px var(--shadow-inset-light);
+}
+
+.error-budget-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease, background 0.3s ease;
+}
+
+/* Error budget color thresholds */
+.error-budget-fill.budget-healthy {
+    background: linear-gradient(90deg, var(--accent-success), #059669);
+}
+
+.error-budget-fill.budget-warning {
+    background: linear-gradient(90deg, var(--accent-warning), #d97706);
+}
+
+.error-budget-fill.budget-critical {
+    background: linear-gradient(90deg, var(--accent-error), #dc2626);
+}
+
 /* Sections */
 .section {
     margin-bottom: var(--spacing-xl);
@@ -1310,6 +1386,28 @@ body.compact .kpi-value {
 
 body.compact .kpi-label {
     font-size: 0.75rem;
+}
+
+/* Compact mode SLO KPI card */
+body.compact .kpi-card-slo {
+    gap: 0.5rem;
+}
+
+body.compact .kpi-slo-values {
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+body.compact .kpi-slo-item {
+    font-size: 0.8rem;
+}
+
+body.compact .kpi-error-budget-label {
+    font-size: 0.7rem;
+}
+
+body.compact .error-budget-bar {
+    height: 6px;
 }
 
 body.compact .section {

@@ -55,6 +55,25 @@
                     <div class="kpi-label">Running Pipelines</div>
                 </div>
             </div>
+
+            <div class="kpi-card kpi-card-slo">
+                <div class="kpi-icon">🎯</div>
+                <div class="kpi-content">
+                    <div class="kpi-slo-header">
+                        <span class="kpi-label">Default Branch SLO</span>
+                    </div>
+                    <div class="kpi-slo-values">
+                        <span class="kpi-slo-item">Target: <strong id="pipelineSloTarget">--</strong></span>
+                        <span class="kpi-slo-item">Observed: <strong id="pipelineSloObserved">--</strong></span>
+                    </div>
+                    <div class="kpi-error-budget">
+                        <span class="kpi-error-budget-label">Error Budget: <span id="pipelineErrorBudgetText">--</span></span>
+                        <div class="error-budget-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Error budget remaining" aria-valuenow="0">
+                            <div class="error-budget-fill" id="pipelineErrorBudgetBar" data-remaining="0"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- Core Services Section -->
