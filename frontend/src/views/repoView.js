@@ -263,23 +263,22 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null) {
     const errorBudgetRemaining = computeErrorBudgetRemaining(repo.recent_success_rate, sloTargetNum);
     
     if (errorBudgetRemaining !== null) {
-        // Clamp and sanitize to ensure only safe numeric values are used
-        const remainingPct = Math.round(errorBudgetRemaining);
-        const safeRemainingPct = Number.isFinite(remainingPct) ? Math.max(0, Math.min(100, remainingPct)) : 0;
+        // Value is already clamped and finite by computeErrorBudgetRemaining; just round
+        const safeRemainingPct = Math.round(errorBudgetRemaining);
         const budgetColorClass = getErrorBudgetColorClass(errorBudgetRemaining);
         const sloTargetPercent = Math.round(sloTargetNum * 100);
         
         errorBudgetSection = `
-            <div class="repo-error-budget" role="status" aria-label="Error budget remaining: ${safeRemainingPct}%" title="Error budget remaining based on SLO target of ${sloTargetPercent}%">
+            <div class="repo-error-budget" title="Error budget remaining based on SLO target of ${sloTargetPercent}%">
                 <span class="repo-error-budget-label">Error budget: ${safeRemainingPct}% remaining</span>
-                <div class="repo-error-budget-bar-container" role="progressbar" aria-valuenow="${safeRemainingPct}" aria-valuemin="0" aria-valuemax="100">
+                <div class="repo-error-budget-bar-container" role="progressbar" aria-valuenow="${safeRemainingPct}" aria-valuemin="0" aria-valuemax="100" aria-label="Error budget remaining: ${safeRemainingPct}%">
                     <div class="repo-error-budget-bar ${budgetColorClass}" data-remaining="${safeRemainingPct}" style="width: ${safeRemainingPct}%"></div>
                 </div>
             </div>
         `;
     } else {
         errorBudgetSection = `
-            <div class="repo-error-budget" role="status" aria-label="Error budget: Not available">
+            <div class="repo-error-budget">
                 <span class="repo-error-budget-label">Error budget: N/A</span>
             </div>
         `;
