@@ -10,67 +10,62 @@ class TestRepoHistoryBuffers(unittest.TestCase):
 
     def test_repo_history_single_update(self):
         """Test that a single update populates history correctly."""
-        project_root = Path(__file__).resolve().parents[2]
-        dashboard_app_path = project_root / 'frontend' / 'src' / 'dashboardApp.js'
-
-        script = f"""
-import {{ DashboardApp }} from 'file://{dashboard_app_path}';
-
-// Create minimal stub for DashboardApp without browser globals
-class TestDashboardApp {{
-    constructor() {{
+        script = """
+// Stub for DashboardApp without browser globals
+class TestDashboardApp {
+    constructor() {
         this.repoHistory = new Map();
         this.serviceHistory = new Map();
         this.historyWindow = 20;
-    }}
+    }
 
-    _getRepoKey(repo) {{
-        if (repo.id != null) {{
+    _getRepoKey(repo) {
+        if (repo.id != null) {
             return String(repo.id);
-        }}
-        if (repo.path_with_namespace) {{
+        }
+        if (repo.path_with_namespace) {
             return repo.path_with_namespace;
-        }}
+        }
         return repo.name || 'unknown';
-    }}
+    }
 
-    _updateRepoHistory(repos) {{
-        for (const repo of repos) {{
+    _updateRepoHistory(repos) {
+        for (const repo of repos) {
             const key = this._getRepoKey(repo);
             const successRate = repo.recent_success_rate;
 
-            if (successRate == null || typeof successRate !== 'number' || !Number.isFinite(successRate)) {{
+            if (successRate == null || typeof successRate !== 'number' || !Number.isFinite(successRate)) {
                 continue;
-            }}
+            }
 
-            if (!this.repoHistory.has(key)) {{
+            if (!this.repoHistory.has(key)) {
                 this.repoHistory.set(key, []);
-            }}
+            }
             const history = this.repoHistory.get(key);
             history.push(successRate);
 
-            if (history.length > this.historyWindow) {{
+            if (history.length > this.historyWindow) {
                 history.splice(0, history.length - this.historyWindow);
-            }}
-        }}
-    }}
-}}
+            }
+        }
+    }
+}
 
 const app = new TestDashboardApp();
 app._updateRepoHistory([
-    {{ id: 1, name: 'repo1', recent_success_rate: 0.95 }},
-    {{ id: 2, name: 'repo2', recent_success_rate: 0.88 }}
+    { id: 1, name: 'repo1', recent_success_rate: 0.95 },
+    { id: 2, name: 'repo2', recent_success_rate: 0.88 }
 ]);
 
 const repo1History = app.repoHistory.get('1');
 const repo2History = app.repoHistory.get('2');
 
-console.log(JSON.stringify({{
+console.log(JSON.stringify({
     repo1Length: repo1History ? repo1History.length : 0,
     repo1Last: repo1History ? repo1History[repo1History.length - 1] : null,
     repo2Length: repo2History ? repo2History.length : 0,
     repo2Last: repo2History ? repo2History[repo2History.length - 1] : null
-}}));
+}));
 """
 
         completed = subprocess.run(
