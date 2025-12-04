@@ -21,7 +21,7 @@ import {
 // Import view modules
 import { initHeaderToggles } from './views/headerView.js';
 import { renderSummaryKpis } from './views/kpiView.js';
-import { renderRepositories } from './views/repoView.js';
+import { renderRepositories, getRepoKey } from './views/repoView.js';
 import { renderPipelines } from './views/pipelineView.js';
 import { renderServices } from './views/serviceView.js';
 import { renderAttentionStrip } from './views/attentionView.js';
@@ -214,19 +214,12 @@ export class DashboardApp {
 
     /**
      * Get a stable unique key for a repository
-     * Matches logic from repoView.js getRepoKey for consistency
+     * Delegates to getRepoKey from repoView.js for consistency
      * @param {Object} repo - Repository object
      * @returns {string} - Stable key for the repository
      */
     _getRepoKey(repo) {
-        // Prefer id (most stable), fallback to path_with_namespace, then name
-        if (repo.id != null) {
-            return String(repo.id);
-        }
-        if (repo.path_with_namespace) {
-            return repo.path_with_namespace;
-        }
-        return repo.name || 'unknown';
+        return getRepoKey(repo);
     }
 
     /**
