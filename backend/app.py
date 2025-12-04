@@ -39,6 +39,7 @@ from backend.gitlab_client import (
     get_summary,
     MAX_PROJECTS_FOR_PIPELINES,
     PIPELINES_PER_PROJECT,
+    IGNORED_PIPELINE_STATUSES,
 )
 from backend.services import (
     get_service_statuses,
@@ -80,7 +81,12 @@ DEFAULT_SUMMARY = {
     'running_pipelines': 0,
     'pending_pipelines': 0,
     'pipeline_success_rate': 0.0,
-    'pipeline_statuses': {}
+    'pipeline_statuses': {},
+    # SLO fields for default-branch pipeline success
+    'pipeline_slo_target_default_branch_success_rate': DEFAULT_SLO_CONFIG['default_branch_success_target'],
+    'pipeline_slo_observed_default_branch_success_rate': 1.0,  # 100% when no pipelines
+    'pipeline_slo_total_default_branch_pipelines': 0,
+    'pipeline_error_budget_remaining_pct': 100,  # 100% remaining when no pipelines
 }
 
 
@@ -605,9 +611,104 @@ class BackgroundPoller(threading.Thread):
     def _calculate_summary(self, projects, pipelines):
         """Calculate summary statistics
         
-        Delegates to the gitlab_client module's get_summary function.
+        Delegates to the gitlab_client module's get_summary function,
+        then adds SLO metrics based on default-branch pipeline success.
         """
-        return get_summary(projects, pipelines)
+        summary = get_summary(projects, pipelines)
+        
+        # Compute and add SLO metrics for default-branch pipelines
+        slo_metrics = self._compute_default_branch_slo(projects, pipelines)
+        summary.update(slo_metrics)
+        
+        return summary
+    
+    def _compute_default_branch_slo(self, projects, pipelines):
+        """Compute SLO metrics for default-branch pipelines
+        
+        Calculates success rate and error budget usage for pipelines
+        targeting the default branch of each project.
+        
+        Args:
+            projects: List of project dicts
+            pipelines: List of pipeline dicts
+        
+        Returns:
+            dict: SLO metrics with keys:
+                - pipeline_slo_target_default_branch_success_rate (float)
+                - pipeline_slo_observed_default_branch_success_rate (float)
+                - pipeline_slo_total_default_branch_pipelines (int)
+                - pipeline_error_budget_remaining_pct (int)
+        """
+        # Get target from SLO config
+        target_rate = self.slo_config.get(
+            'default_branch_success_target', 
+            DEFAULT_SLO_CONFIG['default_branch_success_target']
+        )
+        
+        # Build project_id -> default_branch map
+        project_default_branches = {}
+        for project in (projects or []):
+            project_id = project.get('id')
+            if project_id is not None:
+                default_branch = project.get('default_branch', DEFAULT_BRANCH_NAME)
+                project_default_branches[project_id] = default_branch
+        
+        # Filter pipelines to default-branch only, excluding ignored statuses
+        total_default_branch = 0
+        successful_default_branch = 0
+        
+        for pipeline in (pipelines or []):
+            project_id = pipeline.get('project_id')
+            
+            # Skip pipelines without project_id or not in our projects
+            if project_id is None or project_id not in project_default_branches:
+                continue
+            
+            default_branch = project_default_branches[project_id]
+            pipeline_ref = pipeline.get('ref')
+            
+            # Skip pipelines not on default branch
+            if pipeline_ref != default_branch:
+                continue
+            
+            # Skip ignored statuses (skipped, manual, canceled)
+            status = pipeline.get('status')
+            if status in IGNORED_PIPELINE_STATUSES:
+                continue
+            
+            # Count meaningful default-branch pipelines
+            total_default_branch += 1
+            if status == 'success':
+                successful_default_branch += 1
+        
+        # Compute observed success rate
+        # If no meaningful pipelines, treat as 100% success (no error budget consumed)
+        if total_default_branch > 0:
+            observed_success_rate = successful_default_branch / total_default_branch
+        else:
+            observed_success_rate = 1.0
+        
+        # Compute error budget
+        # error_budget_total = 1 - target_rate (with minimum to avoid div by zero)
+        error_budget_total = max(1e-9, 1.0 - target_rate)
+        
+        # error_budget_spent_fraction = how much of the budget is consumed
+        # (1 - observed_rate) / error_budget_total, clamped to [0, 1]
+        error_budget_spent_fraction = max(0.0, min(1.0, 
+            (1.0 - observed_success_rate) / error_budget_total
+        ))
+        
+        # error_budget_remaining_pct = percentage of budget remaining
+        error_budget_remaining_pct = round((1.0 - error_budget_spent_fraction) * 100)
+        # Clamp to [0, 100]
+        error_budget_remaining_pct = max(0, min(100, error_budget_remaining_pct))
+        
+        return {
+            'pipeline_slo_target_default_branch_success_rate': target_rate,
+            'pipeline_slo_observed_default_branch_success_rate': observed_success_rate,
+            'pipeline_slo_total_default_branch_pipelines': total_default_branch,
+            'pipeline_error_budget_remaining_pct': error_budget_remaining_pct,
+        }
     
     def _check_external_services(self, poll_id=None):
         """Check health of configured external services
