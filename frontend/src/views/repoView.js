@@ -132,14 +132,26 @@ export function computeErrorBudgetRemaining(observedRate, targetRate = 0.99) {
 }
 
 /**
+ * Error budget color thresholds matching the KPI SLO bar
+ * These constants define when the budget bar changes color:
+ * - >= HEALTHY_MIN (50%): Green - comfortable remaining budget
+ * - >= WARNING_MIN (20%): Yellow - budget getting tight
+ * - < WARNING_MIN: Red - budget nearly or fully exhausted
+ */
+const ERROR_BUDGET_THRESHOLDS = {
+    HEALTHY_MIN: 50,    // >= 50% remaining = green (budget-healthy)
+    WARNING_MIN: 20     // >= 20% remaining = yellow (budget-warning), < 20% = red (budget-critical)
+};
+
+/**
  * Get the CSS class for error budget bar color based on remaining percentage.
  * @param {number} remaining - Remaining budget percentage (0-100)
  * @returns {string} - CSS class name
  */
 function getErrorBudgetColorClass(remaining) {
-    if (remaining >= 50) {
+    if (remaining >= ERROR_BUDGET_THRESHOLDS.HEALTHY_MIN) {
         return 'budget-healthy';
-    } else if (remaining >= 20) {
+    } else if (remaining >= ERROR_BUDGET_THRESHOLDS.WARNING_MIN) {
         return 'budget-warning';
     }
     return 'budget-critical';
@@ -241,24 +253,33 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null) {
 
     // Error budget section - shows remaining error budget based on SLO target
     let errorBudgetSection = '';
-    const sloTarget = sloConfig?.defaultBranchSuccessTarget ?? 0.99;
-    const errorBudgetRemaining = computeErrorBudgetRemaining(repo.recent_success_rate, sloTarget);
+    
+    // Sanitize sloTarget: ensure it's a valid number between 0 and 1, fallback to 0.99 if invalid
+    let sloTargetRaw = sloConfig?.defaultBranchSuccessTarget;
+    let sloTargetNum = Number(sloTargetRaw);
+    if (isNaN(sloTargetNum) || sloTargetNum <= 0 || sloTargetNum > 1) {
+        sloTargetNum = 0.99;
+    }
+    const errorBudgetRemaining = computeErrorBudgetRemaining(repo.recent_success_rate, sloTargetNum);
     
     if (errorBudgetRemaining !== null) {
+        // Clamp and sanitize to ensure only safe numeric values are used
         const remainingPct = Math.round(errorBudgetRemaining);
+        const safeRemainingPct = Number.isFinite(remainingPct) ? Math.max(0, Math.min(100, remainingPct)) : 0;
         const budgetColorClass = getErrorBudgetColorClass(errorBudgetRemaining);
+        const sloTargetPercent = Math.round(sloTargetNum * 100);
         
         errorBudgetSection = `
-            <div class="repo-error-budget" title="Error budget remaining based on SLO target of ${Math.round(sloTarget * 100)}%">
-                <span class="repo-error-budget-label">Error budget: ${remainingPct}% remaining</span>
-                <div class="repo-error-budget-bar-container">
-                    <div class="repo-error-budget-bar ${budgetColorClass}" data-remaining="${remainingPct}" style="width: ${remainingPct}%"></div>
+            <div class="repo-error-budget" role="status" aria-label="Error budget remaining: ${safeRemainingPct}%" title="Error budget remaining based on SLO target of ${sloTargetPercent}%">
+                <span class="repo-error-budget-label">Error budget: ${safeRemainingPct}% remaining</span>
+                <div class="repo-error-budget-bar-container" role="progressbar" aria-valuenow="${safeRemainingPct}" aria-valuemin="0" aria-valuemax="100">
+                    <div class="repo-error-budget-bar ${budgetColorClass}" data-remaining="${safeRemainingPct}" style="width: ${safeRemainingPct}%"></div>
                 </div>
             </div>
         `;
     } else {
         errorBudgetSection = `
-            <div class="repo-error-budget">
+            <div class="repo-error-budget" role="status" aria-label="Error budget: Not available">
                 <span class="repo-error-budget-label">Error budget: N/A</span>
             </div>
         `;

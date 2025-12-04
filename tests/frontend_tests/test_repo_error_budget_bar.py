@@ -228,6 +228,46 @@ console.log(JSON.stringify({{
         # 0.98 observed vs 0.99 target: budget = 0.01, consumed = 0.01, remaining = 0%
         self.assertEqual(result['dataRemainingValue'], 0)
 
+    def test_create_repo_card_invalid_slo_target(self):
+        """Test createRepoCard handles non-numeric/invalid SLO targets gracefully."""
+        script = f"""
+import {{ createRepoCard }} from 'file://{self.repo_view_path}';
+
+const repo = {{
+    id: 999,
+    name: 'invalid-target-test',
+    visibility: 'internal',
+    recent_success_rate: 0.95
+}};
+
+// Test with various invalid targets - should fallback to 0.99
+const htmlString = createRepoCard(repo, '', {{ defaultBranchSuccessTarget: 'not-a-number' }});
+const htmlNaN = createRepoCard(repo, '', {{ defaultBranchSuccessTarget: NaN }});
+const htmlZero = createRepoCard(repo, '', {{ defaultBranchSuccessTarget: 0 }});
+const htmlNegative = createRepoCard(repo, '', {{ defaultBranchSuccessTarget: -0.5 }});
+const htmlOverOne = createRepoCard(repo, '', {{ defaultBranchSuccessTarget: 1.5 }});
+
+// All should use fallback of 0.99, so with 0.95 observed:
+// budget = 0.01, consumed = 0.04, remaining would be negative -> clamped to 0
+const allUseFallback = (
+    htmlString.includes('data-remaining="0"') &&
+    htmlNaN.includes('data-remaining="0"') &&
+    htmlZero.includes('data-remaining="0"') &&
+    htmlNegative.includes('data-remaining="0"') &&
+    htmlOverOne.includes('data-remaining="0"')
+);
+
+console.log(JSON.stringify({{
+    allUseFallback,
+    hasBarInStringCase: htmlString.includes('repo-error-budget-bar'),
+    hasBarInNaNCase: htmlNaN.includes('repo-error-budget-bar')
+}}));
+"""
+        result = self.run_node_script(script)
+        self.assertTrue(result['allUseFallback'], 'Invalid targets should fallback to 0.99')
+        self.assertTrue(result['hasBarInStringCase'], 'Should render bar even with string target')
+        self.assertTrue(result['hasBarInNaNCase'], 'Should render bar even with NaN target')
+
 
 if __name__ == '__main__':
     unittest.main()
