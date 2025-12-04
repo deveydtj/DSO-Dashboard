@@ -419,5 +419,142 @@ class TestMainWithValidation(unittest.TestCase):
                     self.assertEqual(result, 0)
 
 
+class TestValidateConfigSlo(unittest.TestCase):
+    """Test SLO configuration validation in validate_config"""
+    
+    def _base_config(self):
+        """Return a valid base config for testing"""
+        return {
+            'use_mock_data': True,
+            'api_token': '',
+            'poll_interval_sec': 60,
+            'cache_ttl_sec': 300,
+            'per_page': 100,
+            'slo': {
+                'default_branch_success_target': 0.99
+            }
+        }
+    
+    def test_valid_slo_config_passes(self):
+        """Test that a valid SLO config passes validation"""
+        config = self._base_config()
+        result = server.validate_config(config)
+        self.assertTrue(result)
+    
+    def test_missing_slo_section_uses_defaults(self):
+        """Test that missing slo section uses DEFAULT_SLO_CONFIG defaults"""
+        config = self._base_config()
+        del config['slo']
+        # validate_config should pass because load_config adds the defaults
+        result = server.validate_config(config)
+        # Missing slo is allowed - validate_config checks for dict type which None/missing passes
+        self.assertTrue(result)
+    
+    def test_slo_target_at_lower_bound_fails(self):
+        """Test that slo.default_branch_success_target of 0 fails validation"""
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = 0
+        result = server.validate_config(config)
+        self.assertFalse(result)
+    
+    def test_slo_target_at_upper_bound_fails(self):
+        """Test that slo.default_branch_success_target of 1 fails validation"""
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = 1
+        result = server.validate_config(config)
+        self.assertFalse(result)
+    
+    def test_slo_target_negative_fails(self):
+        """Test that negative slo.default_branch_success_target fails validation"""
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = -0.5
+        result = server.validate_config(config)
+        self.assertFalse(result)
+    
+    def test_slo_target_greater_than_one_fails(self):
+        """Test that slo.default_branch_success_target > 1 fails validation"""
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = 1.5
+        result = server.validate_config(config)
+        self.assertFalse(result)
+    
+    def test_slo_target_non_numeric_fails(self):
+        """Test that non-numeric slo.default_branch_success_target fails validation"""
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = 'invalid'
+        result = server.validate_config(config)
+        self.assertFalse(result)
+    
+    def test_slo_target_valid_values_pass(self):
+        """Test that various valid SLO targets pass validation"""
+        valid_targets = [0.01, 0.5, 0.9, 0.95, 0.99, 0.999, 0.9999]
+        for target in valid_targets:
+            with self.subTest(target=target):
+                config = self._base_config()
+                config['slo']['default_branch_success_target'] = target
+                result = server.validate_config(config)
+                self.assertTrue(result, f"Target {target} should be valid")
+    
+    def test_slo_not_dict_fails(self):
+        """Test that non-dict slo config fails validation"""
+        config = self._base_config()
+        config['slo'] = 'invalid'
+        result = server.validate_config(config)
+        self.assertFalse(result)
+    
+    def test_slo_validation_logs_helpful_error(self):
+        """Test that SLO validation logs a helpful error message"""
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = 1.5
+        
+        with patch.object(config_loader.logger, 'error') as mock_error:
+            server.validate_config(config)
+            # Check that helpful error was logged
+            error_calls = [str(call) for call in mock_error.call_args_list]
+            self.assertTrue(any('slo.default_branch_success_target' in call for call in error_calls))
+            self.assertTrue(any('must be > 0 and < 1' in call for call in error_calls))
+    
+    def test_slo_target_invalid_string_fails_validation(self):
+        """Test that invalid string SLO target from raw config fails validation (not silently defaulted)"""
+        # This tests the fix for the issue where invalid strings like 'abc' were
+        # silently converted to defaults by parse_float_config, bypassing validation
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = 'invalid_string'
+        
+        result = server.validate_config(config)
+        self.assertFalse(result, "Invalid string SLO target should fail validation")
+    
+    def test_slo_target_invalid_string_logs_type_error(self):
+        """Test that invalid string SLO target logs 'must be a number' error"""
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = 'abc'
+        
+        with patch.object(config_loader.logger, 'error') as mock_error:
+            server.validate_config(config)
+            error_calls = [str(call) for call in mock_error.call_args_list]
+            # Should report type error, not silently accept as valid
+            self.assertTrue(any('must be a number' in call for call in error_calls),
+                           "Should log 'must be a number' error for string value")
+    
+    def test_slo_target_nan_fails_validation(self):
+        """Test that NaN SLO target fails validation"""
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = float('nan')
+        
+        result = server.validate_config(config)
+        self.assertFalse(result, "NaN SLO target should fail validation")
+    
+    def test_slo_target_nan_logs_helpful_error(self):
+        """Test that NaN SLO target logs 'cannot be NaN' error"""
+        config = self._base_config()
+        config['slo']['default_branch_success_target'] = float('nan')
+        
+        with patch.object(config_loader.logger, 'error') as mock_error:
+            server.validate_config(config)
+            error_calls = [str(call) for call in mock_error.call_args_list]
+            self.assertTrue(any('cannot be NaN' in call for call in error_calls),
+                           "Should log 'cannot be NaN' error for NaN value")
+
+
 if __name__ == '__main__':
     unittest.main()
