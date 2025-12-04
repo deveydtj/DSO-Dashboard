@@ -445,7 +445,11 @@ globalThis.document = {{
             tagName: tag.toUpperCase(),
             className: '',
             innerHTML: '',
-            textContent: ''
+            textContent: '',
+            _children: [],
+            appendChild: function(child) {{
+                this._children.push(child);
+            }}
         }};
     }}
 }};

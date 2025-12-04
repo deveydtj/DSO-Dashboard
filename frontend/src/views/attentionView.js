@@ -2,7 +2,6 @@
 // Pure JavaScript - no external dependencies
 
 import { normalizeServiceStatus } from '../utils/status.js';
-import { escapeHtml } from '../utils/formatters.js';
 
 // Default SLO target when summary doesn't provide one
 const DEFAULT_SLO_TARGET = 0.9;
@@ -286,11 +285,23 @@ export function renderAttentionStrip({ summary, repos, services, pipelines }) {
             ];
             chip.className = classes.join(' ');
             
-            // Build pill content: icon + name + reason
-            const icon = getTypeIcon(item.type);
-            const safeName = escapeHtml(item.name);
-            const safeReason = escapeHtml(item.reason);
-            chip.innerHTML = `<span class="attention-item-icon">${icon}</span><span class="attention-item-name">${safeName}</span><span class="attention-item-reason">${safeReason}</span>`;
+            // Build pill content using createElement for better maintainability
+            // and automatic escaping via textContent
+            const iconSpan = document.createElement('span');
+            iconSpan.className = 'attention-item-icon';
+            iconSpan.textContent = getTypeIcon(item.type);
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'attention-item-name';
+            nameSpan.textContent = item.name;
+
+            const reasonSpan = document.createElement('span');
+            reasonSpan.className = 'attention-item-reason';
+            reasonSpan.textContent = item.reason;
+
+            chip.appendChild(iconSpan);
+            chip.appendChild(nameSpan);
+            chip.appendChild(reasonSpan);
             
             strip.appendChild(chip);
         });
