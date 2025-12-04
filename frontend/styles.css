@@ -259,11 +259,13 @@ body {
 /* Severity-based styling */
 .attention-item--critical {
     border-left: 3px solid var(--accent-error);
+    /* rgba(239, 68, 68, 0.15) is based on --accent-error (#ef4444) */
     background: rgba(239, 68, 68, 0.15);
-    color: #ef4444;
+    color: var(--accent-error);
     box-shadow: 
         3px 3px 6px var(--shadow-dark),
         -3px -3px 6px var(--shadow-light),
+        /* rgba(239, 68, 68, 0.2) is based on --accent-error (#ef4444) */
         0 0 8px rgba(239, 68, 68, 0.2);
 }
 
@@ -273,8 +275,9 @@ body {
 
 .attention-item--high {
     border-left: 3px solid var(--accent-warning);
+    /* rgba(245, 158, 11, 0.15) is based on --accent-warning (#f59e0b) */
     background: rgba(245, 158, 11, 0.15);
-    color: #f59e0b;
+    color: var(--accent-warning);
     box-shadow: 
         3px 3px 6px var(--shadow-dark),
         -3px -3px 6px var(--shadow-light),
@@ -287,8 +290,9 @@ body {
 
 .attention-item--medium {
     border-left: 3px solid var(--accent-info);
-    background: rgba(59, 130, 246, 0.1);
-    color: #3b82f6;
+    /* rgba(59, 130, 246, 0.15) is based on --accent-info (#3b82f6) - using 0.15 for consistency */
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--accent-info);
 }
 
 .attention-item--medium .attention-item-reason {
@@ -297,6 +301,7 @@ body {
 
 .attention-item--low {
     border-left: 3px solid var(--text-secondary);
+    /* rgba(160, 160, 176, 0.1) is --text-secondary (#a0a0b0) with opacity */
     background: rgba(160, 160, 176, 0.1);
     color: var(--text-secondary);
 }

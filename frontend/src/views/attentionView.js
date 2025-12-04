@@ -47,9 +47,10 @@ function buildRepoAttentionItems(repos, sloTarget) {
         }
 
         // Check for consecutive default branch failures - high severity
-        if (repo.consecutive_default_branch_failures > 0) {
+        // Use defensive check for null/undefined
+        if ((repo.consecutive_default_branch_failures || 0) > 0) {
             seenIds.add(repoId);
-            const count = repo.consecutive_default_branch_failures;
+            const count = repo.consecutive_default_branch_failures || 0;
             items.push({
                 type: 'repo',
                 id: repoId,
@@ -150,6 +151,8 @@ function buildPipelineAttentionItems(pipelines, repos) {
         if (!isDefaultBranch) continue;
 
         // Check for runner issues or failing jobs
+        // Note: has_runner_issues and has_failing_jobs are project-level flags copied to pipelines,
+        // not pipeline-specific indicators. This flags pipelines from projects with known issues.
         if (pipeline.has_runner_issues === true || pipeline.has_failing_jobs === true) {
             pipelineIssues.push({
                 pipeline,
@@ -204,8 +207,11 @@ export function buildAttentionItems({ summary, repos, services, pipelines }) {
     const allItems = [...repoItems, ...serviceItems, ...pipelineItems];
 
     // Sort by severity (critical first), then by name
+    // Unknown severities go to end (priority 999)
     allItems.sort((a, b) => {
-        const severityDiff = SEVERITY_PRIORITY[a.severity] - SEVERITY_PRIORITY[b.severity];
+        const severityA = SEVERITY_PRIORITY[a.severity] ?? 999;
+        const severityB = SEVERITY_PRIORITY[b.severity] ?? 999;
+        const severityDiff = severityA - severityB;
         if (severityDiff !== 0) return severityDiff;
         return (a.name || '').localeCompare(b.name || '');
     });
@@ -222,7 +228,7 @@ export function buildAttentionItems({ summary, repos, services, pipelines }) {
 function getTypeIcon(type) {
     switch (type) {
         case 'repo': return '📦';
-        case 'service': return '🛠️';
+        case 'service': return '⚙️';  // Single-codepoint emoji for cross-platform consistency
         case 'pipeline': return '🔧';
         default: return '⚠️';
     }
