@@ -88,24 +88,21 @@ console.log(JSON.stringify({{
 
     def test_repo_history_multiple_updates_same_key(self):
         """Test that multiple updates on the same key append correctly."""
-        project_root = Path(__file__).resolve().parents[2]
-        dashboard_app_path = project_root / 'frontend' / 'src' / 'dashboardApp.js'
-
-        script = f"""
-class TestDashboardApp {{
-    constructor() {{
+        script = """
+class TestDashboardApp {
+    constructor() {
         this.repoHistory = new Map();
         this.historyWindow = 20;
-    }}
+    }
 
-    _getRepoKey(repo) {{
+    _getRepoKey(repo) {
         if (repo.id != null) return String(repo.id);
         if (repo.path_with_namespace) return repo.path_with_namespace;
         return repo.name || 'unknown';
-    }}
+    }
 
-    _updateRepoHistory(repos) {{
-        for (const repo of repos) {{
+    _updateRepoHistory(repos) {
+        for (const repo of repos) {
             const key = this._getRepoKey(repo);
             const successRate = repo.recent_success_rate;
             if (successRate == null || typeof successRate !== 'number' || !Number.isFinite(successRate)) continue;
@@ -113,23 +110,23 @@ class TestDashboardApp {{
             const history = this.repoHistory.get(key);
             history.push(successRate);
             if (history.length > this.historyWindow) history.splice(0, history.length - this.historyWindow);
-        }}
-    }}
-}}
+        }
+    }
+}
 
 const app = new TestDashboardApp();
 
 // Simulate multiple refreshes
-app._updateRepoHistory([{{ id: 1, recent_success_rate: 0.90 }}]);
-app._updateRepoHistory([{{ id: 1, recent_success_rate: 0.92 }}]);
-app._updateRepoHistory([{{ id: 1, recent_success_rate: 0.95 }}]);
+app._updateRepoHistory([{ id: 1, recent_success_rate: 0.90 }]);
+app._updateRepoHistory([{ id: 1, recent_success_rate: 0.92 }]);
+app._updateRepoHistory([{ id: 1, recent_success_rate: 0.95 }]);
 
 const history = app.repoHistory.get('1');
-console.log(JSON.stringify({{
+console.log(JSON.stringify({
     length: history.length,
     first: history[0],
     last: history[history.length - 1]
-}}));
+}));
 """
 
         completed = subprocess.run(
@@ -146,24 +143,21 @@ console.log(JSON.stringify({{
 
     def test_repo_history_trimming(self):
         """Test that history is trimmed to historyWindow size."""
-        project_root = Path(__file__).resolve().parents[2]
-        dashboard_app_path = project_root / 'frontend' / 'src' / 'dashboardApp.js'
-
-        script = f"""
-class TestDashboardApp {{
-    constructor() {{
+        script = """
+class TestDashboardApp {
+    constructor() {
         this.repoHistory = new Map();
         this.historyWindow = 5;  // Small window for testing
-    }}
+    }
 
-    _getRepoKey(repo) {{
+    _getRepoKey(repo) {
         if (repo.id != null) return String(repo.id);
         if (repo.path_with_namespace) return repo.path_with_namespace;
         return repo.name || 'unknown';
-    }}
+    }
 
-    _updateRepoHistory(repos) {{
-        for (const repo of repos) {{
+    _updateRepoHistory(repos) {
+        for (const repo of repos) {
             const key = this._getRepoKey(repo);
             const successRate = repo.recent_success_rate;
             if (successRate == null || typeof successRate !== 'number' || !Number.isFinite(successRate)) continue;
@@ -171,24 +165,24 @@ class TestDashboardApp {{
             const history = this.repoHistory.get(key);
             history.push(successRate);
             if (history.length > this.historyWindow) history.splice(0, history.length - this.historyWindow);
-        }}
-    }}
-}}
+        }
+    }
+}
 
 const app = new TestDashboardApp();
 
 // Add more values than the window allows
-for (let i = 1; i <= 10; i++) {{
-    app._updateRepoHistory([{{ id: 1, recent_success_rate: i * 0.1 }}]);
-}}
+for (let i = 1; i <= 10; i++) {
+    app._updateRepoHistory([{ id: 1, recent_success_rate: i * 0.1 }]);
+}
 
 const history = app.repoHistory.get('1');
-console.log(JSON.stringify({{
+console.log(JSON.stringify({
     length: history.length,
     first: history[0],
     last: history[history.length - 1],
     exceedsWindow: history.length > app.historyWindow
-}}));
+}));
 """
 
         completed = subprocess.run(
@@ -284,27 +278,24 @@ console.log(JSON.stringify({
 
     def test_repo_key_fallback_logic(self):
         """Test that _getRepoKey uses the correct fallback order."""
-        project_root = Path(__file__).resolve().parents[2]
-        dashboard_app_path = project_root / 'frontend' / 'src' / 'dashboardApp.js'
-
-        script = f"""
-class TestDashboardApp {{
-    _getRepoKey(repo) {{
+        script = """
+class TestDashboardApp {
+    _getRepoKey(repo) {
         if (repo.id != null) return String(repo.id);
         if (repo.path_with_namespace) return repo.path_with_namespace;
         return repo.name || 'unknown';
-    }}
-}}
+    }
+}
 
 const app = new TestDashboardApp();
 
 const results = [
-    app._getRepoKey({{ id: 123, path_with_namespace: 'group/repo', name: 'repo' }}),
-    app._getRepoKey({{ id: null, path_with_namespace: 'group/repo', name: 'repo' }}),
-    app._getRepoKey({{ id: undefined, path_with_namespace: null, name: 'myrepo' }}),
-    app._getRepoKey({{ id: null, path_with_namespace: '', name: '' }}),
-    app._getRepoKey({{}}),
-    app._getRepoKey({{ id: 0 }})  // 0 is a valid id
+    app._getRepoKey({ id: 123, path_with_namespace: 'group/repo', name: 'repo' }),
+    app._getRepoKey({ id: null, path_with_namespace: 'group/repo', name: 'repo' }),
+    app._getRepoKey({ id: undefined, path_with_namespace: null, name: 'myrepo' }),
+    app._getRepoKey({ id: null, path_with_namespace: '', name: '' }),
+    app._getRepoKey({}),
+    app._getRepoKey({ id: 0 })  // 0 is a valid id
 ];
 
 console.log(JSON.stringify(results));
@@ -331,24 +322,21 @@ class TestServiceHistoryBuffers(unittest.TestCase):
 
     def test_service_history_single_update(self):
         """Test that a single update populates history correctly."""
-        project_root = Path(__file__).resolve().parents[2]
-        dashboard_app_path = project_root / 'frontend' / 'src' / 'dashboardApp.js'
-
-        script = f"""
-class TestDashboardApp {{
-    constructor() {{
+        script = """
+class TestDashboardApp {
+    constructor() {
         this.serviceHistory = new Map();
         this.historyWindow = 20;
-    }}
+    }
 
-    _getServiceKey(service) {{
+    _getServiceKey(service) {
         if (service.id != null) return String(service.id);
         if (service.name) return service.name;
         return service.url || 'unknown';
-    }}
+    }
 
-    _updateServiceHistory(services) {{
-        for (const service of services) {{
+    _updateServiceHistory(services) {
+        for (const service of services) {
             const key = this._getServiceKey(service);
             const latency = service.latency_ms;
             if (latency == null || typeof latency !== 'number' || !Number.isFinite(latency)) continue;
@@ -356,25 +344,25 @@ class TestDashboardApp {{
             const history = this.serviceHistory.get(key);
             history.push(latency);
             if (history.length > this.historyWindow) history.splice(0, history.length - this.historyWindow);
-        }}
-    }}
-}}
+        }
+    }
+}
 
 const app = new TestDashboardApp();
 app._updateServiceHistory([
-    {{ id: 'svc1', name: 'Service 1', latency_ms: 42 }},
-    {{ id: 'svc2', name: 'Service 2', latency_ms: 100 }}
+    { id: 'svc1', name: 'Service 1', latency_ms: 42 },
+    { id: 'svc2', name: 'Service 2', latency_ms: 100 }
 ]);
 
 const svc1History = app.serviceHistory.get('svc1');
 const svc2History = app.serviceHistory.get('svc2');
 
-console.log(JSON.stringify({{
+console.log(JSON.stringify({
     svc1Length: svc1History ? svc1History.length : 0,
     svc1Last: svc1History ? svc1History[svc1History.length - 1] : null,
     svc2Length: svc2History ? svc2History.length : 0,
     svc2Last: svc2History ? svc2History[svc2History.length - 1] : null
-}}));
+}));
 """
 
         completed = subprocess.run(
@@ -392,24 +380,21 @@ console.log(JSON.stringify({{
 
     def test_service_history_multiple_updates(self):
         """Test that multiple updates on the same key append correctly."""
-        project_root = Path(__file__).resolve().parents[2]
-        dashboard_app_path = project_root / 'frontend' / 'src' / 'dashboardApp.js'
-
-        script = f"""
-class TestDashboardApp {{
-    constructor() {{
+        script = """
+class TestDashboardApp {
+    constructor() {
         this.serviceHistory = new Map();
         this.historyWindow = 20;
-    }}
+    }
 
-    _getServiceKey(service) {{
+    _getServiceKey(service) {
         if (service.id != null) return String(service.id);
         if (service.name) return service.name;
         return service.url || 'unknown';
-    }}
+    }
 
-    _updateServiceHistory(services) {{
-        for (const service of services) {{
+    _updateServiceHistory(services) {
+        for (const service of services) {
             const key = this._getServiceKey(service);
             const latency = service.latency_ms;
             if (latency == null || typeof latency !== 'number' || !Number.isFinite(latency)) continue;
@@ -417,23 +402,23 @@ class TestDashboardApp {{
             const history = this.serviceHistory.get(key);
             history.push(latency);
             if (history.length > this.historyWindow) history.splice(0, history.length - this.historyWindow);
-        }}
-    }}
-}}
+        }
+    }
+}
 
 const app = new TestDashboardApp();
 
 // Simulate multiple refreshes
-app._updateServiceHistory([{{ id: 'api', latency_ms: 50 }}]);
-app._updateServiceHistory([{{ id: 'api', latency_ms: 55 }}]);
-app._updateServiceHistory([{{ id: 'api', latency_ms: 48 }}]);
+app._updateServiceHistory([{ id: 'api', latency_ms: 50 }]);
+app._updateServiceHistory([{ id: 'api', latency_ms: 55 }]);
+app._updateServiceHistory([{ id: 'api', latency_ms: 48 }]);
 
 const history = app.serviceHistory.get('api');
-console.log(JSON.stringify({{
+console.log(JSON.stringify({
     length: history.length,
     first: history[0],
     last: history[history.length - 1]
-}}));
+}));
 """
 
         completed = subprocess.run(
@@ -450,24 +435,21 @@ console.log(JSON.stringify({{
 
     def test_service_history_trimming(self):
         """Test that service history is trimmed to historyWindow size."""
-        project_root = Path(__file__).resolve().parents[2]
-        dashboard_app_path = project_root / 'frontend' / 'src' / 'dashboardApp.js'
-
-        script = f"""
-class TestDashboardApp {{
-    constructor() {{
+        script = """
+class TestDashboardApp {
+    constructor() {
         this.serviceHistory = new Map();
         this.historyWindow = 5;
-    }}
+    }
 
-    _getServiceKey(service) {{
+    _getServiceKey(service) {
         if (service.id != null) return String(service.id);
         if (service.name) return service.name;
         return service.url || 'unknown';
-    }}
+    }
 
-    _updateServiceHistory(services) {{
-        for (const service of services) {{
+    _updateServiceHistory(services) {
+        for (const service of services) {
             const key = this._getServiceKey(service);
             const latency = service.latency_ms;
             if (latency == null || typeof latency !== 'number' || !Number.isFinite(latency)) continue;
@@ -475,24 +457,24 @@ class TestDashboardApp {{
             const history = this.serviceHistory.get(key);
             history.push(latency);
             if (history.length > this.historyWindow) history.splice(0, history.length - this.historyWindow);
-        }}
-    }}
-}}
+        }
+    }
+}
 
 const app = new TestDashboardApp();
 
 // Add more values than the window allows
-for (let i = 1; i <= 10; i++) {{
-    app._updateServiceHistory([{{ id: 'api', latency_ms: i * 10 }}]);
-}}
+for (let i = 1; i <= 10; i++) {
+    app._updateServiceHistory([{ id: 'api', latency_ms: i * 10 }]);
+}
 
 const history = app.serviceHistory.get('api');
-console.log(JSON.stringify({{
+console.log(JSON.stringify({
     length: history.length,
     first: history[0],
     last: history[history.length - 1],
     exceedsWindow: history.length > app.historyWindow
-}}));
+}));
 """
 
         completed = subprocess.run(
@@ -588,27 +570,24 @@ console.log(JSON.stringify({
 
     def test_service_key_fallback_logic(self):
         """Test that _getServiceKey uses the correct fallback order."""
-        project_root = Path(__file__).resolve().parents[2]
-        dashboard_app_path = project_root / 'frontend' / 'src' / 'dashboardApp.js'
-
-        script = f"""
-class TestDashboardApp {{
-    _getServiceKey(service) {{
+        script = """
+class TestDashboardApp {
+    _getServiceKey(service) {
         if (service.id != null) return String(service.id);
         if (service.name) return service.name;
         return service.url || 'unknown';
-    }}
-}}
+    }
+}
 
 const app = new TestDashboardApp();
 
 const results = [
-    app._getServiceKey({{ id: 'svc123', name: 'My Service', url: 'https://api.example.com' }}),
-    app._getServiceKey({{ id: null, name: 'My Service', url: 'https://api.example.com' }}),
-    app._getServiceKey({{ id: undefined, name: null, url: 'https://api.example.com' }}),
-    app._getServiceKey({{ id: null, name: '', url: '' }}),
-    app._getServiceKey({{}}),
-    app._getServiceKey({{ id: 0 }})  // 0 should be treated as valid (converted to string '0')
+    app._getServiceKey({ id: 'svc123', name: 'My Service', url: 'https://api.example.com' }),
+    app._getServiceKey({ id: null, name: 'My Service', url: 'https://api.example.com' }),
+    app._getServiceKey({ id: undefined, name: null, url: 'https://api.example.com' }),
+    app._getServiceKey({ id: null, name: '', url: '' }),
+    app._getServiceKey({}),
+    app._getServiceKey({ id: 0 })  // 0 should be treated as valid (converted to string '0')
 ];
 
 console.log(JSON.stringify(results));
@@ -635,20 +614,17 @@ class TestHistoryWindowDefault(unittest.TestCase):
 
     def test_history_window_default_value(self):
         """Test that historyWindow is set to 20 by default."""
-        project_root = Path(__file__).resolve().parents[2]
-        dashboard_app_path = project_root / 'frontend' / 'src' / 'dashboardApp.js'
-
-        script = f"""
-class TestDashboardApp {{
-    constructor() {{
+        script = """
+class TestDashboardApp {
+    constructor() {
         this.repoHistory = new Map();
         this.serviceHistory = new Map();
         this.historyWindow = 20;
-    }}
-}}
+    }
+}
 
 const app = new TestDashboardApp();
-console.log(JSON.stringify({{ historyWindow: app.historyWindow }}));
+console.log(JSON.stringify({ historyWindow: app.historyWindow }));
 """
 
         completed = subprocess.run(
