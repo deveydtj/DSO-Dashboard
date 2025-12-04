@@ -24,6 +24,7 @@ import { renderSummaryKpis } from './views/kpiView.js';
 import { renderRepositories } from './views/repoView.js';
 import { renderPipelines } from './views/pipelineView.js';
 import { renderServices } from './views/serviceView.js';
+import { renderAttentionStrip } from './views/attentionView.js';
 
 export class DashboardApp {
     constructor() {
@@ -97,6 +98,14 @@ export class DashboardApp {
             // All endpoints failed - show stale data warning even if health check passed
             showAllStaleWarning(this.cachedData);
         }
+
+        // Render attention strip after all other sections have been rendered
+        renderAttentionStrip({
+            summary: this.cachedData.summary,
+            repos: this.cachedData.repos || [],
+            pipelines: this.cachedData.pipelines || [],
+            services: this.cachedData.services || []
+        });
     }
 
     async loadSummary() {
