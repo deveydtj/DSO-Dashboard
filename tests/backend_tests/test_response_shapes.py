@@ -279,7 +279,12 @@ class TestResponseShapeKeys(unittest.TestCase):
             'running_pipelines',
             'pending_pipelines',
             'pipeline_success_rate',
-            'last_updated'
+            'last_updated',
+            # SLO fields for default-branch pipeline success
+            'pipeline_slo_target_default_branch_success_rate',
+            'pipeline_slo_observed_default_branch_success_rate',
+            'pipeline_slo_total_default_branch_pipelines',
+            'pipeline_error_budget_remaining_pct',
         ]
         
         for key in required_keys:
