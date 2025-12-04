@@ -183,6 +183,61 @@ body {
     50% { opacity: 0.5; }
 }
 
+/* Attention Strip - "Things That Need Attention" */
+.attention-section {
+    margin-bottom: var(--spacing-md);
+}
+
+.attention-strip {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+    box-shadow: 
+        inset 2px 2px 4px var(--shadow-inset-dark),
+        inset -2px -2px 4px var(--shadow-inset-light);
+    min-height: 48px;
+    align-items: center;
+}
+
+.attention-strip--empty {
+    justify-content: center;
+}
+
+.attention-clear-message {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-style: italic;
+    opacity: 0.8;
+}
+
+.attention-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 0.4rem 0.85rem;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    box-shadow: 
+        3px 3px 6px var(--shadow-dark),
+        -3px -3px 6px var(--shadow-light);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.attention-item:hover {
+    transform: translateY(-1px);
+    box-shadow: 
+        4px 4px 8px var(--shadow-dark),
+        -4px -4px 8px var(--shadow-light);
+}
+
 /* KPI Cards */
 .kpi-section {
     display: grid;
@@ -1404,6 +1459,25 @@ body.compact .tv-toggle {
 
 body.compact .tv-toggle-icon {
     font-size: 0.9rem;
+}
+
+body.compact .attention-section {
+    margin-bottom: 0.75rem;
+}
+
+body.compact .attention-strip {
+    padding: 0.5rem 0.75rem;
+    min-height: 40px;
+    gap: 0.5rem;
+}
+
+body.compact .attention-clear-message {
+    font-size: 0.8rem;
+}
+
+body.compact .attention-item {
+    font-size: 0.75rem;
+    padding: 0.3rem 0.6rem;
 }
 
 body.compact .kpi-section {
