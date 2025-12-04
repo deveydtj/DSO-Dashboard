@@ -34,6 +34,9 @@
     "window_size": 10,
     "degradation_threshold_ratio": 1.5
   },
+  "slo": {
+    "default_branch_success_target": 0.99
+  },
   "comment": "group_ids and project_ids can be numeric (e.g., [123, 456]) or strings (e.g., ['proj-1', 'proj-2'])",
   "note1": "Environment variables override config.json values when explicitly set.",
   "note2": "Set GITLAB_GROUP_IDS='' (empty) to clear configured scope at runtime.",
@@ -43,5 +46,6 @@
   "note6": "Set mock_scenario to 'healthy', 'failing', or 'running' to load a specific scenario from data/mock_scenarios/.",
   "note7": "log_level: Controls logging verbosity. Options: DEBUG, INFO, WARNING, ERROR, CRITICAL. Default is INFO.",
   "note8": "external_services: Optional list of external services to monitor. Each entry requires 'url', with optional 'id' (stable identifier), 'name' (display name), 'timeout' (seconds, default 10), 'critical' (boolean), and 'kind' (type label). Omit or leave empty to disable external service monitoring.",
-  "note9": "service_latency: Configuration for service latency monitoring. 'enabled' (bool, default true) enables/disables tracking. 'window_size' (int, default 10) sets the number of samples for running average. 'degradation_threshold_ratio' (float, default 1.5) sets the ratio above average that triggers a warning."
+  "note9": "service_latency: Configuration for service latency monitoring. 'enabled' (bool, default true) enables/disables tracking. 'window_size' (int, default 10) sets the number of samples for running average. 'degradation_threshold_ratio' (float, default 1.5) sets the ratio above average that triggers a warning.",
+  "note10": "slo: Service Level Objective configuration for default-branch pipeline success rate. 'default_branch_success_target' (float, default 0.99) sets the target success rate between 0 and 1 (e.g., 0.99 = 99%). Used to drive error budget view and highlight repos below target."
 }

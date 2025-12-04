@@ -53,6 +53,7 @@ from backend.config_loader import (
     parse_float_config,
     parse_bool_config,
     DEFAULT_SERVICE_LATENCY_CONFIG,
+    DEFAULT_SLO_CONFIG,
     VALID_LOG_LEVELS,
 )
 from backend.services import DEFAULT_SERVICE_CHECK_TIMEOUT
@@ -253,6 +254,8 @@ class BackgroundPoller(threading.Thread):
             - enabled (bool): Whether latency tracking is enabled
             - window_size (int): Number of samples for running average
             - degradation_threshold_ratio (float): Warn if current > ratio × average
+        slo_config: SLO (Service Level Objective) configuration
+            - default_branch_success_target (float): Target success rate for default branch (0-1)
         _service_latency_history: Internal dict tracking per-service latency state.
             Keyed by service ID (string). Each entry contains:
             - average_ms (float): Running average latency in milliseconds
@@ -262,7 +265,7 @@ class BackgroundPoller(threading.Thread):
     """
     
     def __init__(self, gitlab_client, poll_interval_sec, group_ids=None, project_ids=None,
-                 external_services=None, service_latency_config=None):
+                 external_services=None, service_latency_config=None, slo_config=None):
         super().__init__(daemon=True)
         self.gitlab_client = gitlab_client
         self.poll_interval = poll_interval_sec
@@ -272,6 +275,9 @@ class BackgroundPoller(threading.Thread):
         # Service latency monitoring configuration
         # Provides settings for computing running average and degradation warnings
         self.service_latency_config = service_latency_config or DEFAULT_SERVICE_LATENCY_CONFIG
+        # SLO configuration for default-branch pipeline success rate target
+        # Use shallow copy to prevent mutation of the module-level constant
+        self.slo_config = dict(slo_config) if slo_config else dict(DEFAULT_SLO_CONFIG)
         self.running = True
         self.stop_event = threading.Event()
         self.poll_counter = 0
@@ -1356,7 +1362,8 @@ def main():
             group_ids=config['group_ids'],
             project_ids=config['project_ids'],
             external_services=config.get('external_services', []),
-            service_latency_config=config.get('service_latency')
+            service_latency_config=config.get('service_latency'),
+            slo_config=config.get('slo')
         )
         poller.start()
         logger.info(f"Background poller started (interval: {config['poll_interval_sec']}s)")

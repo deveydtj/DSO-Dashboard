@@ -133,6 +133,14 @@ DEFAULT_SERVICE_LATENCY_CONFIG = {
 }
 
 
+# Default SLO (Service Level Objective) configuration
+# This defines the default SLO target for default-branch pipeline success rate across the fleet.
+# Used by summary computations to calculate error budgets and highlight repos/pipelines below target.
+DEFAULT_SLO_CONFIG = {
+    'default_branch_success_target': 0.99,  # 99% success rate target (float between 0 and 1)
+}
+
+
 def load_config():
     """Load configuration from config.json or environment variables
     
@@ -282,6 +290,33 @@ def load_config():
     
     config['service_latency'] = service_latency
     
+    # SLO (Service Level Objective) configuration
+    # Defines default-branch pipeline success rate target for the fleet.
+    # Used by summary computations to calculate error budgets.
+    # Environment variables override config.json values.
+    slo_raw = config.get('slo', {})
+    if not isinstance(slo_raw, dict):
+        logger.warning(f"Invalid slo config (not a dict): {type(slo_raw).__name__}. Using defaults.")
+        slo_raw = {}
+    
+    # Build SLO config with defaults applied for missing keys
+    slo = {}
+    
+    # default_branch_success_target: float, default 0.99 (99% success rate)
+    if 'SLO_DEFAULT_BRANCH_SUCCESS_TARGET' in os.environ:
+        slo['default_branch_success_target'] = parse_float_config(
+            os.environ['SLO_DEFAULT_BRANCH_SUCCESS_TARGET'],
+            DEFAULT_SLO_CONFIG['default_branch_success_target'],
+            'SLO_DEFAULT_BRANCH_SUCCESS_TARGET'
+        )
+    else:
+        raw_target = slo_raw.get('default_branch_success_target', DEFAULT_SLO_CONFIG['default_branch_success_target'])
+        slo['default_branch_success_target'] = parse_float_config(
+            raw_target, DEFAULT_SLO_CONFIG['default_branch_success_target'], 'slo.default_branch_success_target'
+        )
+    
+    config['slo'] = slo
+    
     # Ensure lists are clean (filter config.json values that might have empty strings or numeric IDs)
     if isinstance(config['group_ids'], list):
         config['group_ids'] = [str(gid).strip() for gid in config['group_ids'] if gid and str(gid).strip()]
@@ -306,6 +341,8 @@ def load_config():
     logger.info(f"  External services: {len(config['external_services'])} configured")
     sl_config = config['service_latency']
     logger.info(f"  Service latency: enabled={sl_config['enabled']}, window_size={sl_config['window_size']}, degradation_threshold_ratio={sl_config['degradation_threshold_ratio']}")
+    slo_config = config['slo']
+    logger.info(f"  SLO: default_branch_success_target={slo_config['default_branch_success_target']}")
     logger.info(f"  API token: {'***' if config['api_token'] else 'NOT SET'}")
     
     return config
@@ -319,6 +356,7 @@ def validate_config(config):
     - poll_interval_sec must be a positive integer (≥5 recommended)
     - cache_ttl_sec must not be negative
     - per_page must be positive
+    - slo.default_branch_success_target must be > 0 and < 1
     
     Args:
         config: Configuration dict from load_config()
@@ -394,6 +432,24 @@ def validate_config(config):
             logger.error(f"Configuration error: 'service_latency.degradation_threshold_ratio' must be a positive number, got: {threshold_ratio}")
             logger.error("  Fix: Set SERVICE_LATENCY_DEGRADATION_THRESHOLD_RATIO environment variable or 'service_latency.degradation_threshold_ratio' in config.json to a positive number (e.g., 1.5)")
             is_valid = False
+    
+    # Validate SLO configuration
+    slo = config.get('slo', {})
+    if not isinstance(slo, dict):
+        logger.error(f"Configuration error: 'slo' must be a dict, got: {type(slo).__name__}")
+        is_valid = False
+    else:
+        # Validate default_branch_success_target is a float > 0 and < 1
+        success_target = slo.get('default_branch_success_target')
+        if success_target is not None:
+            if not isinstance(success_target, (int, float)):
+                logger.error(f"Configuration error: 'slo.default_branch_success_target' must be a number, got: {type(success_target).__name__}")
+                logger.error("  Fix: Set SLO_DEFAULT_BRANCH_SUCCESS_TARGET environment variable or 'slo.default_branch_success_target' in config.json to a decimal between 0 and 1 (e.g., 0.99)")
+                is_valid = False
+            elif success_target <= 0 or success_target >= 1:
+                logger.error(f"Configuration error: 'slo.default_branch_success_target' must be > 0 and < 1, got: {success_target}")
+                logger.error("  Fix: Set SLO_DEFAULT_BRANCH_SUCCESS_TARGET environment variable or 'slo.default_branch_success_target' in config.json to a decimal between 0 and 1 (e.g., 0.99)")
+                is_valid = False
     
     # Log validation result
     if is_valid:
