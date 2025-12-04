@@ -116,7 +116,7 @@ console.log(JSON.stringify({{
         self.assertEqual(result['budgetText'], '75.5% remaining')
         self.assertEqual(result['barDataRemaining'], '75.5')
         self.assertEqual(result['barWidth'], '75.5%')
-        self.assertTrue(result['hasHealthyClass'], 'Bar should have budget-healthy class for 75.5%')
+        self.assertTrue(result['hasHealthyClass'], 'should have budget-healthy class for 75.5%')
         self.assertFalse(result['hasWarningClass'])
         self.assertFalse(result['hasCriticalClass'])
 
@@ -167,7 +167,7 @@ console.log(JSON.stringify({{
         result = self.run_node_script(script)
         self.assertEqual(result['barDataRemaining'], '35')
         self.assertFalse(result['hasHealthyClass'])
-        self.assertTrue(result['hasWarningClass'], 'Bar should have budget-warning class for 35%')
+        self.assertTrue(result['hasWarningClass'], 'should have budget-warning class for 35%')
         self.assertFalse(result['hasCriticalClass'])
 
     def test_render_slo_kpis_critical_threshold(self):
@@ -218,7 +218,7 @@ console.log(JSON.stringify({{
         self.assertEqual(result['barDataRemaining'], '10')
         self.assertFalse(result['hasHealthyClass'])
         self.assertFalse(result['hasWarningClass'])
-        self.assertTrue(result['hasCriticalClass'], 'Bar should have budget-critical class for 10%')
+        self.assertTrue(result['hasCriticalClass'], 'should have budget-critical class for 10%')
 
     def test_render_slo_kpis_missing_values(self):
         """Test renderSloKpis handles missing SLO values gracefully."""
