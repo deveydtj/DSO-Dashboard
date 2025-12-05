@@ -453,6 +453,8 @@ console.log(JSON.stringify({{
 """
         result = self.run_node_script(script)
         self.assertTrue(result['hasSparkline'], 'Sparkline should be present')
+        # With median=300ms, value 500ms (>450ms threshold) should trigger warning class
+        self.assertTrue(result['hasSpikeWarning'], 'Moderate spikes should have warning class')
         # With median=300ms, values 2000+ms (>600ms threshold) should trigger error class
         self.assertTrue(result['hasSpikeError'], 'Large spikes should have error class')
 
