@@ -1299,6 +1299,20 @@ body {
     font-size: 0.9em;
 }
 
+/* Fallback for non-default branch pipelines */
+.repo-pipeline-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-sm);
+}
+
+.pipeline-fallback-text {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
 /* Success Rate Section */
 .repo-success-rate {
     margin: var(--spacing-sm) 0;

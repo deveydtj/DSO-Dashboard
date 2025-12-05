@@ -233,10 +233,15 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null, histor
     // Wrap indicators if any
     const indicatorsHtml = dsoIndicators ? `<div class="dso-indicators" role="status" aria-label="Repository health indicators">${dsoIndicators}</div>` : '';
     
-    // Pipeline info section (shows last pipeline regardless of branch)
+    // Pipeline info section - only show chip if last pipeline is on default branch
     let pipelineInfo = '';
-    if (pipelineStatus) {
-        const ref = repo.last_pipeline_ref || 'unknown';
+    const isDefaultBranchPipeline = pipelineStatus && 
+        repo.last_pipeline_ref && 
+        repo.default_branch && 
+        repo.last_pipeline_ref === repo.default_branch;
+    
+    if (isDefaultBranchPipeline) {
+        const ref = repo.last_pipeline_ref;
         const duration = repo.last_pipeline_duration != null 
             ? formatDuration(repo.last_pipeline_duration) 
             : '--';
@@ -255,6 +260,13 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null, histor
                     <span class="pipeline-duration">${duration}</span>
                     <span class="pipeline-time">updated ${updatedAt}</span>
                 </div>
+            </div>
+        `;
+    } else if (pipelineStatus) {
+        // Last pipeline is not on default branch - show fallback
+        pipelineInfo = `
+            <div class="repo-pipeline repo-pipeline-fallback" role="status" aria-label="No recent default-branch pipelines">
+                <span class="pipeline-fallback-text">No recent default-branch pipelines</span>
             </div>
         `;
     }
