@@ -1309,7 +1309,7 @@ body {
 
 .pipeline-fallback-text {
     font-size: 0.8rem;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     font-style: italic;
 }
 

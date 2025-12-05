@@ -74,13 +74,17 @@ const html = createRepoCard(repo);
 console.log(JSON.stringify({{
     hasStatusChip: html.includes('pipeline-status-chip'),
     hasFallback: html.includes('No recent default-branch pipelines'),
-    hasFallbackClass: html.includes('repo-pipeline-fallback')
+    hasFallbackClass: html.includes('repo-pipeline-fallback'),
+    hasAriaRole: html.includes('role="status"'),
+    hasAriaLabel: html.includes('aria-label="No recent default-branch pipelines"')
 }}));
 """
         result = self.run_node_script(script)
         self.assertFalse(result['hasStatusChip'], 'Should NOT show pipeline status chip for non-default branch')
         self.assertTrue(result['hasFallback'], 'Should show fallback message for non-default branch')
         self.assertTrue(result['hasFallbackClass'], 'Should have fallback CSS class')
+        self.assertTrue(result['hasAriaRole'], 'Should have ARIA role for accessibility')
+        self.assertTrue(result['hasAriaLabel'], 'Should have ARIA label for accessibility')
 
     def test_shows_fallback_when_feature_branch_pipeline(self):
         """Verify fallback for feature branch pipelines."""

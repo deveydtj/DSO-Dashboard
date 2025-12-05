@@ -265,7 +265,7 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null, histor
     } else if (pipelineStatus) {
         // Last pipeline is not on default branch - show fallback
         pipelineInfo = `
-            <div class="repo-pipeline repo-pipeline-fallback">
+            <div class="repo-pipeline repo-pipeline-fallback" role="status" aria-label="No recent default-branch pipelines">
                 <span class="pipeline-fallback-text">No recent default-branch pipelines</span>
             </div>
         `;
