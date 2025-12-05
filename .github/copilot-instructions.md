@@ -195,6 +195,33 @@ The backend provides these JSON endpoints that the frontend depends on:
 4. Document in README
 5. Add test case
 
+### Adding a New Summary KPI
+1. **Backend**: Add the new field to `get_summary()` in `backend/gitlab_client.py` or `_calculate_summary()` in `backend/app.py`
+2. **Frontend HTML**: Add a new KPI card or field in `frontend/index.html` with a unique ID
+3. **Frontend JS**: Update `renderSummaryKpis()` in `frontend/src/views/kpiView.js` to populate the new field
+4. **Tests**: Add backend tests in `tests/backend_tests/test_response_shapes.py` or `test_slo_summary.py`
+5. **Tests**: Add frontend tests in `tests/frontend_tests/test_kpi_slo_rendering.py`
+6. **Docs**: Update `docs/architecture-overview.md` if the KPI is part of the SLO or observability features
+
+### Extending the Attention Strip with New Signals
+1. **Identify the source**: Determine if the signal comes from repos, services, or pipelines
+2. **Add detection logic**: Update the appropriate builder function in `frontend/src/views/attentionView.js`:
+   - `buildRepoAttentionItems()` for repository signals
+   - `buildServiceAttentionItems()` for service signals
+   - `buildPipelineAttentionItems()` for pipeline signals
+3. **Assign severity**: Use existing levels: `critical`, `high`, `medium`, `low`
+4. **Add icon**: Update `getTypeIcon()` if introducing a new item type
+5. **Tests**: Add tests in `tests/frontend_tests/test_attention_strip_logic.py` and `test_attention_strip_basic.py`
+6. **Respect limits**: Items are capped at `MAX_ATTENTION_ITEMS` (currently 8)
+
+### Extending Sparkline History with New Metric Types
+1. **Add history buffer**: Create a new `Map` in `DashboardApp` constructor (e.g., `this.newMetricHistory = new Map()`)
+2. **Implement update method**: Add `_updateNewMetricHistory(items)` in `frontend/src/dashboardApp.js` following the pattern of `_updateRepoHistory()`
+3. **Create sparkline renderer**: Add `createNewMetricSparkline(history)` in the appropriate view module
+4. **Handle edge cases**: Skip null/undefined/NaN values; require minimum 2 data points
+5. **Keep window bounded**: Use `this.historyWindow` (default 20) to limit retained data points
+6. **Tests**: Add tests in `tests/frontend_tests/test_sparklines_rendering.py`
+
 ## Troubleshooting
 
 ### Common Issues

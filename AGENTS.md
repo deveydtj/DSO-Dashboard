@@ -68,6 +68,42 @@ This file provides guidance for GitHub Copilot Coding Agents working on this rep
 5. **Document**: Update README "Configuration Options" section
 6. **Test**: Verify loading from both config.json and env var
 
+### Working with SLO and Attention Features
+
+When modifying pipeline, service, or repository fields that feed into SLO metrics or attention logic:
+
+1. **Keep SLO logic consistent**: If adding new fields to the summary or repos API responses:
+   - Update `_compute_default_branch_slo()` in `backend/app.py` if the field affects SLO calculations
+   - Update `renderSloKpis()` in `frontend/src/views/kpiView.js` if displaying new SLO metrics
+   - Update `computeErrorBudgetRemaining()` in `frontend/src/views/repoView.js` if the field affects per-repo budget
+
+2. **Keep attention strip logic consistent**: If adding new signals that should surface in the attention strip:
+   - Update `buildRepoAttentionItems()`, `buildServiceAttentionItems()`, or `buildPipelineAttentionItems()` in `frontend/src/views/attentionView.js`
+   - Use existing severity levels: `critical`, `high`, `medium`, `low`
+   - Respect the `MAX_ATTENTION_ITEMS` limit (currently 8)
+
+3. **Respect project constraints**:
+   - Backend must remain stdlib-only (no pip dependencies)
+   - Frontend must remain vanilla JavaScript (no frameworks)
+   - Use existing helpers: `escapeHtml()`, `formatDate()`, `normalizeStatus()`, etc.
+
+4. **Update tests**: When adding observability features:
+   - Add backend tests in `tests/backend_tests/` for new summary/response fields
+   - Add frontend tests in `tests/frontend_tests/` for new rendering logic
+   - Test edge cases: null values, empty arrays, missing fields
+
+### Working with Sparkline Trends
+
+When extending or modifying sparkline functionality:
+
+1. **History buffers are in-browser only**: Data is stored in `DashboardApp.repoHistory` and `DashboardApp.serviceHistory` Maps
+2. **History window**: Default is 20 data points per item (configurable via `this.historyWindow`)
+3. **Adding new metric trends**:
+   - Add a new history Map in `DashboardApp` constructor
+   - Create an `_update<Type>History()` method following the pattern of `_updateRepoHistory()`
+   - Create a `create<Type>Sparkline()` function in the appropriate view module
+   - Ensure proper null/NaN handling for missing values
+
 ## Definition of Done for Pull Requests
 
 Before marking a PR as complete, ensure:
