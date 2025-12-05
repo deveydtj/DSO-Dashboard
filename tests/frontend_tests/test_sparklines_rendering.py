@@ -389,5 +389,107 @@ console.log(JSON.stringify({{
         self.assertEqual(result['barCount'], 3, 'Should have 3 bars for 3 valid values (excluding negative)')
 
 
+class TestServiceSparklineSpikeDetection(unittest.TestCase):
+    """Test spike detection coloring in service sparklines."""
+
+    def setUp(self):
+        self.project_root = Path(__file__).resolve().parents[2]
+        self.service_view_path = self.project_root / 'frontend' / 'src' / 'views' / 'serviceView.js'
+
+    def run_node_script(self, script):
+        """Run a Node.js script and return the parsed JSON output."""
+        completed = subprocess.run(
+            ['node', '--input-type=module', '-e', script],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return json.loads(completed.stdout.strip())
+
+    def test_stable_latency_no_spike_classes(self):
+        """Test stable latency values don't have spike classes (stay green).
+        
+        With median ~45ms, thresholds are: warning = max(67.5ms, 95ms) = 95ms,
+        error = max(90ms, 120ms) = 120ms. Since all values (44-48ms) are well below
+        these thresholds, all bars should be green.
+        """
+        script = f"""
+import {{ createServiceSparkline }} from 'file://{self.service_view_path}';
+
+// Stable latency around 45-50ms - all values below thresholds, should be all green
+// With median ~45ms: warning = max(67.5, 95) = 95ms, error = max(90, 120) = 120ms
+const history = [45, 48, 44, 46, 45, 47, 45, 46, 44, 45];
+const html = createServiceSparkline(history);
+
+const hasSpikeWarning = html.includes('sparkline-bar--spike-warning');
+const hasSpikeError = html.includes('sparkline-bar--spike-error');
+const hasSparkline = html.includes('class="sparkline');
+
+console.log(JSON.stringify({{
+    hasSparkline,
+    hasSpikeWarning,
+    hasSpikeError
+}}));
+"""
+        result = self.run_node_script(script)
+        self.assertTrue(result['hasSparkline'], 'Sparkline should be present')
+        self.assertFalse(result['hasSpikeWarning'], 'Stable latency should not have warning spikes')
+        self.assertFalse(result['hasSpikeError'], 'Stable latency should not have error spikes')
+
+    def test_latency_spike_detection(self):
+        """Test that latency spikes get spike-warning and spike-error classes."""
+        script = f"""
+import {{ createServiceSparkline }} from 'file://{self.service_view_path}';
+
+// History with a big spike at the end
+// Sorted: [80, 85, 90, 100, 500, 2000, 4000, 5032], median = (100+500)/2 = 300ms
+// Warning = max(450ms, 350ms) = 450ms, error = max(600ms, 375ms) = 600ms
+// Values > 450ms get warning, > 600ms get error
+const history = [80, 85, 90, 100, 500, 2000, 4000, 5032];
+const html = createServiceSparkline(history);
+
+const hasSpikeWarning = html.includes('sparkline-bar--spike-warning');
+const hasSpikeError = html.includes('sparkline-bar--spike-error');
+const hasSparkline = html.includes('class="sparkline');
+
+console.log(JSON.stringify({{
+    hasSparkline,
+    hasSpikeWarning,
+    hasSpikeError
+}}));
+"""
+        result = self.run_node_script(script)
+        self.assertTrue(result['hasSparkline'], 'Sparkline should be present')
+        # With median=300ms, value 500ms (>450ms threshold) should trigger warning class
+        self.assertTrue(result['hasSpikeWarning'], 'Moderate spikes should have warning class')
+        # With median=300ms, values 2000+ms (>600ms threshold) should trigger error class
+        self.assertTrue(result['hasSpikeError'], 'Large spikes should have error class')
+
+    def test_moderate_degradation_warning(self):
+        """Test moderate latency degradation triggers warning class."""
+        script = f"""
+import {{ createServiceSparkline }} from 'file://{self.service_view_path}';
+
+// History with moderate degradation
+// Sorted: [80, 90, 100, 110, 120, 160, 170, 180], median = (110+120)/2 = 115ms
+// Warning threshold = max(172.5ms, 165ms) = 172.5ms, error threshold = max(230ms, 190ms) = 230ms
+// Only the value 180ms exceeds the warning threshold (172.5ms) and triggers the warning class.
+// The values 160ms and 170ms are below 172.5ms and do not trigger the warning class.
+const history = [80, 90, 100, 110, 120, 160, 170, 180];
+const html = createServiceSparkline(history);
+
+const hasSpikeWarning = html.includes('sparkline-bar--spike-warning');
+const hasSpikeError = html.includes('sparkline-bar--spike-error');
+
+console.log(JSON.stringify({{
+    hasSpikeWarning,
+    hasSpikeError
+}}));
+"""
+        result = self.run_node_script(script)
+        self.assertTrue(result['hasSpikeWarning'], 'Moderate degradation should have warning class')
+        self.assertFalse(result['hasSpikeError'], 'Moderate degradation should not have error class')
+
+
 if __name__ == '__main__':
     unittest.main()
