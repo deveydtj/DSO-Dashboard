@@ -145,7 +145,7 @@ export class DashboardApp {
             // Update history buffers for trend sparklines
             this._updateRepoHistory(data.repositories || []);
             // Render repos and track state for attention animations (status degradation, position changes)
-            this.repoState = renderRepositories(data.repositories || [], this.repoState, this.sloConfig);
+            this.repoState = renderRepositories(data.repositories || [], this.repoState, this.sloConfig, this.repoHistory);
             console.log(`✅ Loaded ${data.repositories?.length || 0} repositories`);
             return true;
         } catch (error) {
@@ -160,7 +160,7 @@ export class DashboardApp {
                         errorBudgetRemainingPct: this.cachedData.summary.pipeline_error_budget_remaining_pct ?? null
                     };
                 }
-                this.repoState = renderRepositories(this.cachedData.repos, this.repoState, this.sloConfig);
+                this.repoState = renderRepositories(this.cachedData.repos, this.repoState, this.sloConfig, this.repoHistory);
             } else {
                 showError('Failed to load repositories', 'repoGrid');
             }
@@ -196,7 +196,7 @@ export class DashboardApp {
             // Update history buffers for trend sparklines
             this._updateServiceHistory(data.services || []);
             // Use view module to render services
-            renderServices(data.services || []);
+            renderServices(data.services || [], this.serviceHistory);
             console.log(`✅ Loaded ${data.services?.length || 0} services`);
             return true;
         } catch (error) {
@@ -204,7 +204,7 @@ export class DashboardApp {
             // Try to use cached data
             if (this.cachedData.services) {
                 console.log('📦 Using cached services data');
-                renderServices(this.cachedData.services);
+                renderServices(this.cachedData.services, this.serviceHistory);
             } else {
                 showError('Failed to load services', 'servicesGrid');
             }

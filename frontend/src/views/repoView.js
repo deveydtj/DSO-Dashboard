@@ -158,6 +158,34 @@ function getErrorBudgetColorClass(remaining) {
 }
 
 /**
+ * Generate sparkline HTML for a history array of success rates.
+ * Normalizes success rates (0-1) into 5 height buckets.
+ * Returns empty string if history has fewer than 2 numeric entries.
+ * 
+ * @param {Array<number>|null} history - Array of success rate values (0-1)
+ * @returns {string} - Sparkline HTML or empty string
+ */
+export function createRepoSparkline(history) {
+    // Return empty if no history or fewer than 2 numeric entries
+    if (!Array.isArray(history)) return '';
+    
+    const numericValues = history.filter(v => typeof v === 'number' && Number.isFinite(v));
+    if (numericValues.length < 2) return '';
+    
+    // Normalize each value to 1-5 based on success rate buckets:
+    // h1: 0-20%, h2: 20-40%, h3: 40-60%, h4: 60-80%, h5: 80-100%
+    const bars = numericValues.map(val => {
+        // Clamp value to 0-1 range
+        const clamped = Math.max(0, Math.min(1, val));
+        // Convert to height bucket (1-5)
+        const bucket = Math.min(5, Math.max(1, Math.ceil(clamped * 5)));
+        return `<span class="sparkline-bar sparkline-bar--h${bucket}"></span>`;
+    }).join('');
+    
+    return `<div class="sparkline sparkline--repo" aria-label="Recent default-branch success trend">${bars}</div>`;
+}
+
+/**
  * Create HTML for a single repository card
  * Uses DSO-focused status for card styling based on:
  * - Runner issues (high priority)
@@ -168,9 +196,10 @@ function getErrorBudgetColorClass(remaining) {
  * @param {string} [extraClasses=''] - Additional CSS classes (e.g., for attention animations)
  * @param {Object} [sloConfig=null] - Optional SLO configuration
  * @param {number} [sloConfig.defaultBranchSuccessTarget] - SLO target for default branch success rate (0-1)
+ * @param {Array<number>|null} [history=null] - Optional history array of success rates for sparkline
  * @returns {string} - HTML string for the repo card
  */
-export function createRepoCard(repo, extraClasses = '', sloConfig = null) {
+export function createRepoCard(repo, extraClasses = '', sloConfig = null, history = null) {
     const description = repo.description || '';
     const pipelineStatus = repo.last_pipeline_status || null;
     const normalizedStatus = normalizeStatus(pipelineStatus);
@@ -284,6 +313,9 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null) {
         `;
     }
 
+    // Generate sparkline for success rate trend (placed near success rate display)
+    const sparklineHtml = createRepoSparkline(history);
+
     // Combine status class with any extra attention classes
     const cardClasses = `repo-card ${statusClass}${extraClasses}`;
 
@@ -302,6 +334,7 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null) {
             ${indicatorsHtml}
             ${pipelineInfo}
             ${successRateSection}
+            ${sparklineHtml}
             ${errorBudgetSection}
             ${repo.web_url ? `<a href="${repo.web_url}" target="_blank" rel="noopener noreferrer" class="repo-link">View on GitLab →</a>` : ''}
         </div>
@@ -396,9 +429,10 @@ function sortRepositories(repos) {
  * @param {Map} previousState - Map of previous repo states { dsoStatus, index }
  * @param {Object} [sloConfig=null] - Optional SLO configuration to pass to createRepoCard
  * @param {number} [sloConfig.defaultBranchSuccessTarget] - SLO target for default branch success rate (0-1)
+ * @param {Map} [historyMap=undefined] - Optional Map of repo key to history array (success rates)
  * @returns {Map} - Updated state map for next render cycle
  */
-export function renderRepositories(repos, previousState, sloConfig = null) {
+export function renderRepositories(repos, previousState, sloConfig = null, historyMap = undefined) {
     const container = document.getElementById('repoGrid');
     if (!container) return new Map();
 
@@ -449,7 +483,10 @@ export function renderRepositories(repos, previousState, sloConfig = null) {
         // Store new state for next refresh (use dsoStatus instead of normalizedStatus)
         nextState.set(key, { dsoStatus: dsoStatus, index: currentIndex });
 
-        return createRepoCard(repo, attentionClass, sloConfig);
+        // Get history for this repo (if available)
+        const history = historyMap?.get(key) ?? null;
+
+        return createRepoCard(repo, attentionClass, sloConfig, history);
     }).join('');
 
     container.innerHTML = cardsHtml;

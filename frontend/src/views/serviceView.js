@@ -15,11 +15,60 @@ export function formatLatency(latencyMs) {
 }
 
 /**
+ * Get a stable unique key for a service
+ * @param {Object} service - Service object
+ * @returns {string} - Stable key for the service
+ */
+export function getServiceKey(service) {
+    // Prefer id, fallback to name, then url
+    if (service.id != null) {
+        return String(service.id);
+    }
+    if (service.name) {
+        return service.name;
+    }
+    return service.url || 'unknown';
+}
+
+/**
+ * Generate sparkline HTML for a history array of latency values.
+ * Normalizes latencies relative to the max value in history into 5 height buckets.
+ * Higher bars indicate higher (worse) latency.
+ * Returns empty string if history has fewer than 2 numeric entries.
+ * 
+ * @param {Array<number>|null} history - Array of latency_ms values
+ * @returns {string} - Sparkline HTML or empty string
+ */
+export function createServiceSparkline(history) {
+    // Return empty if no history or fewer than 2 numeric entries
+    if (!Array.isArray(history)) return '';
+    
+    const numericValues = history.filter(v => typeof v === 'number' && Number.isFinite(v) && v >= 0);
+    if (numericValues.length < 2) return '';
+    
+    // Find max value for normalization (relative scaling per service)
+    const maxVal = Math.max(...numericValues);
+    if (maxVal <= 0) return '';
+    
+    // Normalize each value to 1-5 based on its proportion of max
+    // h1: 0-20% of max, h2: 20-40%, h3: 40-60%, h4: 60-80%, h5: 80-100%
+    const bars = numericValues.map(val => {
+        const ratio = val / maxVal;
+        // Convert to height bucket (1-5)
+        const bucket = Math.min(5, Math.max(1, Math.ceil(ratio * 5)));
+        return `<span class="sparkline-bar sparkline-bar--h${bucket}"></span>`;
+    }).join('');
+    
+    return `<div class="sparkline sparkline--service" aria-label="Recent latency trend">${bars}</div>`;
+}
+
+/**
  * Create HTML for a single service card
  * @param {Object} service - Service data
+ * @param {Array<number>|null} [history=null] - Optional history array of latency values for sparkline
  * @returns {string} - HTML string for the service card
  */
-export function createServiceCard(service) {
+export function createServiceCard(service, history = null) {
     const name = service.name || service.id || service.url || 'Unknown Service';
     const status = normalizeServiceStatus(service.status);
     const statusClass = `service-status-${status.toLowerCase()}`;
@@ -59,6 +108,9 @@ export function createServiceCard(service) {
         ? '<span class="service-latency-warning-badge">Latency elevated</span>'
         : '';
 
+    // Generate sparkline for latency trend (placed near latency section)
+    const sparklineHtml = createServiceSparkline(history);
+
     // Combine CSS classes, filtering out empty strings to avoid extra whitespace
     const cardClasses = ['service-card', statusClass, latencyWarningClass]
         .filter(Boolean)
@@ -86,6 +138,7 @@ export function createServiceCard(service) {
                 </div>
                 ` : ''}
             </div>
+            ${sparklineHtml}
             <div class="service-metrics">
                 <div class="service-metric">
                     <span class="metric-label">Last Check</span>
@@ -107,8 +160,9 @@ export function createServiceCard(service) {
 /**
  * Render services grid to the DOM
  * @param {Array} services - Array of service objects
+ * @param {Map} [historyMap=undefined] - Optional Map of service key to history array (latency values)
  */
-export function renderServices(services) {
+export function renderServices(services, historyMap = undefined) {
     const container = document.getElementById('servicesGrid');
     if (!container) return;
 
@@ -117,5 +171,10 @@ export function renderServices(services) {
         return;
     }
 
-    container.innerHTML = services.map(service => createServiceCard(service)).join('');
+    container.innerHTML = services.map(service => {
+        // Get history for this service (if available)
+        const key = getServiceKey(service);
+        const history = historyMap?.get(key) ?? null;
+        return createServiceCard(service, history);
+    }).join('');
 }
