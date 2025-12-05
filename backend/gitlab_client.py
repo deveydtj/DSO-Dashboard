@@ -25,6 +25,11 @@ logger = logging.getLogger(__name__)
 MAX_PROJECTS_FOR_PIPELINES = 20  # Max projects to fetch pipelines from
 PIPELINES_PER_PROJECT = 10       # Pipelines to fetch per project
 
+# Duration hydration configuration constants
+# These caps prevent rate limiting by limiting how many pipeline detail requests we make
+DEFAULT_DURATION_HYDRATION_GLOBAL_CAP = 200  # Max total detail requests per poll cycle
+DEFAULT_DURATION_HYDRATION_PER_PROJECT_CAP = 2  # Max detail requests per project (for tiles)
+
 # Pipeline statuses to ignore when calculating consecutive failures and success rates
 # These statuses represent pipelines that didn't actually test the code
 IGNORED_PIPELINE_STATUSES = ('skipped', 'manual', 'canceled', 'cancelled')
@@ -450,6 +455,25 @@ class GitLabAPIClient:
         else:
             # Full pagination for all pipelines
             return self._make_paginated_request(f'projects/{project_id}/pipelines')
+    
+    def get_pipeline(self, project_id, pipeline_id):
+        """Get single pipeline details by project ID and pipeline ID
+        
+        The detail endpoint returns additional fields not available in the list API,
+        including guaranteed 'duration' field for finished pipelines.
+        
+        Args:
+            project_id: GitLab project ID
+            pipeline_id: Pipeline ID
+        
+        Returns:
+            dict: Pipeline detail data from GitLab API (with duration), or None on error
+        """
+        result = self.gitlab_request(f'projects/{project_id}/pipelines/{pipeline_id}')
+        if result is None:
+            logger.debug(f"Failed to fetch pipeline {pipeline_id} for project {project_id}")
+            return None
+        return result.get('data', None)
     
     def get_all_pipelines(self, per_page=20):
         """Get recent pipelines across all projects
