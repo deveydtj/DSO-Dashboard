@@ -145,6 +145,13 @@ DEFAULT_SLO_CONFIG = {
 # Default duration hydration configuration
 # These values control how many pipeline detail API calls we make per poll cycle
 # to fetch accurate duration values (not always present in list API responses).
+#
+# The caps are intentionally conservative to prevent rate limiting:
+# - global_cap (200): With a 60s poll interval, this is ~3 req/s which is well
+#   under GitLab's default rate limit of 300 req/min for authenticated users.
+# - per_project_cap (2): Limits hydration per project to prevent one busy repo
+#   from consuming the entire budget. Primarily hydrates the default-branch
+#   pipeline shown in repo tiles.
 DEFAULT_DURATION_HYDRATION_CONFIG = {
     'global_cap': 200,       # Max total detail requests per poll cycle
     'per_project_cap': 2,    # Max detail requests per project (for tiles)

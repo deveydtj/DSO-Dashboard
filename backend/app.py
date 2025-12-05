@@ -692,10 +692,14 @@ class BackgroundPoller(threading.Thread):
                         pipelines_to_hydrate.add((project_id, pipeline_id))
                         hydrated_for_project += 1
         
-        # Respect global cap
+        # Calculate how many will be skipped due to cap
+        skipped_due_to_cap = max(0, len(pipelines_to_hydrate) - global_cap)
+        
+        # Respect global cap - take first global_cap items
         if len(pipelines_to_hydrate) > global_cap:
             logger.info(f"{log_prefix}Duration hydration: capping from {len(pipelines_to_hydrate)} to {global_cap} requests")
-            pipelines_to_hydrate = set(list(pipelines_to_hydrate)[:global_cap])
+            # Convert to list once, slice, no need to convert back to set since we iterate immediately
+            pipelines_to_hydrate = list(pipelines_to_hydrate)[:global_cap]
         
         if not pipelines_to_hydrate:
             logger.debug(f"{log_prefix}Duration hydration: no pipelines need hydration")
@@ -714,14 +718,17 @@ class BackgroundPoller(threading.Thread):
         for project_id, pipeline_id in pipelines_to_hydrate:
             try:
                 detail = self.gitlab_client.get_pipeline(project_id, pipeline_id)
-                if detail is not None and 'duration' in detail:
-                    # Update the pipeline in our list
+                if detail is None:
+                    # API error (logged at debug level in get_pipeline)
+                    skipped_error += 1
+                elif 'duration' in detail:
+                    # Success: update the pipeline in our list
                     key = (project_id, pipeline_id)
                     if key in pipeline_lookup:
                         pipeline_lookup[key]['duration'] = detail.get('duration')
                         hydrated += 1
                 else:
-                    # Detail API returned but no duration field (unexpected)
+                    # Detail API returned but no duration field (pipeline still running or edge case)
                     skipped_error += 1
             except Exception as e:
                 logger.debug(f"{log_prefix}Duration hydration: error fetching pipeline {pipeline_id} for project {project_id}: {e}")
@@ -731,7 +738,7 @@ class BackgroundPoller(threading.Thread):
         
         return {
             'hydrated': hydrated,
-            'skipped_cap': max(0, len(all_pipelines) - global_cap) if len(all_pipelines) > global_cap else 0,
+            'skipped_cap': skipped_due_to_cap,
             'skipped_error': skipped_error
         }
     
