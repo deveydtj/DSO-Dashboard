@@ -668,6 +668,12 @@ def get_repositories(projects):
         - recent_success_rate_default_branch: Default-branch success rate (explicit naming)
         - recent_success_rate_all_branches: All-branches success rate (comprehensive/legacy)
     
+    Last default-branch pipeline fields:
+        - last_default_branch_pipeline_status: Status of most recent default-branch pipeline
+        - last_default_branch_pipeline_ref: Ref of most recent default-branch pipeline
+        - last_default_branch_pipeline_duration: Duration of most recent default-branch pipeline
+        - last_default_branch_pipeline_updated_at: Updated timestamp of most recent default-branch pipeline
+    
     DSO health fields included (for dashboard tiles):
         - has_failing_jobs: Whether recent default-branch pipelines contain any with 'failed' status (excludes skipped/manual/canceled)
         - failing_jobs_count: Count of pipelines with 'failed' status on default branch (excludes skipped/manual/canceled)
@@ -690,11 +696,18 @@ def get_repositories(projects):
             'open_issues_count': project.get('open_issues_count', 0),
             'default_branch': project.get('default_branch', 'main'),
             'visibility': project.get('visibility', 'private'),
-            # Pipeline health metrics
+            # Pipeline health metrics (any branch - kept for backward compatibility)
             'last_pipeline_status': project.get('last_pipeline_status'),
             'last_pipeline_ref': project.get('last_pipeline_ref'),
             'last_pipeline_duration': project.get('last_pipeline_duration'),
             'last_pipeline_updated_at': project.get('last_pipeline_updated_at'),
+            # Last default-branch pipeline fields (explicit default-branch-only):
+            # These fields allow frontend to reliably display default-branch pipeline info
+            # even when the most recent overall pipeline is from a non-default branch.
+            'last_default_branch_pipeline_status': project.get('last_default_branch_pipeline_status'),
+            'last_default_branch_pipeline_ref': project.get('last_default_branch_pipeline_ref'),
+            'last_default_branch_pipeline_duration': project.get('last_default_branch_pipeline_duration'),
+            'last_default_branch_pipeline_updated_at': project.get('last_default_branch_pipeline_updated_at'),
             # Success rate metrics:
             # - recent_success_rate: Backward compatible, points to default-branch rate (DSO primary)
             # - recent_success_rate_default_branch: Explicit default-branch rate for DSO consumption
@@ -889,6 +902,26 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
                 p for p in pipelines_for_project 
                 if p.get('ref') == default_branch
             ]
+            
+            # ---------------------------------------------------------------
+            # LAST DEFAULT-BRANCH PIPELINE FIELDS
+            # ---------------------------------------------------------------
+            # Provide explicit fields for the most recent default-branch pipeline.
+            # This allows the frontend to reliably show default-branch-only chip
+            # even when last_pipeline_* is from a non-default branch.
+            if default_branch_pipelines:
+                last_default_branch_pipeline = default_branch_pipelines[0]
+                enriched['last_default_branch_pipeline_status'] = last_default_branch_pipeline.get('status')
+                enriched['last_default_branch_pipeline_ref'] = last_default_branch_pipeline.get('ref')
+                enriched['last_default_branch_pipeline_duration'] = last_default_branch_pipeline.get('duration')
+                enriched['last_default_branch_pipeline_updated_at'] = last_default_branch_pipeline.get('updated_at')
+            else:
+                # No default-branch pipeline found in the current window
+                enriched['last_default_branch_pipeline_status'] = None
+                enriched['last_default_branch_pipeline_ref'] = None
+                enriched['last_default_branch_pipeline_duration'] = None
+                enriched['last_default_branch_pipeline_updated_at'] = None
+            
             # Limit to the same window size as all-branches for consistency
             recent_default_branch_pipelines = default_branch_pipelines[:PIPELINES_PER_PROJECT]
             # Filter out statuses that should be ignored
@@ -963,6 +996,11 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
             enriched['last_pipeline_ref'] = None
             enriched['last_pipeline_duration'] = None
             enriched['last_pipeline_updated_at'] = None
+            # Last default-branch pipeline fields - null when no pipelines
+            enriched['last_default_branch_pipeline_status'] = None
+            enriched['last_default_branch_pipeline_ref'] = None
+            enriched['last_default_branch_pipeline_duration'] = None
+            enriched['last_default_branch_pipeline_updated_at'] = None
             enriched['recent_success_rate'] = None
             enriched['recent_success_rate_all_branches'] = None
             enriched['recent_success_rate_default_branch'] = None
