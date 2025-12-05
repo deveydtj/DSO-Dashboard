@@ -1872,7 +1872,6 @@ body.compact .footer {
     opacity: 0.8;
 }
 
-/* Service sparkline colors - latency visualization */
 /* Service sparkline colors - all bars green by default, spikes get warning/error colors */
 /* Height classes (h1-h5) determine bar height, spike classes determine color */
 .sparkline--service .sparkline-bar {

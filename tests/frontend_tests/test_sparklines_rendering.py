@@ -407,11 +407,17 @@ class TestServiceSparklineSpikeDetection(unittest.TestCase):
         return json.loads(completed.stdout.strip())
 
     def test_stable_latency_no_spike_classes(self):
-        """Test stable latency values don't have spike classes (stay green)."""
+        """Test stable latency values don't have spike classes (stay green).
+        
+        With median ~45ms, thresholds are: warning = max(67.5ms, 95ms) = 95ms,
+        error = max(90ms, 120ms) = 120ms. Since all values (44-48ms) are well below
+        these thresholds, all bars should be green.
+        """
         script = f"""
 import {{ createServiceSparkline }} from 'file://{self.service_view_path}';
 
-// Stable latency around 45-50ms - no spikes, should be all green
+// Stable latency around 45-50ms - all values below thresholds, should be all green
+// With median ~45ms: warning = max(67.5, 95) = 95ms, error = max(90, 120) = 120ms
 const history = [45, 48, 44, 46, 45, 47, 45, 46, 44, 45];
 const html = createServiceSparkline(history);
 
@@ -437,7 +443,8 @@ import {{ createServiceSparkline }} from 'file://{self.service_view_path}';
 
 // History with a big spike at the end
 // Sorted: [80, 85, 90, 100, 500, 2000, 4000, 5032], median = (100+500)/2 = 300ms
-// Values > 1.5x median (450ms) get warning, > 2x median (600ms) get error
+// Warning = max(450ms, 350ms) = 450ms, error = max(600ms, 375ms) = 600ms
+// Values > 450ms get warning, > 600ms get error
 const history = [80, 85, 90, 100, 500, 2000, 4000, 5032];
 const html = createServiceSparkline(history);
 
@@ -465,7 +472,9 @@ import {{ createServiceSparkline }} from 'file://{self.service_view_path}';
 
 // History with moderate degradation
 // Sorted: [80, 90, 100, 110, 120, 160, 170, 180], median = (110+120)/2 = 115ms
-// 1.5x = 172.5ms (warning), 2x = 230ms (error)
+// Warning threshold = max(172.5ms, 165ms) = 172.5ms, error threshold = max(230ms, 190ms) = 230ms
+// Only the value 180ms exceeds the warning threshold (172.5ms) and triggers the warning class.
+// The values 160ms and 170ms are below 172.5ms and do not trigger the warning class.
 const history = [80, 90, 100, 110, 120, 160, 170, 180];
 const html = createServiceSparkline(history);
 

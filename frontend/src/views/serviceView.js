@@ -55,12 +55,11 @@ export function createServiceSparkline(history) {
     const mid = Math.floor(sorted.length / 2);
     const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
     
-    // Define spike thresholds relative to median, but ensure a minimum absolute threshold
-    // to avoid flagging insignificant variations as spikes when latencies are very small
-    // warning: > 1.5x median OR > minAbsoluteThreshold, error: > 2x median OR > minAbsoluteThreshold * 1.5
-    const minAbsoluteThreshold = 100; // milliseconds
-    const warningThreshold = Math.max(median * 1.5, minAbsoluteThreshold);
-    const errorThreshold = Math.max(median * 2, minAbsoluteThreshold * 1.5);
+    // Define spike thresholds that scale with median while ensuring a reasonable minimum increase
+    // This makes spike detection more sensitive for low-latency services while preventing false positives
+    // warning: > 1.5x median OR > median + 50ms, error: > 2x median OR > median + 75ms
+    const warningThreshold = Math.max(median * 1.5, median + 50);
+    const errorThreshold = Math.max(median * 2, median + 75);
     
     // Generate bars with height based on max, and color based on spike detection
     const bars = numericValues.map(val => {
