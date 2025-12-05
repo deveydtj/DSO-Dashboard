@@ -479,6 +479,7 @@ console.log(JSON.stringify({{
 """
         result = self.run_node_script(script)
         self.assertTrue(result['hasSpikeWarning'], 'Moderate degradation should have warning class')
+        self.assertFalse(result['hasSpikeError'], 'Moderate degradation should not have error class')
 
 
 if __name__ == '__main__':
