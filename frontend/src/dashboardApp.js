@@ -21,7 +21,7 @@ import {
 // Import view modules
 import { initHeaderToggles } from './views/headerView.js';
 import { renderSummaryKpis } from './views/kpiView.js';
-import { renderRepositories } from './views/repoView.js';
+import { renderRepositories, getRepoKey } from './views/repoView.js';
 import { renderPipelines } from './views/pipelineView.js';
 import { renderServices } from './views/serviceView.js';
 import { renderAttentionStrip } from './views/attentionView.js';
@@ -43,6 +43,10 @@ export class DashboardApp {
         // Track per-repo state between refreshes for animation detection
         // Stores { status: normalizedStatus, index: sortedPosition } per repo key
         this.repoState = new Map();
+        // History buffers for trend sparklines
+        this.repoHistory = new Map();     // key → array of recent success rates
+        this.serviceHistory = new Map();  // key → array of recent latencies
+        this.historyWindow = 20;          // number of points to retain per item
         this.init();
     }
 
@@ -138,6 +142,8 @@ export class DashboardApp {
         try {
             const data = await fetchRepos(this.apiBase, this.fetchTimeout);
             this.cachedData.repos = data.repositories;
+            // Update history buffers for trend sparklines
+            this._updateRepoHistory(data.repositories || []);
             // Render repos and track state for attention animations (status degradation, position changes)
             this.repoState = renderRepositories(data.repositories || [], this.repoState, this.sloConfig);
             console.log(`✅ Loaded ${data.repositories?.length || 0} repositories`);
@@ -187,6 +193,8 @@ export class DashboardApp {
         try {
             const data = await fetchServices(this.apiBase, this.fetchTimeout);
             this.cachedData.services = data.services;
+            // Update history buffers for trend sparklines
+            this._updateServiceHistory(data.services || []);
             // Use view module to render services
             renderServices(data.services || []);
             console.log(`✅ Loaded ${data.services?.length || 0} services`);
@@ -201,6 +209,92 @@ export class DashboardApp {
                 showError('Failed to load services', 'servicesGrid');
             }
             return false;
+        }
+    }
+
+    /**
+     * Get a stable unique key for a repository
+     * Delegates to getRepoKey from repoView.js for consistency
+     * @param {Object} repo - Repository object
+     * @returns {string} - Stable key for the repository
+     */
+    _getRepoKey(repo) {
+        return getRepoKey(repo);
+    }
+
+    /**
+     * Update repository history buffers with latest success rates
+     * @param {Array} repos - Array of repository objects
+     */
+    _updateRepoHistory(repos) {
+        for (const repo of repos) {
+            const key = this._getRepoKey(repo);
+            const successRate = repo.recent_success_rate;
+
+            // Skip if success rate is null, undefined, or not a number
+            if (successRate == null || typeof successRate !== 'number' || !Number.isFinite(successRate)) {
+                continue;
+            }
+
+            // Get or create history array for this repo
+            if (!this.repoHistory.has(key)) {
+                this.repoHistory.set(key, []);
+            }
+            const history = this.repoHistory.get(key);
+
+            // Append new value
+            history.push(successRate);
+
+            // Trim to historyWindow
+            if (history.length > this.historyWindow) {
+                history.splice(0, history.length - this.historyWindow);
+            }
+        }
+    }
+
+    /**
+     * Get a stable unique key for a service
+     * @param {Object} service - Service object
+     * @returns {string} - Stable key for the service
+     */
+    _getServiceKey(service) {
+        // Prefer id, fallback to name, then url
+        if (service.id != null) {
+            return String(service.id);
+        }
+        if (service.name) {
+            return service.name;
+        }
+        return service.url || 'unknown';
+    }
+
+    /**
+     * Update service history buffers with latest latency values
+     * @param {Array} services - Array of service objects
+     */
+    _updateServiceHistory(services) {
+        for (const service of services) {
+            const key = this._getServiceKey(service);
+            const latency = service.latency_ms;
+
+            // Skip if latency is null, undefined, or not a number
+            if (latency == null || typeof latency !== 'number' || !Number.isFinite(latency)) {
+                continue;
+            }
+
+            // Get or create history array for this service
+            if (!this.serviceHistory.has(key)) {
+                this.serviceHistory.set(key, []);
+            }
+            const history = this.serviceHistory.get(key);
+
+            // Append new value
+            history.push(latency);
+
+            // Trim to historyWindow
+            if (history.length > this.historyWindow) {
+                history.splice(0, history.length - this.historyWindow);
+            }
         }
     }
 
