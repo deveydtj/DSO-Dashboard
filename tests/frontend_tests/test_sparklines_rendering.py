@@ -435,8 +435,9 @@ console.log(JSON.stringify({{
         script = f"""
 import {{ createServiceSparkline }} from 'file://{self.service_view_path}';
 
-// History with a big spike at the end - median should be ~90ms
-// Values > 1.5x median (135ms) get warning, > 2x median (180ms) get error
+// History with a big spike at the end
+// Sorted: [80, 85, 90, 100, 500, 2000, 4000, 5032], median = (100+500)/2 = 300ms
+// Values > 1.5x median (450ms) get warning, > 2x median (600ms) get error
 const history = [80, 85, 90, 100, 500, 2000, 4000, 5032];
 const html = createServiceSparkline(history);
 
@@ -452,7 +453,7 @@ console.log(JSON.stringify({{
 """
         result = self.run_node_script(script)
         self.assertTrue(result['hasSparkline'], 'Sparkline should be present')
-        # With these values, median is around 95ms, so 500+ms values should trigger spike classes
+        # With median=300ms, values 2000+ms (>600ms threshold) should trigger error class
         self.assertTrue(result['hasSpikeError'], 'Large spikes should have error class')
 
     def test_moderate_degradation_warning(self):
@@ -460,8 +461,9 @@ console.log(JSON.stringify({{
         script = f"""
 import {{ createServiceSparkline }} from 'file://{self.service_view_path}';
 
-// History with moderate degradation - median is ~100ms
-// 1.5x = 150ms (warning), 2x = 200ms (error)
+// History with moderate degradation
+// Sorted: [80, 90, 100, 110, 120, 160, 170, 180], median = (110+120)/2 = 115ms
+// 1.5x = 172.5ms (warning), 2x = 230ms (error)
 const history = [80, 90, 100, 110, 120, 160, 170, 180];
 const html = createServiceSparkline(history);
 
