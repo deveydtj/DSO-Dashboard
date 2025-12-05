@@ -284,7 +284,15 @@ export class DashboardApp {
 
             // Get or create history array for this service
             if (!this.serviceHistory.has(key)) {
-                this.serviceHistory.set(key, []);
+                // Initialize from latency_history if available (for mock data or API-provided history)
+                if (Array.isArray(service.latency_history) && service.latency_history.length > 0) {
+                    const validHistory = service.latency_history.filter(
+                        v => typeof v === 'number' && Number.isFinite(v) && v >= 0
+                    );
+                    this.serviceHistory.set(key, validHistory.slice(-this.historyWindow));
+                } else {
+                    this.serviceHistory.set(key, []);
+                }
             }
             const history = this.serviceHistory.get(key);
 

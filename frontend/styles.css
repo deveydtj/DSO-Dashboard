@@ -1873,23 +1873,20 @@ body.compact .footer {
 }
 
 /* Service sparkline colors - latency visualization */
-/* Lower latency (h1-h2) = good (green), higher latency (h4-h5) = spike (orange/red) */
+/* Service sparkline colors - all bars green by default, spikes get warning/error colors */
+/* Height classes (h1-h5) determine bar height, spike classes determine color */
 .sparkline--service .sparkline-bar {
     background: var(--accent-success);
     opacity: 0.7;
 }
 
-.sparkline--service .sparkline-bar--h3 {
-    background: var(--accent-info);
-    opacity: 0.8;
-}
-
-.sparkline--service .sparkline-bar--h4 {
+/* Spike-based coloring overrides height-based coloring */
+.sparkline--service .sparkline-bar--spike-warning {
     background: var(--accent-warning);
     opacity: 0.9;
 }
 
-.sparkline--service .sparkline-bar--h5 {
+.sparkline--service .sparkline-bar--spike-error {
     background: var(--accent-error);
     opacity: 1;
 }

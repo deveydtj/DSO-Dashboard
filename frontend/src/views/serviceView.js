@@ -33,7 +33,7 @@ export function getServiceKey(service) {
 /**
  * Generate sparkline HTML for a history array of latency values.
  * Normalizes latencies relative to the max value in history into 5 height buckets.
- * Higher bars indicate higher (worse) latency.
+ * Color is based on deviation from median: normal values are green, spikes are warning/error.
  * Returns empty string if history has fewer than 2 numeric entries.
  * 
  * @param {Array<number>|null} history - Array of latency_ms values
@@ -50,13 +50,31 @@ export function createServiceSparkline(history) {
     const maxVal = Math.max(...numericValues);
     if (maxVal <= 0) return '';
     
-    // Normalize each value to 1-5 based on its proportion of max
-    // h1: 0-20% of max, h2: 20-40%, h3: 40-60%, h4: 60-80%, h5: 80-100%
+    // Calculate median for determining spike thresholds
+    const sorted = [...numericValues].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+    
+    // Define spike thresholds relative to median
+    // warning: > 1.5x median, error: > 2x median
+    const warningThreshold = median * 1.5;
+    const errorThreshold = median * 2;
+    
+    // Generate bars with height based on max, and color based on spike detection
     const bars = numericValues.map(val => {
         const ratio = val / maxVal;
         // Convert to height bucket (1-5)
         const bucket = Math.min(5, Math.max(1, Math.ceil(ratio * 5)));
-        return `<span class="sparkline-bar sparkline-bar--h${bucket}"></span>`;
+        
+        // Determine color class based on deviation from median
+        let colorClass = '';  // default: green (healthy)
+        if (val > errorThreshold) {
+            colorClass = ' sparkline-bar--spike-error';
+        } else if (val > warningThreshold) {
+            colorClass = ' sparkline-bar--spike-warning';
+        }
+        
+        return `<span class="sparkline-bar sparkline-bar--h${bucket}${colorClass}"></span>`;
     }).join('');
     
     return `<div class="sparkline sparkline--service" aria-label="Recent latency trend">${bars}</div>`;
