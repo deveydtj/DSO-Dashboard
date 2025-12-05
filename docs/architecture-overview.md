@@ -181,7 +181,7 @@ The backend supports configurable SLO targets for default-branch pipeline succes
 
 ### Summary SLO Enrichment
 
-The `_calculate_summary` method in `BackgroundPoller` enriches the summary response with SLO metrics:
+The `_calculate_summary()` method in the `BackgroundPoller` class (`backend/app.py`) enriches the summary response with SLO metrics by calling `_compute_default_branch_slo()`:
 
 | Field | Type | Description |
 |-------|------|-------------|
