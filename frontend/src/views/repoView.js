@@ -233,14 +233,46 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null, histor
     // Wrap indicators if any
     const indicatorsHtml = dsoIndicators ? `<div class="dso-indicators" role="status" aria-label="Repository health indicators">${dsoIndicators}</div>` : '';
     
-    // Pipeline info section - only show chip if last pipeline is on default branch
+    // Pipeline info section - prefer explicit last_default_branch_* fields if available,
+    // fallback to checking last_pipeline_ref === default_branch for backward compatibility.
     let pipelineInfo = '';
-    const isDefaultBranchPipeline = pipelineStatus && 
+    
+    // Check for new explicit default-branch pipeline fields first
+    const hasExplicitDefaultBranchPipeline = repo.last_default_branch_pipeline_status != null;
+    
+    // Fallback: check if last_pipeline_* happens to be on default branch
+    const isLastPipelineOnDefaultBranch = pipelineStatus && 
         repo.last_pipeline_ref && 
         repo.default_branch && 
         repo.last_pipeline_ref === repo.default_branch;
     
-    if (isDefaultBranchPipeline) {
+    if (hasExplicitDefaultBranchPipeline) {
+        // Use explicit default-branch pipeline fields (preferred)
+        const defaultBranchStatus = repo.last_default_branch_pipeline_status;
+        const defaultBranchNormalizedStatus = normalizeStatus(defaultBranchStatus);
+        const ref = repo.last_default_branch_pipeline_ref;
+        const duration = repo.last_default_branch_pipeline_duration != null 
+            ? formatDuration(repo.last_default_branch_pipeline_duration) 
+            : '--';
+        const updatedAt = repo.last_default_branch_pipeline_updated_at 
+            ? formatDate(repo.last_default_branch_pipeline_updated_at) 
+            : 'unknown';
+        
+        pipelineInfo = `
+            <div class="repo-pipeline">
+                <div class="pipeline-status-chip ${defaultBranchNormalizedStatus}" title="Status: ${escapeHtml(defaultBranchStatus)}">
+                    <span class="status-dot"></span>
+                    <span>${escapeHtml(defaultBranchStatus)}</span>
+                </div>
+                <div class="pipeline-details">
+                    <span class="pipeline-ref">${escapeHtml(ref || '')}</span>
+                    <span class="pipeline-duration">${duration}</span>
+                    <span class="pipeline-time">updated ${updatedAt}</span>
+                </div>
+            </div>
+        `;
+    } else if (isLastPipelineOnDefaultBranch) {
+        // Fallback: use last_pipeline_* fields if they happen to be on default branch
         const ref = repo.last_pipeline_ref;
         const duration = repo.last_pipeline_duration != null 
             ? formatDuration(repo.last_pipeline_duration) 
@@ -263,7 +295,7 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null, histor
             </div>
         `;
     } else if (pipelineStatus) {
-        // Last pipeline is not on default branch - show fallback
+        // No default-branch pipeline available - show fallback
         pipelineInfo = `
             <div class="repo-pipeline repo-pipeline-fallback" role="status" aria-label="No recent default-branch pipelines">
                 <span class="pipeline-fallback-text">No recent default-branch pipelines</span>
