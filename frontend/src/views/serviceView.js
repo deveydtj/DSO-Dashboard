@@ -1,7 +1,7 @@
 // Service view module - Service card rendering
 // Pure JavaScript - no external dependencies
 
-import { escapeHtml, formatDate } from '../utils/formatters.js';
+import { escapeHtml } from '../utils/formatters.js';
 import { normalizeServiceStatus } from '../utils/status.js';
 
 /**
@@ -102,11 +102,6 @@ export function createServiceCard(service, history = null) {
     const hasAverageLatency = service.average_latency_ms != null;
     const averageLatency = formatLatency(service.average_latency_ms);
     
-    // Last checked display
-    const lastChecked = service.last_checked 
-        ? formatDate(service.last_checked)
-        : '--';
-    
     // HTTP status display (optional)
     const httpStatus = service.http_status 
         ? `HTTP ${service.http_status}`
@@ -158,18 +153,14 @@ export function createServiceCard(service, history = null) {
                 ` : ''}
             </div>
             ${sparklineHtml}
+            ${httpStatus ? `
             <div class="service-metrics">
-                <div class="service-metric">
-                    <span class="metric-label">Last Check</span>
-                    <span class="metric-value">${lastChecked}</span>
-                </div>
-                ${httpStatus ? `
                 <div class="service-metric">
                     <span class="metric-label">Status</span>
                     <span class="metric-value">${httpStatus}</span>
                 </div>
-                ` : ''}
             </div>
+            ` : ''}
             ${errorHtml}
             ${linkHtml}
         </div>
