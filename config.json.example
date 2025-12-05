@@ -37,6 +37,10 @@
   "slo": {
     "default_branch_success_target": 0.99
   },
+  "duration_hydration": {
+    "global_cap": 200,
+    "per_project_cap": 2
+  },
   "comment": "group_ids and project_ids can be numeric (e.g., [123, 456]) or strings (e.g., ['proj-1', 'proj-2'])",
   "note1": "Environment variables override config.json values when explicitly set.",
   "note2": "Set GITLAB_GROUP_IDS='' (empty) to clear configured scope at runtime.",
@@ -48,5 +52,6 @@
   "note8": "external_services: Optional list of external services to monitor. Each entry requires 'url', with optional 'id' (stable identifier), 'name' (display name), 'timeout' (seconds, default 10), 'critical' (boolean), and 'kind' (type label). Omit or leave empty to disable external service monitoring.",
   "note9": "service_latency: Configuration for service latency monitoring. 'enabled' (bool, default true) enables/disables tracking. 'window_size' (int, default 10) sets the number of samples for running average. 'degradation_threshold_ratio' (float, default 1.5) sets the ratio above average that triggers a warning.",
   "note10": "slo: Service Level Objective configuration for default-branch pipeline success rate. 'default_branch_success_target' (float, default 0.99) sets the target success rate between 0 and 1 (e.g., 0.99 = 99%). Used to drive error budget view and highlight repos below target.",
-  "note11": "slo.default_branch_success_target: Override with env var SLO_DEFAULT_BRANCH_SUCCESS_TARGET. Must be > 0 and < 1. Values outside this range will cause validation failure at startup."
+  "note11": "slo.default_branch_success_target: Override with env var SLO_DEFAULT_BRANCH_SUCCESS_TARGET. Must be > 0 and < 1. Values outside this range will cause validation failure at startup.",
+  "note12": "duration_hydration: Configuration for fetching accurate pipeline durations. 'global_cap' (int, default 200) limits total detail API requests per poll cycle. 'per_project_cap' (int, default 2) limits detail requests per project for repo tiles. Override with env vars DURATION_HYDRATION_GLOBAL_CAP and DURATION_HYDRATION_PER_PROJECT_CAP."
 }
