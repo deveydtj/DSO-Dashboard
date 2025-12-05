@@ -161,6 +161,94 @@ index.html
 | `GET /api/services` | External service health status |
 | `POST /api/mock/reload` | Hot-reload mock data (mock mode only) |
 
+## SLO (Service Level Objective) Configuration
+
+### Backend SLO Configuration
+
+The backend supports configurable SLO targets for default-branch pipeline success rate via `config['slo']`:
+
+```json
+{
+  "slo": {
+    "default_branch_success_target": 0.99
+  }
+}
+```
+
+**Configuration options:**
+- `default_branch_success_target` (float): Target success rate between 0 and 1 (e.g., 0.99 = 99%). Default is 0.99.
+- Environment variable override: `SLO_DEFAULT_BRANCH_SUCCESS_TARGET`
+
+### Summary SLO Enrichment
+
+The `_calculate_summary` method in `BackgroundPoller` enriches the summary response with SLO metrics:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pipeline_slo_target_default_branch_success_rate` | float | Configured SLO target (0-1) |
+| `pipeline_slo_observed_default_branch_success_rate` | float | Actual observed success rate across all repos (0-1) |
+| `pipeline_slo_total_default_branch_pipelines` | int | Total number of default-branch pipelines counted |
+| `pipeline_error_budget_remaining_pct` | int | Percentage of error budget remaining (0-100) |
+
+**Error budget calculation:**
+- Error budget total = 1 - target_rate (e.g., 0.01 for 99% target)
+- Budget spent = (1 - observed_rate) / error_budget_total
+- Budget remaining % = (1 - budget_spent) * 100
+
+### Frontend SLO Display
+
+#### SLO KPI Block (Header)
+
+The SLO KPI card in the header (`kpiView.js`) displays:
+- **Target**: The configured SLO target percentage
+- **Observed**: The actual observed success rate across all default-branch pipelines
+- **Error Budget Bar**: Visual progress bar showing remaining error budget with color thresholds:
+  - Green (≥50% remaining): Healthy budget
+  - Yellow (20-49% remaining): Warning - budget getting tight
+  - Red (<20% remaining): Critical - budget nearly exhausted
+
+#### Per-Repo Error Budget Bar
+
+Each repository card (`repoView.js`) displays its own error budget bar based on:
+- The repo's `recent_success_rate` (default-branch success rate)
+- The configured SLO target from `sloConfig.defaultBranchSuccessTarget`
+- Same color thresholds as the header SLO bar
+
+### Attention Strip ("Things That Need Attention")
+
+The attention strip (`attentionView.js`) provides at-a-glance visibility into items requiring action. It displays severity-based chips/pills for:
+
+**Repository signals:**
+- **Critical**: Runner infrastructure issues (`has_runner_issues`)
+- **High**: Consecutive default-branch failures (`consecutive_default_branch_failures > 0`)
+- **Medium**: Success rate below SLO target (`recent_success_rate < sloTarget`)
+
+**Service signals:**
+- **Critical**: Service offline or unhealthy status
+- **Medium**: Latency degradation warning
+
+**Pipeline signals:**
+- **Critical/High**: Most recent default-branch pipeline with runner issues or failing jobs
+
+Items are sorted by severity (critical → high → medium → low), then alphabetically. Maximum 8 items displayed.
+
+### Sparkline Trends
+
+The dashboard maintains in-browser history buffers for trend visualization:
+
+#### Repository Sparklines (`repoView.js`)
+- Tracks recent `recent_success_rate` values per repository
+- Renders a mini bar chart showing success rate trend
+- History window: 20 data points (retained in `DashboardApp.repoHistory`)
+- Height buckets: 5 levels based on success rate (0-20%, 20-40%, 40-60%, 60-80%, 80-100%)
+
+#### Service Sparklines (`serviceView.js`)
+- Tracks recent `latency_ms` values per service
+- Renders a mini bar chart showing latency trend
+- History window: 20 data points (retained in `DashboardApp.serviceHistory`)
+
+**Note**: History is maintained in browser memory only and resets on page reload.
+
 ## Key Constraints
 
 1. **Backend**: Python standard library only (no pip dependencies)

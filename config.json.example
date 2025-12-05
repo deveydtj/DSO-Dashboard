@@ -47,5 +47,6 @@
   "note7": "log_level: Controls logging verbosity. Options: DEBUG, INFO, WARNING, ERROR, CRITICAL. Default is INFO.",
   "note8": "external_services: Optional list of external services to monitor. Each entry requires 'url', with optional 'id' (stable identifier), 'name' (display name), 'timeout' (seconds, default 10), 'critical' (boolean), and 'kind' (type label). Omit or leave empty to disable external service monitoring.",
   "note9": "service_latency: Configuration for service latency monitoring. 'enabled' (bool, default true) enables/disables tracking. 'window_size' (int, default 10) sets the number of samples for running average. 'degradation_threshold_ratio' (float, default 1.5) sets the ratio above average that triggers a warning.",
-  "note10": "slo: Service Level Objective configuration for default-branch pipeline success rate. 'default_branch_success_target' (float, default 0.99) sets the target success rate between 0 and 1 (e.g., 0.99 = 99%). Used to drive error budget view and highlight repos below target."
+  "note10": "slo: Service Level Objective configuration for default-branch pipeline success rate. 'default_branch_success_target' (float, default 0.99) sets the target success rate between 0 and 1 (e.g., 0.99 = 99%). Used to drive error budget view and highlight repos below target.",
+  "note11": "slo.default_branch_success_target: Override with env var SLO_DEFAULT_BRANCH_SUCCESS_TARGET. Must be > 0 and < 1. Values outside this range will cause validation failure at startup."
 }
