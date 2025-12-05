@@ -25,11 +25,6 @@ logger = logging.getLogger(__name__)
 MAX_PROJECTS_FOR_PIPELINES = 20  # Max projects to fetch pipelines from
 PIPELINES_PER_PROJECT = 10       # Pipelines to fetch per project
 
-# Duration hydration configuration constants
-# These caps prevent rate limiting by limiting how many pipeline detail requests we make
-DEFAULT_DURATION_HYDRATION_GLOBAL_CAP = 200  # Max total detail requests per poll cycle
-DEFAULT_DURATION_HYDRATION_PER_PROJECT_CAP = 2  # Max detail requests per project (for tiles)
-
 # Pipeline statuses to ignore when calculating consecutive failures and success rates
 # These statuses represent pipelines that didn't actually test the code
 IGNORED_PIPELINE_STATUSES = ('skipped', 'manual', 'canceled', 'cancelled')

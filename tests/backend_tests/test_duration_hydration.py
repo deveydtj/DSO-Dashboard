@@ -126,7 +126,7 @@ class TestHydratePipelineDurations(unittest.TestCase):
         """Test that hydration respects global cap"""
         # Create more pipelines than global_cap (10)
         all_pipelines = [
-            {'id': i, 'project_id': 100, 'ref': 'main', 'status': 'success', 'duration': None, 'created_at': f'2024-01-01T0{i}:00:00'}
+            {'id': i, 'project_id': 100, 'ref': 'main', 'status': 'success', 'duration': None, 'created_at': f'2024-01-01T{i:02d}:00:00'}
             for i in range(15)
         ]
         per_project = {100: all_pipelines}
@@ -134,7 +134,7 @@ class TestHydratePipelineDurations(unittest.TestCase):
         
         self.mock_client.get_pipeline.return_value = {'id': 1, 'duration': 300}
         
-        stats = self.poller._hydrate_pipeline_durations(all_pipelines, per_project, projects, 'test-poll')
+        self.poller._hydrate_pipeline_durations(all_pipelines, per_project, projects, 'test-poll')
         
         # Should not have called get_pipeline more than global_cap times
         self.assertLessEqual(self.mock_client.get_pipeline.call_count, 10)

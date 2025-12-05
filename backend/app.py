@@ -689,8 +689,10 @@ class BackgroundPoller(threading.Thread):
                 if pipeline.get('duration') is None:
                     pipeline_id = pipeline.get('id')
                     if pipeline_id is not None:
-                        pipelines_to_hydrate.add((project_id, pipeline_id))
-                        hydrated_for_project += 1
+                        pipeline_key = (project_id, pipeline_id)
+                        if pipeline_key not in pipelines_to_hydrate:
+                            pipelines_to_hydrate.add(pipeline_key)
+                            hydrated_for_project += 1
         
         # Calculate how many will be skipped due to cap
         skipped_due_to_cap = max(0, len(pipelines_to_hydrate) - global_cap)
