@@ -1835,3 +1835,79 @@ body.compact .footer {
     padding: 1rem;
 }
 
+/* Sparkline Styles - Trend visualization for repos and services */
+.sparkline {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 16px;
+    margin-top: var(--spacing-xs);
+    padding: 2px 0;
+}
+
+.sparkline-bar {
+    display: inline-block;
+    width: 4px;
+    min-height: 2px;
+    border-radius: 1px;
+    transition: height 0.3s ease;
+}
+
+/* Sparkline height levels (5 levels for normalized values) */
+.sparkline-bar--h1 { height: 3px; }
+.sparkline-bar--h2 { height: 6px; }
+.sparkline-bar--h3 { height: 9px; }
+.sparkline-bar--h4 { height: 12px; }
+.sparkline-bar--h5 { height: 16px; }
+
+/* Repo sparkline colors - green spectrum for success rates */
+.sparkline--repo .sparkline-bar {
+    background: var(--accent-success);
+    opacity: 0.7;
+}
+
+.sparkline--repo .sparkline-bar--h1,
+.sparkline--repo .sparkline-bar--h2 {
+    background: var(--accent-warning);
+    opacity: 0.8;
+}
+
+/* Service sparkline colors - latency visualization */
+/* Lower latency (h1-h2) = good (green), higher latency (h4-h5) = spike (orange/red) */
+.sparkline--service .sparkline-bar {
+    background: var(--accent-success);
+    opacity: 0.7;
+}
+
+.sparkline--service .sparkline-bar--h3 {
+    background: var(--accent-info);
+    opacity: 0.8;
+}
+
+.sparkline--service .sparkline-bar--h4 {
+    background: var(--accent-warning);
+    opacity: 0.9;
+}
+
+.sparkline--service .sparkline-bar--h5 {
+    background: var(--accent-error);
+    opacity: 1;
+}
+
+/* Compact mode sparkline adjustments */
+body.compact .sparkline {
+    height: 12px;
+    gap: 1px;
+    margin-top: 0.25rem;
+}
+
+body.compact .sparkline-bar {
+    width: 3px;
+}
+
+body.compact .sparkline-bar--h1 { height: 2px; }
+body.compact .sparkline-bar--h2 { height: 4px; }
+body.compact .sparkline-bar--h3 { height: 6px; }
+body.compact .sparkline-bar--h4 { height: 9px; }
+body.compact .sparkline-bar--h5 { height: 12px; }
+
