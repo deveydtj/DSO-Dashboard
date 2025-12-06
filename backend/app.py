@@ -55,6 +55,7 @@ from backend.config_loader import (
     parse_bool_config,
     DEFAULT_SERVICE_LATENCY_CONFIG,
     DEFAULT_SLO_CONFIG,
+    DEFAULT_DURATION_HYDRATION_CONFIG,
     VALID_LOG_LEVELS,
 )
 from backend.services import DEFAULT_SERVICE_CHECK_TIMEOUT
@@ -262,6 +263,9 @@ class BackgroundPoller(threading.Thread):
             - degradation_threshold_ratio (float): Warn if current > ratio × average
         slo_config: SLO (Service Level Objective) configuration
             - default_branch_success_target (float): Target success rate for default branch (0-1)
+        duration_hydration_config: Configuration for pipeline duration hydration
+            - global_cap (int): Max total detail requests per poll cycle
+            - per_project_cap (int): Max detail requests per project (for tiles)
         _service_latency_history: Internal dict tracking per-service latency state.
             Keyed by service ID (string). Each entry contains:
             - average_ms (float): Running average latency in milliseconds
@@ -271,7 +275,8 @@ class BackgroundPoller(threading.Thread):
     """
     
     def __init__(self, gitlab_client, poll_interval_sec, group_ids=None, project_ids=None,
-                 external_services=None, service_latency_config=None, slo_config=None):
+                 external_services=None, service_latency_config=None, slo_config=None,
+                 duration_hydration_config=None):
         super().__init__(daemon=True)
         self.gitlab_client = gitlab_client
         self.poll_interval = poll_interval_sec
@@ -285,6 +290,9 @@ class BackgroundPoller(threading.Thread):
         # SLO configuration for default-branch pipeline success rate target
         # Use shallow copy to prevent mutation of the module-level constant
         self.slo_config = dict(slo_config) if slo_config else dict(DEFAULT_SLO_CONFIG)
+        # Duration hydration configuration for fetching accurate pipeline durations
+        # Use shallow copy to prevent mutation of the module-level constant
+        self.duration_hydration_config = dict(duration_hydration_config) if duration_hydration_config else dict(DEFAULT_DURATION_HYDRATION_CONFIG)
         self.running = True
         self.stop_event = threading.Event()
         self.poll_counter = 0
@@ -367,6 +375,16 @@ class BackgroundPoller(threading.Thread):
             set_state_error("Failed to fetch data from GitLab API", poll_id=poll_id)
             logger.error(f"[poll_id={poll_id}] Data poll completed with failures - state marked as ERROR (services still updated)")
             return
+        
+        # Hydrate pipeline durations from detail API
+        # This fetches accurate duration values for pipelines that need them
+        # (the list API doesn't always include duration)
+        self._hydrate_pipeline_durations(
+            pipeline_data['all_pipelines'],
+            pipeline_data['per_project'],
+            projects,
+            poll_id
+        )
         
         # Enrich projects with per-project pipeline health data
         enriched_projects = self._enrich_projects_with_pipelines(projects, pipeline_data['per_project'], poll_id)
@@ -600,6 +618,131 @@ class BackgroundPoller(threading.Thread):
                 'all_pipelines': pipelines,
                 'per_project': per_project_pipelines
             }
+    
+    def _hydrate_pipeline_durations(self, all_pipelines, per_project_pipelines, projects, poll_id=None):
+        """Hydrate pipeline durations by fetching from detail API
+        
+        GitLab's list API (GET /projects/:id/pipelines) doesn't always include
+        the duration field. This method fetches detailed info for select pipelines
+        to populate duration values.
+        
+        Hydrates durations for:
+        1. Pipelines shown in Recent Pipelines endpoint (up to global_cap)
+        2. Most recent default-branch pipeline per project (up to per_project_cap)
+        
+        Args:
+            all_pipelines: List of all pipelines (mutated in place)
+            per_project_pipelines: Dict mapping project_id -> list of pipelines (references same objects)
+            projects: List of project dicts (for default_branch lookup)
+            poll_id: Poll cycle identifier for logging context
+        
+        Returns:
+            dict: Hydration stats with 'hydrated', 'skipped_cap', 'skipped_error' counts
+        """
+        log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
+        
+        global_cap = self.duration_hydration_config.get('global_cap', 200)
+        per_project_cap = self.duration_hydration_config.get('per_project_cap', 2)
+        
+        # Build project_id -> default_branch map
+        project_default_branches = {}
+        for project in (projects or []):
+            project_id = project.get('id')
+            if project_id is not None:
+                project_default_branches[project_id] = project.get('default_branch', DEFAULT_BRANCH_NAME)
+        
+        # Track which pipelines need hydration
+        # Use a set of (project_id, pipeline_id) tuples to avoid duplicates
+        pipelines_to_hydrate = set()
+        
+        # 1. Add pipelines for the Recent Pipelines endpoint (all_pipelines, up to global_cap)
+        #    Only hydrate if duration is missing
+        for pipeline in all_pipelines[:global_cap]:
+            if pipeline.get('duration') is None:
+                project_id = pipeline.get('project_id')
+                pipeline_id = pipeline.get('id')
+                if project_id is not None and pipeline_id is not None:
+                    pipelines_to_hydrate.add((project_id, pipeline_id))
+        
+        # 2. Add most recent default-branch pipeline per project (up to per_project_cap per project)
+        #    This ensures repo tiles show duration for default-branch pipelines
+        for project_id, pipelines in per_project_pipelines.items():
+            default_branch = project_default_branches.get(project_id, DEFAULT_BRANCH_NAME)
+            hydrated_for_project = 0
+            
+            # Sort by created_at descending to get most recent first
+            sorted_pipelines = sorted(
+                pipelines,
+                key=lambda p: p.get('created_at') or '',
+                reverse=True
+            )
+            
+            for pipeline in sorted_pipelines:
+                if hydrated_for_project >= per_project_cap:
+                    break
+                
+                # Only hydrate default-branch pipelines for tiles
+                if pipeline.get('ref') != default_branch:
+                    continue
+                
+                # Only hydrate if duration is missing
+                if pipeline.get('duration') is None:
+                    pipeline_id = pipeline.get('id')
+                    if pipeline_id is not None:
+                        pipeline_key = (project_id, pipeline_id)
+                        if pipeline_key not in pipelines_to_hydrate:
+                            pipelines_to_hydrate.add(pipeline_key)
+                            hydrated_for_project += 1
+        
+        # Calculate how many will be skipped due to cap
+        skipped_due_to_cap = max(0, len(pipelines_to_hydrate) - global_cap)
+        
+        # Respect global cap - take first global_cap items
+        if len(pipelines_to_hydrate) > global_cap:
+            logger.info(f"{log_prefix}Duration hydration: capping from {len(pipelines_to_hydrate)} to {global_cap} requests")
+            # Convert to list once, slice, no need to convert back to set since we iterate immediately
+            pipelines_to_hydrate = list(pipelines_to_hydrate)[:global_cap]
+        
+        if not pipelines_to_hydrate:
+            logger.debug(f"{log_prefix}Duration hydration: no pipelines need hydration")
+            return {'hydrated': 0, 'skipped_cap': 0, 'skipped_error': 0}
+        
+        # Build lookup map for quick access: (project_id, pipeline_id) -> pipeline dict
+        pipeline_lookup = {}
+        for pipeline in all_pipelines:
+            key = (pipeline.get('project_id'), pipeline.get('id'))
+            pipeline_lookup[key] = pipeline
+        
+        # Hydrate durations
+        hydrated = 0
+        skipped_error = 0
+        
+        for project_id, pipeline_id in pipelines_to_hydrate:
+            try:
+                detail = self.gitlab_client.get_pipeline(project_id, pipeline_id)
+                if detail is None:
+                    # API error (logged at debug level in get_pipeline)
+                    skipped_error += 1
+                elif 'duration' in detail:
+                    # Success: update the pipeline in our list
+                    key = (project_id, pipeline_id)
+                    if key in pipeline_lookup:
+                        pipeline_lookup[key]['duration'] = detail.get('duration')
+                        hydrated += 1
+                else:
+                    # Detail API returned but no duration field (pipeline still running or edge case)
+                    skipped_error += 1
+            except Exception as e:
+                logger.debug(f"{log_prefix}Duration hydration: error fetching pipeline {pipeline_id} for project {project_id}: {e}")
+                skipped_error += 1
+        
+        logger.info(f"{log_prefix}Duration hydration: hydrated={hydrated}, skipped_error={skipped_error}")
+        
+        return {
+            'hydrated': hydrated,
+            'skipped_cap': skipped_due_to_cap,
+            'skipped_error': skipped_error
+        }
     
     def _enrich_projects_with_pipelines(self, projects, per_project_pipelines, poll_id=None):
         """Enrich project data with pipeline health metrics
@@ -1466,7 +1609,8 @@ def main():
             project_ids=config['project_ids'],
             external_services=config.get('external_services', []),
             service_latency_config=config.get('service_latency'),
-            slo_config=config.get('slo')
+            slo_config=config.get('slo'),
+            duration_hydration_config=config.get('duration_hydration')
         )
         poller.start()
         logger.info(f"Background poller started (interval: {config['poll_interval_sec']}s)")

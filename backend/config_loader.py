@@ -142,6 +142,22 @@ DEFAULT_SLO_CONFIG = {
 }
 
 
+# Default duration hydration configuration
+# These values control how many pipeline detail API calls we make per poll cycle
+# to fetch accurate duration values (not always present in list API responses).
+#
+# The caps are intentionally conservative to prevent rate limiting:
+# - global_cap (200): With a 60s poll interval, this is ~3 req/s which is well
+#   under GitLab's default rate limit of 300 req/min for authenticated users.
+# - per_project_cap (2): Limits hydration per project to prevent one busy repo
+#   from consuming the entire budget. Primarily hydrates the default-branch
+#   pipeline shown in repo tiles.
+DEFAULT_DURATION_HYDRATION_CONFIG = {
+    'global_cap': 200,       # Max total detail requests per poll cycle
+    'per_project_cap': 2,    # Max detail requests per project (for tiles)
+}
+
+
 def load_config():
     """Load configuration from config.json or environment variables
     
@@ -332,6 +348,45 @@ def load_config():
     
     config['slo'] = slo
     
+    # Duration hydration configuration
+    # Controls how many pipeline detail API calls we make per poll cycle to fetch
+    # accurate duration values (not always present in list API responses).
+    # Environment variables override config.json values.
+    duration_hydration_raw = config.get('duration_hydration', {})
+    if not isinstance(duration_hydration_raw, dict):
+        logger.warning(f"Invalid duration_hydration (not a dict): {type(duration_hydration_raw).__name__}. Using defaults.")
+        duration_hydration_raw = {}
+    
+    duration_hydration = {}
+    
+    # global_cap: int, max total detail requests per poll cycle
+    if 'DURATION_HYDRATION_GLOBAL_CAP' in os.environ:
+        duration_hydration['global_cap'] = parse_int_config(
+            os.environ['DURATION_HYDRATION_GLOBAL_CAP'],
+            DEFAULT_DURATION_HYDRATION_CONFIG['global_cap'],
+            'DURATION_HYDRATION_GLOBAL_CAP'
+        )
+    else:
+        raw_global_cap = duration_hydration_raw.get('global_cap', DEFAULT_DURATION_HYDRATION_CONFIG['global_cap'])
+        duration_hydration['global_cap'] = parse_int_config(
+            raw_global_cap, DEFAULT_DURATION_HYDRATION_CONFIG['global_cap'], 'duration_hydration.global_cap'
+        )
+    
+    # per_project_cap: int, max detail requests per project (for tiles)
+    if 'DURATION_HYDRATION_PER_PROJECT_CAP' in os.environ:
+        duration_hydration['per_project_cap'] = parse_int_config(
+            os.environ['DURATION_HYDRATION_PER_PROJECT_CAP'],
+            DEFAULT_DURATION_HYDRATION_CONFIG['per_project_cap'],
+            'DURATION_HYDRATION_PER_PROJECT_CAP'
+        )
+    else:
+        raw_per_project = duration_hydration_raw.get('per_project_cap', DEFAULT_DURATION_HYDRATION_CONFIG['per_project_cap'])
+        duration_hydration['per_project_cap'] = parse_int_config(
+            raw_per_project, DEFAULT_DURATION_HYDRATION_CONFIG['per_project_cap'], 'duration_hydration.per_project_cap'
+        )
+    
+    config['duration_hydration'] = duration_hydration
+    
     # Ensure lists are clean (filter config.json values that might have empty strings or numeric IDs)
     if isinstance(config['group_ids'], list):
         config['group_ids'] = [str(gid).strip() for gid in config['group_ids'] if gid and str(gid).strip()]
@@ -358,6 +413,8 @@ def load_config():
     logger.info(f"  Service latency: enabled={sl_config['enabled']}, window_size={sl_config['window_size']}, degradation_threshold_ratio={sl_config['degradation_threshold_ratio']}")
     slo_config = config['slo']
     logger.info(f"  SLO: default_branch_success_target={slo_config['default_branch_success_target']}")
+    dh_config = config['duration_hydration']
+    logger.info(f"  Duration hydration: global_cap={dh_config['global_cap']}, per_project_cap={dh_config['per_project_cap']}")
     logger.info(f"  API token: {'***' if config['api_token'] else 'NOT SET'}")
     
     return config
