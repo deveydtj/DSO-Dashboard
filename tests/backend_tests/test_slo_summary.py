@@ -412,5 +412,96 @@ class TestSLOFieldsInDefaultSummary(unittest.TestCase):
         self.assertNotIn('pipeline_error_budget_remaining_pct', summary)
 
 
+class TestFilterSloFieldsFunction(unittest.TestCase):
+    """Test the filter_slo_fields_from_summary() function"""
+    
+    def test_filter_slo_fields_when_enabled(self):
+        """Test that all fields including SLO are preserved when slo_enabled=True"""
+        summary = {
+            'total_repositories': 5,
+            'total_pipelines': 10,
+            'pipeline_slo_target_default_branch_success_rate': 0.99,
+            'pipeline_slo_observed_default_branch_success_rate': 0.95,
+            'pipeline_slo_total_default_branch_pipelines': 8,
+            'pipeline_error_budget_remaining_pct': 60,
+        }
+        
+        result = server.filter_slo_fields_from_summary(summary, slo_enabled=True)
+        
+        # All fields should be preserved
+        self.assertIn('total_repositories', result)
+        self.assertIn('total_pipelines', result)
+        self.assertIn('pipeline_slo_target_default_branch_success_rate', result)
+        self.assertIn('pipeline_slo_observed_default_branch_success_rate', result)
+        self.assertIn('pipeline_slo_total_default_branch_pipelines', result)
+        self.assertIn('pipeline_error_budget_remaining_pct', result)
+        
+        # Values should be unchanged
+        self.assertEqual(result['total_repositories'], 5)
+        self.assertEqual(result['pipeline_slo_target_default_branch_success_rate'], 0.99)
+    
+    def test_filter_slo_fields_when_disabled(self):
+        """Test that SLO fields are removed but other fields remain when slo_enabled=False"""
+        summary = {
+            'total_repositories': 5,
+            'total_pipelines': 10,
+            'pipeline_success_rate': 0.8,
+            'pipeline_slo_target_default_branch_success_rate': 0.99,
+            'pipeline_slo_observed_default_branch_success_rate': 0.95,
+            'pipeline_slo_total_default_branch_pipelines': 8,
+            'pipeline_error_budget_remaining_pct': 60,
+        }
+        
+        result = server.filter_slo_fields_from_summary(summary, slo_enabled=False)
+        
+        # Non-SLO fields should be preserved
+        self.assertIn('total_repositories', result)
+        self.assertIn('total_pipelines', result)
+        self.assertIn('pipeline_success_rate', result)
+        
+        # SLO fields should be removed
+        self.assertNotIn('pipeline_slo_target_default_branch_success_rate', result)
+        self.assertNotIn('pipeline_slo_observed_default_branch_success_rate', result)
+        self.assertNotIn('pipeline_slo_total_default_branch_pipelines', result)
+        self.assertNotIn('pipeline_error_budget_remaining_pct', result)
+        
+        # Non-SLO values should be unchanged
+        self.assertEqual(result['total_repositories'], 5)
+        self.assertEqual(result['total_pipelines'], 10)
+        self.assertEqual(result['pipeline_success_rate'], 0.8)
+    
+    def test_filter_slo_fields_with_missing_slo_fields(self):
+        """Test that filtering works correctly when SLO fields are already absent"""
+        summary = {
+            'total_repositories': 5,
+            'total_pipelines': 10,
+        }
+        
+        result = server.filter_slo_fields_from_summary(summary, slo_enabled=False)
+        
+        # Non-SLO fields should be preserved
+        self.assertIn('total_repositories', result)
+        self.assertIn('total_pipelines', result)
+        
+        # Should not raise errors even though SLO fields aren't present
+        self.assertEqual(result['total_repositories'], 5)
+    
+    def test_filter_slo_fields_preserves_all_slo_field_keys(self):
+        """Test that all keys in SLO_FIELD_KEYS are handled correctly"""
+        # Create summary with all SLO fields
+        summary = {'base_field': 'value'}
+        for key in server.SLO_FIELD_KEYS:
+            summary[key] = f'test_value_{key}'
+        
+        result = server.filter_slo_fields_from_summary(summary, slo_enabled=False)
+        
+        # Base field should remain
+        self.assertIn('base_field', result)
+        
+        # All SLO fields should be removed
+        for key in server.SLO_FIELD_KEYS:
+            self.assertNotIn(key, result, f"SLO field {key} should be removed when disabled")
+
+
 if __name__ == '__main__':
     unittest.main()

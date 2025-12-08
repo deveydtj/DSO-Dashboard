@@ -62,7 +62,8 @@ export function renderSloKpis(data) {
     const errorBudgetPct = data.pipeline_error_budget_remaining_pct ?? null;
 
     // Check if SLO data is present (enabled in backend)
-    const sloEnabled = targetValue !== null || observedValue !== null || errorBudgetPct !== null;
+    // Use AND logic to ensure all required fields are present for complete data
+    const sloEnabled = targetValue !== null && observedValue !== null && errorBudgetPct !== null;
 
     // Show or hide the SLO tile
     if (sloCard) {
