@@ -83,11 +83,8 @@ DEFAULT_SUMMARY = {
     'pending_pipelines': 0,
     'pipeline_success_rate': 0.0,
     'pipeline_statuses': {},
-    # SLO fields for default-branch pipeline success
-    'pipeline_slo_target_default_branch_success_rate': DEFAULT_SLO_CONFIG['default_branch_success_target'],
-    'pipeline_slo_observed_default_branch_success_rate': 1.0,  # 100% when no pipelines
-    'pipeline_slo_total_default_branch_pipelines': 0,
-    'pipeline_error_budget_remaining_pct': 100,  # 100% remaining when no pipelines
+    # Note: SLO fields (pipeline_slo_*, pipeline_error_budget_*) are only
+    # included when SLO is enabled via config. They are not in DEFAULT_SUMMARY.
 }
 
 
@@ -755,13 +752,15 @@ class BackgroundPoller(threading.Thread):
         """Calculate summary statistics
         
         Delegates to the gitlab_client module's get_summary function,
-        then adds SLO metrics based on default-branch pipeline success.
+        then adds SLO metrics based on default-branch pipeline success
+        if SLO is enabled in config.
         """
         summary = get_summary(projects, pipelines)
         
-        # Compute and add SLO metrics for default-branch pipelines
-        slo_metrics = self._compute_default_branch_slo(projects, pipelines)
-        summary.update(slo_metrics)
+        # Compute and add SLO metrics for default-branch pipelines only if enabled
+        if self.slo_config.get('enabled', False):
+            slo_metrics = self._compute_default_branch_slo(projects, pipelines)
+            summary.update(slo_metrics)
         
         return summary
     

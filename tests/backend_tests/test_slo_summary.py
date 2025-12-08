@@ -37,7 +37,7 @@ class TestSLOSummaryComputation(unittest.TestCase):
         ]
         
         # Create poller with default SLO config
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         # Verify SLO fields are present
@@ -69,7 +69,7 @@ class TestSLOSummaryComputation(unittest.TestCase):
         # Observed rate is 50%, so errors consumed = 50% = 0.5
         # error_budget_spent_fraction = 0.5 / 0.01 = 50, clamped to 1.0
         # error_budget_remaining = 0%
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         self.assertEqual(summary['pipeline_slo_observed_default_branch_success_rate'], 0.5)
@@ -94,7 +94,7 @@ class TestSLOSummaryComputation(unittest.TestCase):
         # With 90% target (0.90), error budget is 10% (0.10)
         # Observed rate is 90%, error fraction = (1 - 0.9) / 0.1 = 1.0
         # So budget is exactly exhausted
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.90})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.90})
         summary = poller._calculate_summary(projects, pipelines)
         
         self.assertEqual(summary['pipeline_slo_observed_default_branch_success_rate'], 0.9)
@@ -119,7 +119,7 @@ class TestSLOSummaryComputation(unittest.TestCase):
         # With 90% target (0.90), error budget is 10% (0.10)
         # Observed rate is 95%, error fraction = (1 - 0.95) / 0.1 = 0.5
         # So 50% of budget is spent, 50% remaining
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.90})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.90})
         summary = poller._calculate_summary(projects, pipelines)
         
         self.assertEqual(summary['pipeline_slo_observed_default_branch_success_rate'], 0.95)
@@ -140,7 +140,7 @@ class TestSLOSummaryComputation(unittest.TestCase):
             {'project_id': 1, 'status': 'canceled', 'ref': 'main', 'created_at': '2024-01-20T08:00:00Z'},
         ]
         
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         # No meaningful pipelines -> observed rate treated as 1.0
@@ -154,7 +154,7 @@ class TestSLOSummaryComputation(unittest.TestCase):
         projects = []
         pipelines = []
         
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         # No pipelines -> observed rate treated as 1.0
@@ -176,7 +176,7 @@ class TestSLOSummaryComputation(unittest.TestCase):
             {'project_id': 1, 'status': 'failed', 'ref': 'feature/new', 'created_at': '2024-01-20T07:00:00Z'},
         ]
         
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         # Only main branch counted -> 2 pipelines, 100% success
@@ -196,7 +196,7 @@ class TestSLOSummaryComputation(unittest.TestCase):
             {'project_id': None, 'status': 'failed', 'ref': 'main', 'created_at': '2024-01-20T08:00:00Z'},  # No project_id
         ]
         
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         # Only project_id=1 counted
@@ -215,7 +215,7 @@ class TestSLOSummaryComputation(unittest.TestCase):
             {'project_id': 1, 'status': 'failed', 'ref': 'main', 'created_at': '2024-01-20T09:00:00Z'},
         ]
         
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         # Should use 'main' as default branch
@@ -232,8 +232,8 @@ class TestSLOSummaryComputation(unittest.TestCase):
             {'project_id': 1, 'status': 'success', 'ref': 'main', 'created_at': '2024-01-20T10:00:00Z'},
         ]
         
-        # Empty slo_config - should use DEFAULT_SLO_CONFIG
-        poller = server.BackgroundPoller(None, 60, slo_config={})
+        # slo_config with enabled=True but missing target - should use DEFAULT_SLO_CONFIG target
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True})
         summary = poller._calculate_summary(projects, pipelines)
         
         # Should use default target from DEFAULT_SLO_CONFIG
@@ -257,7 +257,7 @@ class TestSLOSummaryEdgeCases(unittest.TestCase):
             {'project_id': 1, 'status': 'cancelled', 'ref': 'main', 'created_at': '2024-01-20T09:00:00Z'},  # British
         ]
         
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         # 'cancelled' should be ignored, only 1 meaningful pipeline
@@ -276,7 +276,7 @@ class TestSLOSummaryEdgeCases(unittest.TestCase):
             for i in range(10)
         ]
         
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         # 0% success rate -> way past budget
@@ -295,7 +295,7 @@ class TestSLOSummaryEdgeCases(unittest.TestCase):
             for i in range(10)
         ]
         
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         # 100% success rate -> full budget remaining
@@ -322,7 +322,7 @@ class TestSLOSummaryEdgeCases(unittest.TestCase):
             {'project_id': 3, 'status': 'failed', 'ref': 'master', 'created_at': '2024-01-20T09:00:00Z'},
         ]
         
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         # Total: 6 pipelines, 3 success, 3 failure -> 50% success rate
@@ -340,7 +340,7 @@ class TestSLOSummaryEdgeCases(unittest.TestCase):
             {'project_id': 1, 'status': 'running', 'ref': 'main', 'created_at': '2024-01-20T09:00:00Z'},
         ]
         
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         # 2 total, 1 success -> 50% success rate
@@ -358,7 +358,7 @@ class TestSLOSummaryEdgeCases(unittest.TestCase):
             {'project_id': 1, 'status': 'pending', 'ref': 'main', 'created_at': '2024-01-20T09:00:00Z'},
         ]
         
-        poller = server.BackgroundPoller(None, 60, slo_config={'default_branch_success_target': 0.99})
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
         summary = poller._calculate_summary(projects, pipelines)
         
         # 2 total, 1 success -> 50% success rate
@@ -367,33 +367,56 @@ class TestSLOSummaryEdgeCases(unittest.TestCase):
 
 
 class TestSLOFieldsInDefaultSummary(unittest.TestCase):
-    """Test that SLO fields are present in DEFAULT_SUMMARY"""
+    """Test that SLO fields are NOT present in DEFAULT_SUMMARY (they're only added when enabled)"""
     
-    def test_default_summary_has_slo_fields(self):
-        """Test DEFAULT_SUMMARY includes all SLO fields"""
-        required_slo_keys = [
+    def test_default_summary_excludes_slo_fields(self):
+        """Test DEFAULT_SUMMARY does NOT include SLO fields (only added when enabled)"""
+        slo_keys = [
             'pipeline_slo_target_default_branch_success_rate',
             'pipeline_slo_observed_default_branch_success_rate',
             'pipeline_slo_total_default_branch_pipelines',
             'pipeline_error_budget_remaining_pct',
         ]
         
-        for key in required_slo_keys:
-            self.assertIn(key, server.DEFAULT_SUMMARY, f"Missing SLO key in DEFAULT_SUMMARY: {key}")
+        for key in slo_keys:
+            self.assertNotIn(key, server.DEFAULT_SUMMARY, 
+                           f"SLO key should not be in DEFAULT_SUMMARY (only added when enabled): {key}")
     
-    def test_default_summary_slo_values(self):
-        """Test DEFAULT_SUMMARY has sensible SLO defaults"""
-        # Target should be from DEFAULT_SLO_CONFIG
-        self.assertEqual(
-            server.DEFAULT_SUMMARY['pipeline_slo_target_default_branch_success_rate'],
-            DEFAULT_SLO_CONFIG['default_branch_success_target']
-        )
-        # Observed rate should be 1.0 (no pipelines = no errors)
-        self.assertEqual(server.DEFAULT_SUMMARY['pipeline_slo_observed_default_branch_success_rate'], 1.0)
-        # Total pipelines should be 0
-        self.assertEqual(server.DEFAULT_SUMMARY['pipeline_slo_total_default_branch_pipelines'], 0)
-        # Error budget should be 100% remaining
-        self.assertEqual(server.DEFAULT_SUMMARY['pipeline_error_budget_remaining_pct'], 100)
+    def test_summary_includes_slo_when_enabled(self):
+        """Test that SLO fields are added to summary when SLO is enabled"""
+        projects = []
+        pipelines = []
+        
+        # Create poller with SLO enabled
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': True, 'default_branch_success_target': 0.99})
+        summary = poller._calculate_summary(projects, pipelines)
+        
+        # Verify SLO fields ARE present when enabled
+        self.assertIn('pipeline_slo_target_default_branch_success_rate', summary)
+        self.assertIn('pipeline_slo_observed_default_branch_success_rate', summary)
+        self.assertIn('pipeline_slo_total_default_branch_pipelines', summary)
+        self.assertIn('pipeline_error_budget_remaining_pct', summary)
+        
+        # Verify sensible defaults for empty state
+        self.assertEqual(summary['pipeline_slo_target_default_branch_success_rate'], 0.99)
+        self.assertEqual(summary['pipeline_slo_observed_default_branch_success_rate'], 1.0)
+        self.assertEqual(summary['pipeline_slo_total_default_branch_pipelines'], 0)
+        self.assertEqual(summary['pipeline_error_budget_remaining_pct'], 100)
+    
+    def test_summary_excludes_slo_when_disabled(self):
+        """Test that SLO fields are NOT added to summary when SLO is disabled"""
+        projects = []
+        pipelines = []
+        
+        # Create poller with SLO disabled (default)
+        poller = server.BackgroundPoller(None, 60, slo_config={'enabled': False, 'default_branch_success_target': 0.99})
+        summary = poller._calculate_summary(projects, pipelines)
+        
+        # Verify SLO fields are NOT present when disabled
+        self.assertNotIn('pipeline_slo_target_default_branch_success_rate', summary)
+        self.assertNotIn('pipeline_slo_observed_default_branch_success_rate', summary)
+        self.assertNotIn('pipeline_slo_total_default_branch_pipelines', summary)
+        self.assertNotIn('pipeline_error_budget_remaining_pct', summary)
 
 
 if __name__ == '__main__':

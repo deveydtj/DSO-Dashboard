@@ -138,6 +138,7 @@ DEFAULT_SERVICE_LATENCY_CONFIG = {
 # This defines the default SLO target for default-branch pipeline success rate across the fleet.
 # Used by summary computations to calculate error budgets and highlight repos/pipelines below target.
 DEFAULT_SLO_CONFIG = {
+    'enabled': False,                       # SLO tile disabled by default
     'default_branch_success_target': 0.99,  # 99% success rate target (float between 0 and 1)
 }
 
@@ -321,6 +322,19 @@ def load_config():
     # Build SLO config with defaults applied for missing keys
     slo = {}
     
+    # enabled: bool, default False - when False, SLO tile is hidden and calculations skipped
+    if 'SLO_ENABLED' in os.environ:
+        slo['enabled'] = parse_bool_config(
+            os.environ['SLO_ENABLED'],
+            DEFAULT_SLO_CONFIG['enabled'],
+            'SLO_ENABLED'
+        )
+    else:
+        raw_enabled = slo_raw.get('enabled', DEFAULT_SLO_CONFIG['enabled'])
+        slo['enabled'] = parse_bool_config(
+            raw_enabled, DEFAULT_SLO_CONFIG['enabled'], 'slo.enabled'
+        )
+    
     # default_branch_success_target: float, default 0.99 (99% success rate)
     # Store raw value for validation - don't silently fallback to defaults here
     if 'SLO_DEFAULT_BRANCH_SUCCESS_TARGET' in os.environ:
@@ -412,7 +426,7 @@ def load_config():
     sl_config = config['service_latency']
     logger.info(f"  Service latency: enabled={sl_config['enabled']}, window_size={sl_config['window_size']}, degradation_threshold_ratio={sl_config['degradation_threshold_ratio']}")
     slo_config = config['slo']
-    logger.info(f"  SLO: default_branch_success_target={slo_config['default_branch_success_target']}")
+    logger.info(f"  SLO: enabled={slo_config['enabled']}, default_branch_success_target={slo_config['default_branch_success_target']}")
     dh_config = config['duration_hydration']
     logger.info(f"  Duration hydration: global_cap={dh_config['global_cap']}, per_project_cap={dh_config['per_project_cap']}")
     logger.info(f"  API token: {'***' if config['api_token'] else 'NOT SET'}")
