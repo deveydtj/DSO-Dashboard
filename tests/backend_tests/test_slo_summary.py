@@ -371,14 +371,7 @@ class TestSLOFieldsInDefaultSummary(unittest.TestCase):
     
     def test_default_summary_excludes_slo_fields(self):
         """Test DEFAULT_SUMMARY does NOT include SLO fields (only added when enabled)"""
-        slo_keys = [
-            'pipeline_slo_target_default_branch_success_rate',
-            'pipeline_slo_observed_default_branch_success_rate',
-            'pipeline_slo_total_default_branch_pipelines',
-            'pipeline_error_budget_remaining_pct',
-        ]
-        
-        for key in slo_keys:
+        for key in server.SLO_FIELD_KEYS:
             self.assertNotIn(key, server.DEFAULT_SUMMARY, 
                            f"SLO key should not be in DEFAULT_SUMMARY (only added when enabled): {key}")
     

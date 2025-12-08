@@ -87,6 +87,15 @@ DEFAULT_SUMMARY = {
     # included when SLO is enabled via config. They are not in DEFAULT_SUMMARY.
 }
 
+# SLO field keys - used for filtering and validation
+# These fields are conditionally added to summary responses when SLO is enabled
+SLO_FIELD_KEYS = [
+    'pipeline_slo_target_default_branch_success_rate',
+    'pipeline_slo_observed_default_branch_success_rate',
+    'pipeline_slo_total_default_branch_pipelines',
+    'pipeline_error_budget_remaining_pct',
+]
+
 
 # Note: GitLabAPIClient is now imported from backend.gitlab_client
 
@@ -778,11 +787,7 @@ class BackgroundPoller(threading.Thread):
             pipelines: List of pipeline dicts
         
         Returns:
-            dict: SLO metrics with keys:
-                - pipeline_slo_target_default_branch_success_rate (float)
-                - pipeline_slo_observed_default_branch_success_rate (float)
-                - pipeline_slo_total_default_branch_pipelines (int)
-                - pipeline_error_budget_remaining_pct (int)
+            dict: SLO metrics dictionary with keys defined in SLO_FIELD_KEYS
         """
         # Get target from SLO config
         target_rate = self.slo_config.get(
@@ -1553,15 +1558,8 @@ def filter_slo_fields_from_summary(summary, slo_enabled):
         return summary  # Keep all fields including SLO
     
     # Remove SLO fields when disabled
-    slo_keys = [
-        'pipeline_slo_target_default_branch_success_rate',
-        'pipeline_slo_observed_default_branch_success_rate',
-        'pipeline_slo_total_default_branch_pipelines',
-        'pipeline_error_budget_remaining_pct',
-    ]
-    
     filtered = dict(summary)
-    for key in slo_keys:
+    for key in SLO_FIELD_KEYS:
         filtered.pop(key, None)  # Remove if present
     
     return filtered
