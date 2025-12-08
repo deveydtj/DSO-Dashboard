@@ -147,6 +147,9 @@ MOCK_MODE_ENABLED = False
 # Global variable to track which mock scenario is being used
 MOCK_SCENARIO = ''
 
+# Global configuration (set during startup, used by request handlers)
+CONFIG = {}
+
 
 def update_state(key, value):
     """Thread-safe update of global STATE (single key)
@@ -1448,13 +1451,18 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 }, status=500)
                 return
             
+            # Filter SLO fields from mock data summary if SLO is disabled
+            # Use the global config that was loaded at startup
+            slo_enabled = CONFIG.get('slo', {}).get('enabled', False)
+            filtered_summary = filter_slo_fields_from_summary(mock_data['summary'], slo_enabled)
+            
             # Atomically update STATE with new mock data
             # Use services from mock data if present, otherwise empty list
             services = mock_data.get('services', [])
             update_state_atomic({
                 'projects': mock_data['repositories'],
                 'pipelines': mock_data['pipelines'],
-                'summary': mock_data['summary'],
+                'summary': filtered_summary,
                 'services': services
             })
             
@@ -1531,14 +1539,43 @@ class DashboardServer(HTTPServer):
 # are now imported from backend.config_loader
 
 
+def filter_slo_fields_from_summary(summary, slo_enabled):
+    """Filter SLO fields from summary based on SLO config
+    
+    Args:
+        summary: Summary dict (may contain SLO fields)
+        slo_enabled: Whether SLO is enabled in config
+        
+    Returns:
+        dict: Summary with SLO fields removed if SLO is disabled
+    """
+    if slo_enabled:
+        return summary  # Keep all fields including SLO
+    
+    # Remove SLO fields when disabled
+    slo_keys = [
+        'pipeline_slo_target_default_branch_success_rate',
+        'pipeline_slo_observed_default_branch_success_rate',
+        'pipeline_slo_total_default_branch_pipelines',
+        'pipeline_error_budget_remaining_pct',
+    ]
+    
+    filtered = dict(summary)
+    for key in slo_keys:
+        filtered.pop(key, None)  # Remove if present
+    
+    return filtered
+
+
 def main():
     """Main entry point"""
-    global MOCK_MODE_ENABLED, MOCK_SCENARIO
+    global MOCK_MODE_ENABLED, MOCK_SCENARIO, CONFIG
     
     logger.info("Starting GitLab Dashboard Server...")
     
     # Load configuration
     config = load_config()
+    CONFIG = config  # Store as global for access in request handlers
     
     # Validate configuration (fail-fast on invalid config)
     if not validate_config(config):
@@ -1575,13 +1612,17 @@ def main():
             logger.error("Failed to load mock data. Exiting.")
             return 1
         
+        # Filter SLO fields from mock data summary if SLO is disabled
+        slo_enabled = config.get('slo', {}).get('enabled', False)
+        filtered_summary = filter_slo_fields_from_summary(mock_data['summary'], slo_enabled)
+        
         # Initialize STATE with mock data
         # Use services from mock data if present, otherwise empty list
         services = mock_data.get('services', [])
         update_state_atomic({
             'projects': mock_data['repositories'],
             'pipelines': mock_data['pipelines'],
-            'summary': mock_data['summary'],
+            'summary': filtered_summary,
             'services': services
         })
         logger.info("Mock data loaded into STATE successfully")
