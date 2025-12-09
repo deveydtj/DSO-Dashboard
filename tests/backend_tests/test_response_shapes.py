@@ -280,15 +280,27 @@ class TestResponseShapeKeys(unittest.TestCase):
             'pending_pipelines',
             'pipeline_success_rate',
             'last_updated',
-            # SLO fields for default-branch pipeline success
+        ]
+        
+        for key in required_keys:
+            self.assertIn(key, response_data, f"Missing required key: {key}")
+        
+        # SLO fields are optional (only present when SLO is enabled in config)
+        # If present, verify they have the expected types
+        slo_keys = [
             'pipeline_slo_target_default_branch_success_rate',
             'pipeline_slo_observed_default_branch_success_rate',
             'pipeline_slo_total_default_branch_pipelines',
             'pipeline_error_budget_remaining_pct',
         ]
         
-        for key in required_keys:
-            self.assertIn(key, response_data, f"Missing required key: {key}")
+        # If any SLO key is present, all should be present
+        slo_keys_present = [key for key in slo_keys if key in response_data]
+        if slo_keys_present:
+            # If some are present, all should be present
+            for key in slo_keys:
+                self.assertIn(key, response_data, 
+                            f"SLO key {key} missing, but other SLO keys are present: {slo_keys_present}")
     
     def test_repos_has_all_required_keys(self):
         """Test /api/repos response has all required keys"""

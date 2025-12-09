@@ -38,7 +38,7 @@ export function renderSummaryKpis(data) {
     if (failedPipelines) failedPipelines.textContent = data.failed_pipelines || 0;
     if (runningPipelines) runningPipelines.textContent = data.running_pipelines || 0;
 
-    // Render SLO KPI values
+    // Render SLO KPI values and show/hide SLO tile based on data presence
     renderSloKpis(data);
 
     // Update mock data badge visibility
@@ -46,10 +46,11 @@ export function renderSummaryKpis(data) {
 }
 
 /**
- * Render SLO-specific KPI values
+ * Render SLO-specific KPI values and show/hide the SLO tile
  * @param {Object} data - Summary data containing SLO fields
  */
 export function renderSloKpis(data) {
+    const sloCard = document.querySelector('.kpi-card-slo');
     const sloTarget = document.getElementById('pipelineSloTarget');
     const sloObserved = document.getElementById('pipelineSloObserved');
     const errorBudgetText = document.getElementById('pipelineErrorBudgetText');
@@ -59,6 +60,20 @@ export function renderSloKpis(data) {
     const targetValue = data.pipeline_slo_target_default_branch_success_rate ?? null;
     const observedValue = data.pipeline_slo_observed_default_branch_success_rate ?? null;
     const errorBudgetPct = data.pipeline_error_budget_remaining_pct ?? null;
+
+    // Check if SLO data is present (enabled in backend)
+    // Use AND logic to ensure all required fields are present for complete data
+    const sloEnabled = targetValue !== null && observedValue !== null && errorBudgetPct !== null;
+
+    // Show or hide the SLO tile
+    if (sloCard) {
+        if (sloEnabled) {
+            sloCard.style.display = '';  // Show (use default display)
+        } else {
+            sloCard.style.display = 'none';  // Hide
+            return;  // Don't update values if hidden
+        }
+    }
 
     // Update target and observed displays
     if (sloTarget) {
