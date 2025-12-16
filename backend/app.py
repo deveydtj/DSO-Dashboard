@@ -593,9 +593,9 @@ class BackgroundPoller(threading.Thread):
                             pipeline['project_name'] = project_name
                             pipeline['project_id'] = project_id
                             pipeline['project_path'] = project_path
-                            # Add to per-project dict for enrichment
-                            # (Don't add to all_pipelines to avoid duplicates in global view)
+                            # Add to both per-project and global collections (no risk of duplicates)
                             per_project_pipelines[project_id].append(pipeline)
+                            all_pipelines.append(pipeline)
                         logger.debug(f"{log_prefix}Added {len(default_branch_pipelines)} default-branch pipeline(s) for {project_name}")
             
             # Handle partial failures
