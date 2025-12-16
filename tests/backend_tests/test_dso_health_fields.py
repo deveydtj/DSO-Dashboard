@@ -49,11 +49,6 @@ class TestIsRunnerRelatedFailureHelper(unittest.TestCase):
         pipeline = {'status': 'failed', 'failure_reason': 'data_integrity_failure'}
         self.assertTrue(is_runner_related_failure(pipeline))
     
-    def test_returns_true_for_unknown_failure(self):
-        """Test helper returns True for unknown_failure reason (unclassified errors)"""
-        pipeline = {'status': 'failed', 'failure_reason': 'unknown_failure'}
-        self.assertTrue(is_runner_related_failure(pipeline))
-    
     def test_returns_true_for_api_failure(self):
         """Test helper returns True for api_failure reason (GitLab API issues)"""
         pipeline = {'status': 'failed', 'failure_reason': 'api_failure'}

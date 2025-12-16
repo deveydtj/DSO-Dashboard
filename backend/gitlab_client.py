@@ -49,7 +49,6 @@ RUNNER_ISSUE_FAILURE_REASONS = (
     'runner_unsupported',
     'scheduler_failure',
     'data_integrity_failure',
-    'unknown_failure',      # Unclassified errors (often infrastructure-related)
     'api_failure',          # GitLab API communication failures
     'system_failure',       # Generic system failure (underscore variant)
     # Error message patterns (appear in failure_reason text)
@@ -69,7 +68,7 @@ def is_runner_related_failure(pipeline):
     1. Pipeline status is 'stuck' (runner not picking up jobs)
     2. Pipeline failure_reason contains runner-related keywords:
        - GitLab enum values: 'runner_system_failure', 'stuck_or_timeout_failure', 
-         'unknown_failure', 'api_failure', etc.
+         'api_failure', etc.
        - Error message patterns: 'system failure', 'out of memory', 'no space left'
     
     Common scenarios detected:
@@ -79,7 +78,6 @@ def is_runner_related_failure(pipeline):
     - GitLab API communication failures
     - Scheduler failures when no runners are available
     - Container/Kubernetes infrastructure issues
-    - Unclassified failures (unknown_failure)
     
     Args:
         pipeline: Pipeline dict from GitLab API
