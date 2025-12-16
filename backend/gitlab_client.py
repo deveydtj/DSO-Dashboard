@@ -40,12 +40,28 @@ DEFAULT_BRANCH_NAME = 'main'     # Default branch name fallback
 RUNNER_ISSUE_STATUSES = ('stuck',)
 
 # These failure_reason values indicate runner-related problems (from GitLab API)
+# Note: These are substring matches checked case-insensitively
+# Includes both underscore and space variants (e.g., 'system_failure' and 'system failure')
+# 
+# Trade-off: Patterns favor catching runner issues over avoiding all false positives.
+# Some application-level failures may be caught (e.g., application OOM), but this is
+# acceptable as it helps identify resource constraint issues that may require runner scaling.
 RUNNER_ISSUE_FAILURE_REASONS = (
+    # GitLab enum values (infrastructure failures)
     'runner_system_failure',
     'stuck_or_timeout_failure',
     'runner_unsupported',
     'scheduler_failure',
     'data_integrity_failure',
+    'api_failure',          # GitLab API communication failures
+    'system_failure',       # Both underscore and space variants needed for enum vs. message matching
+    'system failure',       # (e.g., 'system_failure' is the enum, 'system failure' appears in error messages)
+    # Resource exhaustion patterns (may include both runner and application issues)
+    # Note: These patterns catch runner resource constraints but may also flag application issues.
+    # This is intentional - if an application consistently runs out of memory/disk, it may indicate
+    # the runner needs more resources or the job needs optimization.
+    'out of memory',        # Memory exhaustion (Git, malloc, runner/container OOM)
+    'no space left',        # Disk space exhaustion (runner disk, Docker storage)
 )
 
 
@@ -57,14 +73,36 @@ def is_runner_related_failure(pipeline):
     
     Detection methods:
     1. Pipeline status is 'stuck' (runner not picking up jobs)
-    2. Pipeline failure_reason contains runner-related keywords
-       (e.g., 'runner_system_failure', 'stuck_or_timeout_failure')
+    2. Pipeline failure_reason contains runner-related keywords:
+       - GitLab enum values: 'runner_system_failure', 'stuck_or_timeout_failure', 
+         'api_failure', etc.
+       - Error message patterns: 'system failure', 'out of memory', 'no space left'
+    
+    Common scenarios detected:
+    - Runner pods timing out during environment preparation
+    - Runners running out of memory (OOM errors)
+    - Runners running out of disk space
+    - GitLab API communication failures
+    - Scheduler failures when no runners are available
+    - Container/Kubernetes infrastructure issues
     
     Args:
         pipeline: Pipeline dict from GitLab API
         
     Returns:
-        bool: True if the pipeline failure is runner-related
+        bool: True if the pipeline failure is runner-related, False for code failures
+    
+    Examples:
+        >>> is_runner_related_failure({'status': 'stuck'})
+        True
+        >>> is_runner_related_failure({'status': 'failed', 'failure_reason': 'runner_system_failure'})
+        True
+        >>> is_runner_related_failure({'status': 'failed', 'failure_reason': 'Job failed (system failure): pod timeout'})
+        True
+        >>> is_runner_related_failure({'status': 'failed', 'failure_reason': 'Out of memory'})
+        True
+        >>> is_runner_related_failure({'status': 'failed', 'failure_reason': 'script_failure'})
+        False
     """
     # Check for stuck status
     if pipeline.get('status') in RUNNER_ISSUE_STATUSES:
