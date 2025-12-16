@@ -49,6 +49,16 @@ class TestIsRunnerRelatedFailureHelper(unittest.TestCase):
         pipeline = {'status': 'failed', 'failure_reason': 'data_integrity_failure'}
         self.assertTrue(is_runner_related_failure(pipeline))
     
+    def test_returns_true_for_unknown_failure(self):
+        """Test helper returns True for unknown_failure reason (unclassified errors)"""
+        pipeline = {'status': 'failed', 'failure_reason': 'unknown_failure'}
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
+    def test_returns_true_for_api_failure(self):
+        """Test helper returns True for api_failure reason (GitLab API issues)"""
+        pipeline = {'status': 'failed', 'failure_reason': 'api_failure'}
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
     def test_returns_true_for_system_failure(self):
         """Test helper returns True for system_failure reason (pod/container failures)"""
         pipeline = {'status': 'failed', 'failure_reason': 'system_failure'}
@@ -65,6 +75,28 @@ class TestIsRunnerRelatedFailureHelper(unittest.TestCase):
             'status': 'failed', 
             'failure_reason': 'Job failed (system failure): prepare environment: waiting for pod running: timed out waiting for pod to start'
         }
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
+    def test_returns_true_for_out_of_memory_error(self):
+        """Test helper returns True for out of memory errors
+        
+        Common scenarios:
+        - 'fatal: Out of memory, malloc failed'
+        - 'std::bad_alloc'
+        - Container/runner memory exhaustion
+        """
+        pipeline = {'status': 'failed', 'failure_reason': 'fatal: Out of memory, malloc failed (tried to allocate 8192 bytes)'}
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
+    def test_returns_true_for_no_space_left_error(self):
+        """Test helper returns True for disk space exhaustion errors
+        
+        Common scenarios:
+        - 'write /var/lib/docker: no space left on device'
+        - Docker builds filling up runner disk
+        - Build artifacts exceeding available space
+        """
+        pipeline = {'status': 'failed', 'failure_reason': 'write /var/lib/docker: no space left on device'}
         self.assertTrue(is_runner_related_failure(pipeline))
     
     def test_returns_false_for_script_failure(self):

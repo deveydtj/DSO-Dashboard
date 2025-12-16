@@ -43,13 +43,19 @@ RUNNER_ISSUE_STATUSES = ('stuck',)
 # Note: These are substring matches checked case-insensitively
 # Includes both underscore and space variants (e.g., 'system_failure' and 'system failure')
 RUNNER_ISSUE_FAILURE_REASONS = (
+    # GitLab enum values (infrastructure failures)
     'runner_system_failure',
     'stuck_or_timeout_failure',
     'runner_unsupported',
     'scheduler_failure',
     'data_integrity_failure',
-    'system_failure',   # Underscore variant (GitLab enum value)
-    'system failure',   # Space variant (appears in error messages like "Job failed (system failure)...")
+    'unknown_failure',      # Unclassified errors (often infrastructure-related)
+    'api_failure',          # GitLab API communication failures
+    'system_failure',       # Generic system failure (underscore variant)
+    # Error message patterns (appear in failure_reason text)
+    'system failure',       # Generic system failure (space variant in messages)
+    'out of memory',        # Memory exhaustion on runner
+    'no space left',        # Disk space exhaustion on runner
 )
 
 
@@ -62,15 +68,18 @@ def is_runner_related_failure(pipeline):
     Detection methods:
     1. Pipeline status is 'stuck' (runner not picking up jobs)
     2. Pipeline failure_reason contains runner-related keywords:
-       - GitLab enum values: 'runner_system_failure', 'stuck_or_timeout_failure', etc.
-       - Custom error messages: 'system failure' (e.g., "Job failed (system failure): 
-         prepare environment: waiting for pod running: timed out waiting for pod to start")
+       - GitLab enum values: 'runner_system_failure', 'stuck_or_timeout_failure', 
+         'unknown_failure', 'api_failure', etc.
+       - Error message patterns: 'system failure', 'out of memory', 'no space left'
     
     Common scenarios detected:
     - Runner pods timing out during environment preparation
-    - Runners running out of memory
+    - Runners running out of memory (OOM errors)
+    - Runners running out of disk space
+    - GitLab API communication failures
     - Scheduler failures when no runners are available
     - Container/Kubernetes infrastructure issues
+    - Unclassified failures (unknown_failure)
     
     Args:
         pipeline: Pipeline dict from GitLab API
@@ -84,6 +93,8 @@ def is_runner_related_failure(pipeline):
         >>> is_runner_related_failure({'status': 'failed', 'failure_reason': 'runner_system_failure'})
         True
         >>> is_runner_related_failure({'status': 'failed', 'failure_reason': 'Job failed (system failure): pod timeout'})
+        True
+        >>> is_runner_related_failure({'status': 'failed', 'failure_reason': 'Out of memory'})
         True
         >>> is_runner_related_failure({'status': 'failed', 'failure_reason': 'script_failure'})
         False
