@@ -1,6 +1,5 @@
 """Tests for default branch pipeline fetching when feature branches dominate recent pipelines."""
 import unittest
-from unittest.mock import MagicMock, patch
 from backend.gitlab_client import enrich_projects_with_pipelines
 
 
