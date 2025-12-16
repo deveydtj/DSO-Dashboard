@@ -53,7 +53,7 @@ RUNNER_ISSUE_FAILURE_REASONS = (
     'system_failure',       # Both underscore and space variants needed for enum vs. message matching
     'system failure',       # (e.g., 'system_failure' is the enum, 'system failure' appears in error messages)
     'out of memory',        # Memory exhaustion (may include both runner and application OOM)
-    'no space left',        # Disk space exhaustion on runner
+    'no space left',        # Disk space exhaustion (may include both runner and application issues)
 )
 
 
