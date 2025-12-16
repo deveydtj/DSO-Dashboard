@@ -1,6 +1,6 @@
 """Integration tests for default-branch pipeline fallback fetch logic in BackgroundPoller."""
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, call
 from backend.app import BackgroundPoller
 from backend.gitlab_client import GitLabAPIClient
 
