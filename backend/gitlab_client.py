@@ -40,12 +40,16 @@ DEFAULT_BRANCH_NAME = 'main'     # Default branch name fallback
 RUNNER_ISSUE_STATUSES = ('stuck',)
 
 # These failure_reason values indicate runner-related problems (from GitLab API)
+# Note: These are substring matches checked case-insensitively
+# Includes both underscore and space variants (e.g., 'system_failure' and 'system failure')
 RUNNER_ISSUE_FAILURE_REASONS = (
     'runner_system_failure',
     'stuck_or_timeout_failure',
     'runner_unsupported',
     'scheduler_failure',
     'data_integrity_failure',
+    'system_failure',   # Underscore variant (GitLab enum value)
+    'system failure',   # Space variant (appears in error messages like "Job failed (system failure)...")
 )
 
 

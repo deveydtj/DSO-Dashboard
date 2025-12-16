@@ -49,6 +49,24 @@ class TestIsRunnerRelatedFailureHelper(unittest.TestCase):
         pipeline = {'status': 'failed', 'failure_reason': 'data_integrity_failure'}
         self.assertTrue(is_runner_related_failure(pipeline))
     
+    def test_returns_true_for_system_failure(self):
+        """Test helper returns True for system_failure reason (pod/container failures)"""
+        pipeline = {'status': 'failed', 'failure_reason': 'system_failure'}
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
+    def test_returns_true_for_pod_timeout_error(self):
+        """Test helper returns True for pod timeout errors (GitHub issue scenario)
+        
+        This tests the specific error pattern reported by users:
+        'Job failed (system failure): prepare environment: waiting for pod running: 
+        timed out waiting for pod to start'
+        """
+        pipeline = {
+            'status': 'failed', 
+            'failure_reason': 'Job failed (system failure): prepare environment: waiting for pod running: timed out waiting for pod to start'
+        }
+        self.assertTrue(is_runner_related_failure(pipeline))
+    
     def test_returns_false_for_script_failure(self):
         """Test helper returns False for regular script_failure"""
         pipeline = {'status': 'failed', 'failure_reason': 'script_failure'}
