@@ -488,21 +488,23 @@ class GitLabAPIClient:
         Returns:
             list: List of pipeline dicts, or None on API error
         """
-        params = {}
-        if per_page:
-            params['per_page'] = per_page
-        if ref:
-            params['ref'] = ref
-        
         if per_page:
             # For backward compatibility, use single page request
+            params = {'per_page': per_page}
+            if ref:
+                params['ref'] = ref
             result = self.gitlab_request(f'projects/{project_id}/pipelines', params)
             if result is None:
                 return None
             return result.get('data', None)
         else:
             # Full pagination for all pipelines
-            return self._make_paginated_request(f'projects/{project_id}/pipelines', params)
+            if ref:
+                # If ref filter specified without per_page, use pagination with ref filter
+                return self._make_paginated_request(f'projects/{project_id}/pipelines', {'ref': ref})
+            else:
+                # No filters - use pagination without params
+                return self._make_paginated_request(f'projects/{project_id}/pipelines')
     
     def get_pipeline(self, project_id, pipeline_id):
         """Get single pipeline details by project ID and pipeline ID
