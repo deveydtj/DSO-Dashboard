@@ -50,9 +50,8 @@ RUNNER_ISSUE_FAILURE_REASONS = (
     'scheduler_failure',
     'data_integrity_failure',
     'api_failure',          # GitLab API communication failures
-    'system_failure',       # Generic system failure (underscore variant)
-    # Error message patterns (appear in failure_reason text)
-    'system failure',       # Generic system failure (space variant in messages)
+    'system_failure',       # Both underscore and space variants needed for enum vs. message matching
+    'system failure',       # (e.g., 'system_failure' is the enum, 'system failure' appears in error messages)
     'out of memory',        # Memory exhaustion (may include both runner and application OOM)
     'no space left',        # Disk space exhaustion on runner
 )
