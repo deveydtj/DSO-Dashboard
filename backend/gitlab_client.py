@@ -61,14 +61,32 @@ def is_runner_related_failure(pipeline):
     
     Detection methods:
     1. Pipeline status is 'stuck' (runner not picking up jobs)
-    2. Pipeline failure_reason contains runner-related keywords
-       (e.g., 'runner_system_failure', 'stuck_or_timeout_failure')
+    2. Pipeline failure_reason contains runner-related keywords:
+       - GitLab enum values: 'runner_system_failure', 'stuck_or_timeout_failure', etc.
+       - Custom error messages: 'system failure' (e.g., "Job failed (system failure): 
+         prepare environment: waiting for pod running: timed out waiting for pod to start")
+    
+    Common scenarios detected:
+    - Runner pods timing out during environment preparation
+    - Runners running out of memory
+    - Scheduler failures when no runners are available
+    - Container/Kubernetes infrastructure issues
     
     Args:
         pipeline: Pipeline dict from GitLab API
         
     Returns:
-        bool: True if the pipeline failure is runner-related
+        bool: True if the pipeline failure is runner-related, False for code failures
+    
+    Examples:
+        >>> is_runner_related_failure({'status': 'stuck'})
+        True
+        >>> is_runner_related_failure({'status': 'failed', 'failure_reason': 'runner_system_failure'})
+        True
+        >>> is_runner_related_failure({'status': 'failed', 'failure_reason': 'Job failed (system failure): pod timeout'})
+        True
+        >>> is_runner_related_failure({'status': 'failed', 'failure_reason': 'script_failure'})
+        False
     """
     # Check for stuck status
     if pipeline.get('status') in RUNNER_ISSUE_STATUSES:
