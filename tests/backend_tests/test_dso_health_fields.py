@@ -75,24 +75,61 @@ class TestIsRunnerRelatedFailureHelper(unittest.TestCase):
     def test_returns_true_for_out_of_memory_error(self):
         """Test helper returns True for out of memory errors
         
-        Common scenarios:
-        - 'fatal: Out of memory, malloc failed'
-        - 'std::bad_alloc'
-        - Container/runner memory exhaustion
+        Pattern 'out of memory' (with space) catches runner/container OOM scenarios.
+        Examples of matched scenarios:
+        - Runner OOM: 'fatal: Out of memory, malloc failed' (Git/system malloc)
+        - Container OOM: 'container out of memory'
+        - Pod OOM: 'pod out of memory'
+        - Python: 'MemoryError: out of memory'
+        
+        Pattern-specific behavior: Does NOT match 'OutOfMemoryError' (no space):
+        - Java: 'java.lang.OutOfMemoryError' - NOT matched (different pattern)
+        - This provides good specificity while catching runner infrastructure issues
+        
+        Trade-off: Some application OOM with space-separated 'out of memory' will match,
+        but this is acceptable as it suggests resource constraints requiring investigation.
         """
+        # Git/malloc OOM (common runner issue)
         pipeline = {'status': 'failed', 'failure_reason': 'fatal: Out of memory, malloc failed (tried to allocate 8192 bytes)'}
         self.assertTrue(is_runner_related_failure(pipeline))
+        
+        # Python OOM (contains 'out of memory' with space)
+        pipeline_python = {'status': 'failed', 'failure_reason': 'MemoryError: out of memory'}
+        self.assertTrue(is_runner_related_failure(pipeline_python))  # Intentionally matches
+    
+    def test_returns_false_for_java_oom(self):
+        """Test helper returns False for Java OutOfMemoryError (no space in pattern)
+        
+        The pattern 'out of memory' requires a space, so 'OutOfMemoryError' does NOT match.
+        This demonstrates the pattern has good specificity for runner issues.
+        """
+        pipeline = {'status': 'failed', 'failure_reason': 'java.lang.OutOfMemoryError: Java heap space'}
+        self.assertFalse(is_runner_related_failure(pipeline))  # Does NOT match (no space in 'OutOfMemoryError')
+
     
     def test_returns_true_for_no_space_left_error(self):
         """Test helper returns True for disk space exhaustion errors
         
-        Common scenarios:
-        - 'write /var/lib/docker: no space left on device'
-        - Docker builds filling up runner disk
-        - Build artifacts exceeding available space
+        This pattern catches runner/container disk issues but may also catch application issues.
+        Examples of matched scenarios:
+        - Runner disk full: 'write /var/lib/docker: no space left on device'
+        - Docker storage full: 'no space left on device'
+        
+        Trade-off: Pattern may catch application-generated disk exhaustion:
+        - Large build artifacts filling disk (would also match)
+        - Excessive logging filling disk (would also match)
+        
+        This is intentional - consistent disk space issues suggest resource constraints
+        that may require runner disk expansion or build optimization (infrastructure consideration).
         """
+        # Docker/runner disk exhaustion (common runner issue)
         pipeline = {'status': 'failed', 'failure_reason': 'write /var/lib/docker: no space left on device'}
         self.assertTrue(is_runner_related_failure(pipeline))
+        
+        # Also matches when application generates too much data (documented trade-off)
+        pipeline_app = {'status': 'failed', 'failure_reason': 'ERROR: no space left on device while writing build artifacts'}
+        self.assertTrue(is_runner_related_failure(pipeline_app))  # Intentionally matches
+
     
     def test_returns_false_for_script_failure(self):
         """Test helper returns False for regular script_failure"""

@@ -42,6 +42,10 @@ RUNNER_ISSUE_STATUSES = ('stuck',)
 # These failure_reason values indicate runner-related problems (from GitLab API)
 # Note: These are substring matches checked case-insensitively
 # Includes both underscore and space variants (e.g., 'system_failure' and 'system failure')
+# 
+# Trade-off: Patterns favor catching runner issues over avoiding all false positives.
+# Some application-level failures may be caught (e.g., application OOM), but this is
+# acceptable as it helps identify resource constraint issues that may require runner scaling.
 RUNNER_ISSUE_FAILURE_REASONS = (
     # GitLab enum values (infrastructure failures)
     'runner_system_failure',
@@ -52,8 +56,12 @@ RUNNER_ISSUE_FAILURE_REASONS = (
     'api_failure',          # GitLab API communication failures
     'system_failure',       # Both underscore and space variants needed for enum vs. message matching
     'system failure',       # (e.g., 'system_failure' is the enum, 'system failure' appears in error messages)
-    'out of memory',        # Memory exhaustion (may include both runner and application OOM)
-    'no space left',        # Disk space exhaustion (may include both runner and application issues)
+    # Resource exhaustion patterns (may include both runner and application issues)
+    # Note: These patterns catch runner resource constraints but may also flag application issues.
+    # This is intentional - if an application consistently runs out of memory/disk, it may indicate
+    # the runner needs more resources or the job needs optimization.
+    'out of memory',        # Memory exhaustion (Git, malloc, runner/container OOM)
+    'no space left',        # Disk space exhaustion (runner disk, Docker storage)
 )
 
 
