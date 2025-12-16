@@ -53,7 +53,7 @@ RUNNER_ISSUE_FAILURE_REASONS = (
     'system_failure',       # Generic system failure (underscore variant)
     # Error message patterns (appear in failure_reason text)
     'system failure',       # Generic system failure (space variant in messages)
-    'out of memory',        # Memory exhaustion on runner
+    'out of memory',        # Memory exhaustion (may include both runner and application OOM)
     'no space left',        # Disk space exhaustion on runner
 )
 
