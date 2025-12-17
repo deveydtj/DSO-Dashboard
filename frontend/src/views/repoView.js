@@ -109,6 +109,7 @@ export function getRepoKey(repo) {
  * @param {number|null} observedRate - Repo's recent success rate (0-1)
  * @param {number} targetRate - SLO target success rate (0-1), defaults to 0.99
  * @returns {number|null} - Remaining budget percentage (0-100) or null if observedRate is null
+ * @deprecated This function is no longer used in the UI but kept for backward compatibility
  */
 export function computeErrorBudgetRemaining(observedRate, targetRate = 0.99) {
     if (observedRate === null || observedRate === undefined) {
@@ -132,57 +133,43 @@ export function computeErrorBudgetRemaining(observedRate, targetRate = 0.99) {
 }
 
 /**
- * Error budget color thresholds matching the KPI SLO bar
- * These constants define when the budget bar changes color:
- * - >= HEALTHY_MIN (50%): Green - comfortable remaining budget
- * - >= WARNING_MIN (20%): Yellow - budget getting tight
- * - < WARNING_MIN: Red - budget nearly or fully exhausted
- */
-const ERROR_BUDGET_THRESHOLDS = {
-    HEALTHY_MIN: 50,    // >= 50% remaining = green (budget-healthy)
-    WARNING_MIN: 20     // >= 20% remaining = yellow (budget-warning), < 20% = red (budget-critical)
-};
-
-/**
- * Get the CSS class for error budget bar color based on remaining percentage.
- * @param {number} remaining - Remaining budget percentage (0-100)
- * @returns {string} - CSS class name
- */
-function getErrorBudgetColorClass(remaining) {
-    if (remaining >= ERROR_BUDGET_THRESHOLDS.HEALTHY_MIN) {
-        return 'budget-healthy';
-    } else if (remaining >= ERROR_BUDGET_THRESHOLDS.WARNING_MIN) {
-        return 'budget-warning';
-    }
-    return 'budget-critical';
-}
-
-/**
- * Generate sparkline HTML for a history array of success rates.
- * Normalizes success rates (0-1) into 5 height buckets.
- * Returns empty string if history has fewer than 2 numeric entries.
+ * Generate sparkline HTML for recent pipeline statuses.
+ * Each bar represents an individual pipeline status.
+ * Returns empty string if history has fewer than 1 pipeline status.
  * 
- * @param {Array<number>|null} history - Array of success rate values (0-1)
+ * @param {Array<string>|null} pipelineStatuses - Array of pipeline status strings
  * @returns {string} - Sparkline HTML or empty string
  */
-export function createRepoSparkline(history) {
-    // Return empty if no history or fewer than 2 numeric entries
-    if (!Array.isArray(history)) return '';
+export function createRepoSparkline(pipelineStatuses) {
+    // Return empty if no pipeline statuses or not an array
+    if (!Array.isArray(pipelineStatuses)) return '';
     
-    const numericValues = history.filter(v => typeof v === 'number' && Number.isFinite(v));
-    if (numericValues.length < 2) return '';
+    // Filter out null/undefined values
+    const validStatuses = pipelineStatuses.filter(s => s != null && s !== '');
+    if (validStatuses.length === 0) return '';
     
-    // Normalize each value to 1-5 based on success rate buckets:
-    // h1: 0-20%, h2: 20-40%, h3: 40-60%, h4: 60-80%, h5: 80-100%
-    const bars = numericValues.map(val => {
-        // Clamp value to 0-1 range
-        const clamped = Math.max(0, Math.min(1, val));
-        // Convert to height bucket (1-5)
-        const bucket = Math.min(5, Math.max(1, Math.ceil(clamped * 5)));
-        return `<span class="sparkline-bar sparkline-bar--h${bucket}"></span>`;
+    // Map each pipeline status to a sparkline bar with appropriate class
+    const bars = validStatuses.map(status => {
+        // Normalize status to lowercase for consistent class naming
+        const normalizedStatus = (status || '').toLowerCase();
+        // Map status to color class
+        let statusClass = '';
+        if (normalizedStatus === 'success') {
+            statusClass = 'sparkline-bar--success';
+        } else if (normalizedStatus === 'failed') {
+            statusClass = 'sparkline-bar--failed';
+        } else if (normalizedStatus === 'running') {
+            statusClass = 'sparkline-bar--running';
+        } else if (normalizedStatus === 'pending') {
+            statusClass = 'sparkline-bar--pending';
+        } else {
+            // Other statuses (canceled, skipped, etc.) - should be rare given backend filtering
+            statusClass = 'sparkline-bar--other';
+        }
+        return `<span class="sparkline-bar sparkline-bar--pipeline ${statusClass}" title="${escapeHtml(status)}"></span>`;
     }).join('');
     
-    return `<div class="sparkline sparkline--repo" aria-label="Recent default-branch success trend">${bars}</div>`;
+    return `<div class="sparkline sparkline--repo" aria-label="Recent default-branch pipeline statuses">${bars}</div>`;
 }
 
 /**
@@ -194,12 +181,10 @@ export function createRepoSparkline(history) {
  * 
  * @param {Object} repo - Repository data
  * @param {string} [extraClasses=''] - Additional CSS classes (e.g., for attention animations)
- * @param {Object} [sloConfig=null] - Optional SLO configuration
- * @param {number} [sloConfig.defaultBranchSuccessTarget] - SLO target for default branch success rate (0-1)
- * @param {Array<number>|null} [history=null] - Optional history array of success rates for sparkline
+ * @param {Object} [sloConfig=null] - Optional SLO configuration (deprecated, no longer used)
  * @returns {string} - HTML string for the repo card
  */
-export function createRepoCard(repo, extraClasses = '', sloConfig = null, history = null) {
+export function createRepoCard(repo, extraClasses = '', sloConfig = null) {
     const description = repo.description || '';
     const pipelineStatus = repo.last_pipeline_status || null;
     const normalizedStatus = normalizeStatus(pipelineStatus);
@@ -324,41 +309,9 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null, histor
         `;
     }
 
-    // Error budget section - shows remaining error budget based on SLO target
-    let errorBudgetSection = '';
-    
-    // Sanitize sloTarget: ensure it's a valid number between 0 and 1, fallback to 0.99 if invalid
-    let sloTargetRaw = sloConfig?.defaultBranchSuccessTarget;
-    let sloTargetNum = Number(sloTargetRaw);
-    if (isNaN(sloTargetNum) || sloTargetNum <= 0 || sloTargetNum > 1) {
-        sloTargetNum = 0.99;
-    }
-    const errorBudgetRemaining = computeErrorBudgetRemaining(repo.recent_success_rate, sloTargetNum);
-    
-    if (errorBudgetRemaining !== null) {
-        // Value is already clamped and finite by computeErrorBudgetRemaining; just round
-        const safeRemainingPct = Math.round(errorBudgetRemaining);
-        const budgetColorClass = getErrorBudgetColorClass(errorBudgetRemaining);
-        const sloTargetPercent = Math.round(sloTargetNum * 100);
-        
-        errorBudgetSection = `
-            <div class="repo-error-budget" title="Error budget remaining based on SLO target of ${sloTargetPercent}%">
-                <span class="repo-error-budget-label">Error budget: ${safeRemainingPct}% remaining</span>
-                <div class="repo-error-budget-bar-container" role="progressbar" aria-valuenow="${safeRemainingPct}" aria-valuemin="0" aria-valuemax="100" aria-label="Error budget remaining: ${safeRemainingPct}%">
-                    <div class="repo-error-budget-bar ${budgetColorClass}" data-remaining="${safeRemainingPct}" style="width: ${safeRemainingPct}%"></div>
-                </div>
-            </div>
-        `;
-    } else {
-        errorBudgetSection = `
-            <div class="repo-error-budget">
-                <span class="repo-error-budget-label">Error budget: N/A</span>
-            </div>
-        `;
-    }
-
-    // Generate sparkline for success rate trend (placed near success rate display)
-    const sparklineHtml = createRepoSparkline(history);
+    // Generate sparkline for recent pipeline statuses
+    const pipelineStatuses = repo.recent_default_branch_pipelines || [];
+    const sparklineHtml = createRepoSparkline(pipelineStatuses);
 
     // Combine status class with any extra attention classes
     const cardClasses = `repo-card ${statusClass}${extraClasses}`;
@@ -379,7 +332,6 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null, histor
             ${pipelineInfo}
             ${successRateSection}
             ${sparklineHtml}
-            ${errorBudgetSection}
             ${repo.web_url ? `<a href="${repo.web_url}" target="_blank" rel="noopener noreferrer" class="repo-link">View on GitLab →</a>` : ''}
         </div>
     `;
@@ -471,9 +423,8 @@ function sortRepositories(repos) {
  * 
  * @param {Array} repos - Array of repository objects
  * @param {Map} previousState - Map of previous repo states { dsoStatus, index }
- * @param {Object} [sloConfig=null] - Optional SLO configuration to pass to createRepoCard
- * @param {number} [sloConfig.defaultBranchSuccessTarget] - SLO target for default branch success rate (0-1)
- * @param {Map} [historyMap=undefined] - Optional Map of repo key to history array (success rates)
+ * @param {Object} [sloConfig=null] - Optional SLO configuration (deprecated, no longer used)
+ * @param {Map} [historyMap=undefined] - Optional Map (deprecated, no longer used)
  * @returns {Map} - Updated state map for next render cycle
  */
 export function renderRepositories(repos, previousState, sloConfig = null, historyMap = undefined) {
@@ -527,10 +478,7 @@ export function renderRepositories(repos, previousState, sloConfig = null, histo
         // Store new state for next refresh (use dsoStatus instead of normalizedStatus)
         nextState.set(key, { dsoStatus: dsoStatus, index: currentIndex });
 
-        // Get history for this repo (if available)
-        const history = historyMap?.get(key) ?? null;
-
-        return createRepoCard(repo, attentionClass, sloConfig, history);
+        return createRepoCard(repo, attentionClass, sloConfig);
     }).join('');
 
     container.innerHTML = cardsHtml;

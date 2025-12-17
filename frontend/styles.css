@@ -419,47 +419,6 @@ body {
     font-weight: 600;
 }
 
-.kpi-error-budget {
-    margin-top: var(--spacing-xs);
-}
-
-.kpi-error-budget-label {
-    display: block;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    margin-bottom: var(--spacing-xs);
-}
-
-.error-budget-bar {
-    width: 100%;
-    height: 8px;
-    background: var(--bg-primary);
-    border-radius: 4px;
-    overflow: hidden;
-    box-shadow: 
-        inset 2px 2px 4px var(--shadow-inset-dark),
-        inset -2px -2px 4px var(--shadow-inset-light);
-}
-
-.error-budget-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.5s ease, background 0.3s ease;
-}
-
-/* Error budget color thresholds */
-.error-budget-fill.budget-healthy {
-    background: linear-gradient(90deg, var(--accent-success), #059669);
-}
-
-.error-budget-fill.budget-warning {
-    background: linear-gradient(90deg, var(--accent-warning), #d97706);
-}
-
-.error-budget-fill.budget-critical {
-    background: linear-gradient(90deg, var(--accent-error), #dc2626);
-}
-
 /* Sections */
 .section {
     margin-bottom: var(--spacing-xl);
@@ -1352,48 +1311,6 @@ body {
     transition: width 0.5s ease;
 }
 
-/* Repository Error Budget Section */
-.repo-error-budget {
-    margin: var(--spacing-xs) 0;
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-}
-
-.repo-error-budget-label {
-    display: block;
-    margin-bottom: var(--spacing-xs);
-}
-
-.repo-error-budget-bar-container {
-    width: 100%;
-    height: 6px;
-    background: var(--bg-primary);
-    border-radius: 3px;
-    overflow: hidden;
-    box-shadow: 
-        inset 2px 2px 4px var(--shadow-inset-dark),
-        inset -2px -2px 4px var(--shadow-inset-light);
-}
-
-.repo-error-budget-bar {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.5s ease, background 0.3s ease;
-}
-
-/* Error budget color thresholds - matches KPI SLO bar */
-.repo-error-budget-bar.budget-healthy {
-    background: linear-gradient(90deg, var(--accent-success), #059669);
-}
-
-.repo-error-budget-bar.budget-warning {
-    background: linear-gradient(90deg, var(--accent-warning), #d97706);
-}
-
-.repo-error-budget-bar.budget-critical {
-    background: linear-gradient(90deg, var(--accent-error), #dc2626);
-}
-
 /* Responsive Design */
 @media (max-width: 768px) {
     .container {
@@ -1630,14 +1547,6 @@ body.compact .kpi-slo-item {
     font-size: 0.8rem;
 }
 
-body.compact .kpi-error-budget-label {
-    font-size: 0.7rem;
-}
-
-body.compact .error-budget-bar {
-    height: 6px;
-}
-
 body.compact .section {
     margin-bottom: 2rem;
 }
@@ -1697,20 +1606,6 @@ body.compact .repo-success-rate {
 body.compact .success-rate-label {
     font-size: 0.75rem;
     margin-bottom: 0.25rem;
-}
-
-/* Compact mode repo error budget styles */
-body.compact .repo-error-budget {
-    margin: 0.35rem 0;
-    font-size: 0.7rem;
-}
-
-body.compact .repo-error-budget-label {
-    margin-bottom: 0.2rem;
-}
-
-body.compact .repo-error-budget-bar-container {
-    height: 4px;
 }
 
 body.compact .repo-link {
@@ -1874,16 +1769,40 @@ body.compact .footer {
 .sparkline-bar--h4 { height: 12px; }
 .sparkline-bar--h5 { height: 16px; }
 
-/* Repo sparkline colors - green spectrum for success rates */
+/* Repo sparkline colors - pipeline status-based colors */
 .sparkline--repo .sparkline-bar {
+    background: var(--text-secondary);
+    opacity: 0.5;
+}
+
+/* Pipeline status colors */
+.sparkline--repo .sparkline-bar--pipeline {
+    height: 12px; /* Fixed height for pipeline status bars */
+}
+
+.sparkline--repo .sparkline-bar--success {
     background: var(--accent-success);
+    opacity: 0.9;
+}
+
+.sparkline--repo .sparkline-bar--failed {
+    background: var(--accent-error);
+    opacity: 1;
+}
+
+.sparkline--repo .sparkline-bar--running {
+    background: var(--accent-blue);
+    opacity: 0.8;
+}
+
+.sparkline--repo .sparkline-bar--pending {
+    background: var(--accent-warning);
     opacity: 0.7;
 }
 
-.sparkline--repo .sparkline-bar--h1,
-.sparkline--repo .sparkline-bar--h2 {
-    background: var(--accent-warning);
-    opacity: 0.8;
+.sparkline--repo .sparkline-bar--other {
+    background: var(--text-secondary);
+    opacity: 0.5;
 }
 
 /* Service sparkline colors - all bars green by default, spikes get warning/error colors */
@@ -1920,4 +1839,9 @@ body.compact .sparkline-bar--h2 { height: 4px; }
 body.compact .sparkline-bar--h3 { height: 6px; }
 body.compact .sparkline-bar--h4 { height: 9px; }
 body.compact .sparkline-bar--h5 { height: 12px; }
+
+/* Compact mode pipeline sparkline */
+body.compact .sparkline--repo .sparkline-bar--pipeline {
+    height: 10px; /* Slightly shorter in compact mode */
+}
 
