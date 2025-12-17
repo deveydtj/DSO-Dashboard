@@ -40,7 +40,14 @@
       "consecutive_default_branch_failures": 0,
       "has_failing_jobs": false,
       "failing_jobs_count": 0,
-      "has_runner_issues": false
+      "has_runner_issues": false,
+      "recent_default_branch_pipelines": [
+        "success",
+        "success",
+        "success",
+        "success",
+        "success"
+      ]
     },
     {
       "id": 10002,
@@ -62,7 +69,14 @@
       "consecutive_default_branch_failures": 0,
       "has_failing_jobs": false,
       "failing_jobs_count": 0,
-      "has_runner_issues": false
+      "has_runner_issues": false,
+      "recent_default_branch_pipelines": [
+        "success",
+        "success",
+        "success",
+        "success",
+        "success"
+      ]
     },
     {
       "id": 10003,
@@ -84,7 +98,14 @@
       "consecutive_default_branch_failures": 3,
       "has_failing_jobs": true,
       "failing_jobs_count": 3,
-      "has_runner_issues": false
+      "has_runner_issues": false,
+      "recent_default_branch_pipelines": [
+        "failed",
+        "failed",
+        "failed",
+        "success",
+        "success"
+      ]
     },
     {
       "id": 10004,
@@ -106,7 +127,14 @@
       "consecutive_default_branch_failures": 0,
       "has_failing_jobs": false,
       "failing_jobs_count": 0,
-      "has_runner_issues": true
+      "has_runner_issues": true,
+      "recent_default_branch_pipelines": [
+        "success",
+        "success",
+        "success",
+        "success",
+        "success"
+      ]
     },
     {
       "id": 10005,
@@ -128,7 +156,8 @@
       "consecutive_default_branch_failures": 0,
       "has_failing_jobs": false,
       "failing_jobs_count": 0,
-      "has_runner_issues": false
+      "has_runner_issues": false,
+      "recent_default_branch_pipelines": []
     },
     {
       "id": 10006,
@@ -150,7 +179,14 @@
       "consecutive_default_branch_failures": 0,
       "has_failing_jobs": false,
       "failing_jobs_count": 0,
-      "has_runner_issues": false
+      "has_runner_issues": false,
+      "recent_default_branch_pipelines": [
+        "success",
+        "success",
+        "success",
+        "success",
+        "success"
+      ]
     },
     {
       "id": 10007,
@@ -172,7 +208,8 @@
       "consecutive_default_branch_failures": 0,
       "has_failing_jobs": false,
       "failing_jobs_count": 0,
-      "has_runner_issues": false
+      "has_runner_issues": false,
+      "recent_default_branch_pipelines": []
     },
     {
       "id": 10008,
@@ -194,7 +231,14 @@
       "consecutive_default_branch_failures": 0,
       "has_failing_jobs": true,
       "failing_jobs_count": 1,
-      "has_runner_issues": false
+      "has_runner_issues": false,
+      "recent_default_branch_pipelines": [
+        "success",
+        "success",
+        "failed",
+        "success",
+        "running"
+      ]
     }
   ],
   "pipelines": [
