@@ -545,6 +545,7 @@ class BackgroundPoller(threading.Thread):
                 project_id = project.get('id')
                 project_name = project.get('name', f'Project {project_id}')
                 project_path = project.get('path_with_namespace', '')
+                default_branch = project.get('default_branch', 'main')
                 
                 # Fetch recent pipelines for this project
                 pipelines = self.gitlab_client.get_pipelines(project_id, per_page=PIPELINES_PER_PROJECT)
@@ -553,18 +554,49 @@ class BackgroundPoller(threading.Thread):
                     # API error occurred
                     logger.warning(f"{log_prefix}Failed to fetch pipelines for project {project_name} (ID: {project_id})")
                     api_errors += 1
-                elif pipelines:
-                    # Store per-project pipelines for enrichment (before global limit)
-                    per_project_pipelines[project_id] = []
-                    
-                    # Add project info to each pipeline
+                    continue  # Skip to next project
+                
+                # Initialize per-project storage
+                per_project_pipelines[project_id] = []
+                
+                # Add project info to each pipeline and store
+                if pipelines:
                     for pipeline in pipelines:
                         pipeline['project_name'] = project_name
                         pipeline['project_id'] = project_id
                         pipeline['project_path'] = project_path
                         all_pipelines.append(pipeline)
-                        # Also store in per-project dict
                         per_project_pipelines[project_id].append(pipeline)
+                
+                # Check if we got any default-branch pipelines in the general fetch
+                has_default_branch_pipeline = any(
+                    p.get('ref') == default_branch for p in pipelines
+                ) if pipelines else False
+                
+                # If no default-branch pipeline in the general fetch, make a targeted request
+                # This ensures we always have the latest default-branch pipeline data even
+                # when feature branches dominate the recent pipeline list
+                if not has_default_branch_pipeline:
+                    logger.debug(f"{log_prefix}No default-branch pipeline found in recent {PIPELINES_PER_PROJECT} pipelines for {project_name}, fetching default-branch pipelines explicitly")
+                    default_branch_pipelines = self.gitlab_client.get_pipelines(
+                        project_id, 
+                        per_page=1,  # Only need the most recent one
+                        ref=default_branch
+                    )
+                    
+                    if default_branch_pipelines is None:
+                        # API error on default-branch fetch - log but don't fail entire poll
+                        logger.warning(f"{log_prefix}Failed to fetch default-branch pipelines for {project_name}")
+                    elif default_branch_pipelines:
+                        # Add the default-branch pipeline(s) to our collections
+                        for pipeline in default_branch_pipelines:
+                            pipeline['project_name'] = project_name
+                            pipeline['project_id'] = project_id
+                            pipeline['project_path'] = project_path
+                            # Add to both per-project and global collections (no risk of duplicates)
+                            per_project_pipelines[project_id].append(pipeline)
+                            all_pipelines.append(pipeline)
+                        logger.debug(f"{log_prefix}Added {len(default_branch_pipelines)} default-branch pipeline(s) for {project_name}")
             
             # Handle partial failures
             if api_errors > 0:

@@ -359,9 +359,16 @@ class TestMRRefResolutionIntegration(unittest.TestCase):
         from backend.app import BackgroundPoller
         
         mock_client = MagicMock()
-        mock_client.get_pipelines.return_value = [
-            {'id': 1, 'ref': 'refs/merge-requests/100/head'}
-        ]
+        
+        # Make get_pipelines return different values based on ref parameter
+        # Initial fetch returns MR pipeline, fallback fetch returns empty (no pipelines on default branch)
+        def mock_get_pipelines(project_id, per_page=None, ref=None):
+            if ref:  # Fallback fetch with ref filter
+                return []  # No pipelines on default branch
+            else:  # Initial fetch
+                return [{'id': 1, 'ref': 'refs/merge-requests/100/head'}]
+        
+        mock_client.get_pipelines.side_effect = mock_get_pipelines
         mock_client.resolve_merge_request_refs.side_effect = Exception("Test exception")
         
         poller = BackgroundPoller(
