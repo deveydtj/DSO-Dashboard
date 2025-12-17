@@ -288,7 +288,12 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null) {
         `;
     }
     
+    // Generate sparkline for recent pipeline statuses
+    const pipelineStatuses = repo.recent_default_branch_pipelines || [];
+    const sparklineHtml = createRepoSparkline(pipelineStatuses);
+
     // Success rate section - now shows default-branch rate as primary
+    // Sparkline is integrated into this section for better visual grouping
     let successRateSection = '';
     if (repo.recent_success_rate != null) {
         const successPercent = Math.min(100, Math.max(0, Math.round(repo.recent_success_rate * 100)));
@@ -305,13 +310,10 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null) {
                 <div class="success-rate-bar">
                     <div class="success-rate-fill ${barColorClass}" style="width: ${successPercent}%"></div>
                 </div>
+                ${sparklineHtml}
             </div>
         `;
     }
-
-    // Generate sparkline for recent pipeline statuses
-    const pipelineStatuses = repo.recent_default_branch_pipelines || [];
-    const sparklineHtml = createRepoSparkline(pipelineStatuses);
 
     // Combine status class with any extra attention classes
     const cardClasses = `repo-card ${statusClass}${extraClasses}`;
@@ -331,7 +333,6 @@ export function createRepoCard(repo, extraClasses = '', sloConfig = null) {
             ${indicatorsHtml}
             ${pipelineInfo}
             ${successRateSection}
-            ${sparklineHtml}
             ${repo.web_url ? `<a href="${repo.web_url}" target="_blank" rel="noopener noreferrer" class="repo-link">View on GitLab →</a>` : ''}
         </div>
     `;
