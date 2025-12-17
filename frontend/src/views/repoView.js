@@ -181,10 +181,9 @@ export function createRepoSparkline(pipelineStatuses) {
  * 
  * @param {Object} repo - Repository data
  * @param {string} [extraClasses=''] - Additional CSS classes (e.g., for attention animations)
- * @param {Object} [sloConfig=null] - Optional SLO configuration (deprecated, no longer used)
  * @returns {string} - HTML string for the repo card
  */
-export function createRepoCard(repo, extraClasses = '', sloConfig = null) {
+export function createRepoCard(repo, extraClasses = '') {
     const description = repo.description || '';
     const pipelineStatus = repo.last_pipeline_status || null;
     const normalizedStatus = normalizeStatus(pipelineStatus);
@@ -424,10 +423,9 @@ function sortRepositories(repos) {
  * 
  * @param {Array} repos - Array of repository objects
  * @param {Map} previousState - Map of previous repo states { dsoStatus, index }
- * @param {Object} [sloConfig=null] - Optional SLO configuration (deprecated, no longer used)
  * @returns {Map} - Updated state map for next render cycle
  */
-export function renderRepositories(repos, previousState, sloConfig = null) {
+export function renderRepositories(repos, previousState) {
     const container = document.getElementById('repoGrid');
     if (!container) return new Map();
 
@@ -478,7 +476,7 @@ export function renderRepositories(repos, previousState, sloConfig = null) {
         // Store new state for next refresh (use dsoStatus instead of normalizedStatus)
         nextState.set(key, { dsoStatus: dsoStatus, index: currentIndex });
 
-        return createRepoCard(repo, attentionClass, sloConfig);
+        return createRepoCard(repo, attentionClass);
     }).join('');
 
     container.innerHTML = cardsHtml;

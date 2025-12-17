@@ -137,14 +137,14 @@ const repo = {{
     recent_default_branch_pipelines: ['success', 'success', 'failed', 'success', 'running']
 }};
 
-const htmlWithStatuses = createRepoCard(repo, '', null);
+const htmlWithStatuses = createRepoCard(repo, '');
 const repoNoStatuses = {{
     id: 2,
     name: 'no-pipelines',
     visibility: 'private',
     recent_default_branch_pipelines: []
 }};
-const htmlWithoutStatuses = createRepoCard(repoNoStatuses, '', null);
+const htmlWithoutStatuses = createRepoCard(repoNoStatuses, '');
 
 console.log(JSON.stringify({{
     withStatusesHasSparkline: htmlWithStatuses.includes('class="sparkline'),
