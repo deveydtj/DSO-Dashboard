@@ -425,10 +425,9 @@ function sortRepositories(repos) {
  * @param {Array} repos - Array of repository objects
  * @param {Map} previousState - Map of previous repo states { dsoStatus, index }
  * @param {Object} [sloConfig=null] - Optional SLO configuration (deprecated, no longer used)
- * @param {Map} [historyMap=undefined] - Optional Map (deprecated, no longer used)
  * @returns {Map} - Updated state map for next render cycle
  */
-export function renderRepositories(repos, previousState, sloConfig = null, historyMap = undefined) {
+export function renderRepositories(repos, previousState, sloConfig = null) {
     const container = document.getElementById('repoGrid');
     if (!container) return new Map();
 
