@@ -24,7 +24,6 @@ export function formatSloPercentage(value) {
  * @param {number} data.running_pipelines - Number of running pipelines
  * @param {number} [data.pipeline_slo_target_default_branch_success_rate] - SLO target (0-1)
  * @param {number} [data.pipeline_slo_observed_default_branch_success_rate] - Observed rate (0-1)
- * @param {number} [data.pipeline_error_budget_remaining_pct] - Error budget remaining percentage (0-100)
  * @param {boolean} [data.is_mock] - Whether mock data is being used
  */
 export function renderSummaryKpis(data) {
@@ -53,17 +52,13 @@ export function renderSloKpis(data) {
     const sloCard = document.querySelector('.kpi-card-slo');
     const sloTarget = document.getElementById('pipelineSloTarget');
     const sloObserved = document.getElementById('pipelineSloObserved');
-    const errorBudgetText = document.getElementById('pipelineErrorBudgetText');
-    const errorBudgetBar = document.getElementById('pipelineErrorBudgetBar');
 
     // Extract SLO values with fallback to null
     const targetValue = data.pipeline_slo_target_default_branch_success_rate ?? null;
     const observedValue = data.pipeline_slo_observed_default_branch_success_rate ?? null;
-    const errorBudgetPct = data.pipeline_error_budget_remaining_pct ?? null;
 
     // Check if SLO data is present (enabled in backend)
-    // Use AND logic to ensure all required fields are present for complete data
-    const sloEnabled = targetValue !== null && observedValue !== null && errorBudgetPct !== null;
+    const sloEnabled = targetValue !== null && observedValue !== null;
 
     // Show or hide the SLO tile
     if (sloCard) {
@@ -81,38 +76,5 @@ export function renderSloKpis(data) {
     }
     if (sloObserved) {
         sloObserved.textContent = formatSloPercentage(observedValue);
-    }
-
-    // Update error budget text and bar
-    if (errorBudgetText) {
-        if (errorBudgetPct === null || typeof errorBudgetPct !== 'number' || isNaN(errorBudgetPct)) {
-            errorBudgetText.textContent = '--';
-        } else {
-            errorBudgetText.textContent = errorBudgetPct.toFixed(1) + '% remaining';
-        }
-    }
-    if (errorBudgetBar) {
-        // Set data attribute for CSS styling and width
-        const remaining = (errorBudgetPct !== null && typeof errorBudgetPct === 'number' && !isNaN(errorBudgetPct))
-            ? Math.max(0, Math.min(100, errorBudgetPct))
-            : 0;
-        errorBudgetBar.setAttribute('data-remaining', remaining.toString());
-        errorBudgetBar.style.width = remaining + '%';
-
-        // Update aria-valuenow on the parent progressbar for accessibility
-        const progressBar = errorBudgetBar.parentElement;
-        if (progressBar && progressBar.hasAttribute('role')) {
-            progressBar.setAttribute('aria-valuenow', Math.round(remaining).toString());
-        }
-
-        // Set color class based on threshold
-        errorBudgetBar.classList.remove('budget-healthy', 'budget-warning', 'budget-critical');
-        if (remaining >= 50) {
-            errorBudgetBar.classList.add('budget-healthy');
-        } else if (remaining >= 20) {
-            errorBudgetBar.classList.add('budget-warning');
-        } else {
-            errorBudgetBar.classList.add('budget-critical');
-        }
     }
 }

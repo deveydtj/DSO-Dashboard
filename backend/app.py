@@ -1206,6 +1206,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     'last_pipeline_duration': project.get('last_pipeline_duration'),
                     'last_pipeline_updated_at': project.get('last_pipeline_updated_at'),
                     'recent_success_rate': project.get('recent_success_rate'),
+                    'recent_default_branch_pipelines': project.get('recent_default_branch_pipelines', []),
                     'consecutive_default_branch_failures': project.get('consecutive_default_branch_failures', 0),
                     # DSO health fields (for dashboard tiles):
                     # - has_failing_jobs: True if recent default-branch pipelines contain any with 'failed' status (excludes skipped/manual/canceled)

@@ -38,8 +38,6 @@ export class DashboardApp {
             pipelines: null,
             services: null
         };
-        // SLO configuration derived from summary data
-        this.sloConfig = null;
         // Track per-repo state between refreshes for animation detection
         // Stores { status: normalizedStatus, index: sortedPosition } per repo key
         this.repoState = new Map();
@@ -116,11 +114,6 @@ export class DashboardApp {
         try {
             const data = await fetchSummary(this.apiBase, this.fetchTimeout);
             this.cachedData.summary = data;
-            // Build sloConfig from summary fields
-            this.sloConfig = {
-                defaultBranchSuccessTarget: data.pipeline_slo_target_default_branch_success_rate ?? 0.99,
-                errorBudgetRemainingPct: data.pipeline_error_budget_remaining_pct ?? null
-            };
             // Use view module to render KPIs
             renderSummaryKpis(data);
             console.log('✅ Summary data loaded', data);
@@ -145,7 +138,7 @@ export class DashboardApp {
             // Update history buffers for trend sparklines
             this._updateRepoHistory(data.repositories || []);
             // Render repos and track state for attention animations (status degradation, position changes)
-            this.repoState = renderRepositories(data.repositories || [], this.repoState, this.sloConfig, this.repoHistory);
+            this.repoState = renderRepositories(data.repositories || [], this.repoState);
             console.log(`✅ Loaded ${data.repositories?.length || 0} repositories`);
             return true;
         } catch (error) {
@@ -153,14 +146,7 @@ export class DashboardApp {
             // Try to use cached data
             if (this.cachedData.repos) {
                 console.log('📦 Using cached repositories data');
-                // Rebuild sloConfig from cached summary if not already set
-                if (!this.sloConfig && this.cachedData.summary) {
-                    this.sloConfig = {
-                        defaultBranchSuccessTarget: this.cachedData.summary.pipeline_slo_target_default_branch_success_rate ?? 0.99,
-                        errorBudgetRemainingPct: this.cachedData.summary.pipeline_error_budget_remaining_pct ?? null
-                    };
-                }
-                this.repoState = renderRepositories(this.cachedData.repos, this.repoState, this.sloConfig, this.repoHistory);
+                this.repoState = renderRepositories(this.cachedData.repos, this.repoState);
             } else {
                 showError('Failed to load repositories', 'repoGrid');
             }

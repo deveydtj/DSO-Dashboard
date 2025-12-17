@@ -789,6 +789,7 @@ def get_repositories(projects):
             'recent_success_rate': project.get('recent_success_rate'),
             'recent_success_rate_default_branch': project.get('recent_success_rate_default_branch'),
             'recent_success_rate_all_branches': project.get('recent_success_rate_all_branches'),
+            'recent_default_branch_pipelines': project.get('recent_default_branch_pipelines', []),
             'consecutive_default_branch_failures': project.get('consecutive_default_branch_failures', 0),
             # DSO health fields (for dashboard tiles):
             # - has_failing_jobs: True if recent default-branch pipelines contain failed jobs
@@ -1018,6 +1019,16 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
             enriched['recent_success_rate'] = enriched['recent_success_rate_default_branch']
             
             # ---------------------------------------------------------------
+            # RECENT DEFAULT BRANCH PIPELINES LIST
+            # ---------------------------------------------------------------
+            # Provide list of recent pipeline statuses for sparkline visualization.
+            # Each entry represents a pipeline status for display as individual bars.
+            # Only includes meaningful statuses (excludes skipped/manual/canceled).
+            enriched['recent_default_branch_pipelines'] = [
+                p.get('status') for p in meaningful_pipelines_default
+            ]
+            
+            # ---------------------------------------------------------------
             # CONSECUTIVE FAILURES: DEFAULT BRANCH ONLY
             # ---------------------------------------------------------------
             # Calculate consecutive failures on DEFAULT BRANCH ONLY
@@ -1078,6 +1089,7 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
             enriched['recent_success_rate'] = None
             enriched['recent_success_rate_all_branches'] = None
             enriched['recent_success_rate_default_branch'] = None
+            enriched['recent_default_branch_pipelines'] = []
             enriched['consecutive_default_branch_failures'] = 0
             # DSO health fields - no pipelines means no failures or runner issues
             enriched['has_failing_jobs'] = False
