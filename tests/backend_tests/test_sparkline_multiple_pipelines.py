@@ -4,7 +4,7 @@ This test validates the fix for the issue where repo default-branch sparklines
 often render only 1 bar due to insufficient default-branch pipeline fetch.
 """
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from backend.app import BackgroundPoller
 from backend.gitlab_client import GitLabAPIClient, PIPELINES_PER_PROJECT
 
@@ -152,15 +152,6 @@ class TestSparklineMultiplePipelines(unittest.TestCase):
                 'created_at': f'2024-01-20T13:{40-i:02d}:00.000Z'
             } for i in range(PIPELINES_PER_PROJECT - 1)]
         ]
-        
-        def mock_get_pipelines(project_id, per_page=None, ref=None):
-            # Our check will see the default-branch pipeline in general fetch
-            # so targeted fetch won't actually be called in this scenario
-            # But let's test the deduplication logic anyway
-            if ref == 'main':
-                return list(default_branch_pipelines)
-            else:
-                return list(general_pipelines)
         
         # For this test, we need to force the targeted fetch to happen
         # So we'll mock it to return pipelines without the default branch

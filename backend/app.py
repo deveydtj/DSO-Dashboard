@@ -598,8 +598,11 @@ class BackgroundPoller(threading.Thread):
                         logger.debug(f"{log_prefix}Added {len(default_branch_pipelines)} default-branch pipeline(s) for {project_name}")
                         
                         # Deduplicate per-project pipelines by ID
-                        # Overlap can occur in edge cases (e.g., default-branch pipeline created
-                        # between general fetch and targeted fetch, or check logic edge cases)
+                        # Overlap is unlikely in normal operation (it would require a very
+                        # narrow race where a new default-branch pipeline appears between
+                        # the general and targeted fetches). This primarily defends against
+                        # logic bugs in has_default_branch_pipeline() or API anomalies that
+                        # might return overlapping/duplicate pipelines.
                         seen_ids = set()
                         deduped_pipelines = []
                         for pipeline in per_project_pipelines[project_id]:
