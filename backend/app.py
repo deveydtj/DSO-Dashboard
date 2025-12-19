@@ -605,8 +605,11 @@ class BackgroundPoller(threading.Thread):
                 deduped_pipelines = []
                 for pipeline in per_project_pipelines[project_id]:
                     pipeline_id = pipeline.get('id')
-                    if pipeline_id not in seen_ids:
+                    if pipeline_id is not None and pipeline_id not in seen_ids:
                         seen_ids.add(pipeline_id)
+                        deduped_pipelines.append(pipeline)
+                    elif pipeline_id is None:
+                        # Pipelines without IDs can't be deduplicated, keep them
                         deduped_pipelines.append(pipeline)
                 if len(deduped_pipelines) < len(per_project_pipelines[project_id]):
                     logger.debug(f"{log_prefix}Removed {len(per_project_pipelines[project_id]) - len(deduped_pipelines)} duplicate pipeline(s) for {project_name}")
@@ -635,6 +638,10 @@ class BackgroundPoller(threading.Thread):
             duplicates_removed = 0
             for pipeline in all_pipelines:
                 pipeline_id = pipeline.get('id')
+                # Be defensive: only use non-None IDs for deduplication
+                if pipeline_id is None:
+                    deduped_all_pipelines.append(pipeline)
+                    continue
                 if pipeline_id not in seen_pipeline_ids:
                     seen_pipeline_ids.add(pipeline_id)
                     deduped_all_pipelines.append(pipeline)
