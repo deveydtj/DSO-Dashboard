@@ -1200,12 +1200,22 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     'open_issues_count': project.get('open_issues_count', 0),
                     'default_branch': project.get('default_branch', 'main'),
                     'visibility': project.get('visibility', 'private'),
-                    # Pipeline health metrics
+                    # Pipeline health metrics (most recent pipeline across all branches)
                     'last_pipeline_status': project.get('last_pipeline_status'),
                     'last_pipeline_ref': project.get('last_pipeline_ref'),
                     'last_pipeline_duration': project.get('last_pipeline_duration'),
                     'last_pipeline_updated_at': project.get('last_pipeline_updated_at'),
+                    # Explicit default-branch pipeline fields
+                    # These allow frontend to reliably show default-branch pipeline info
+                    # even when last_pipeline_* is from a non-default branch
+                    'last_default_branch_pipeline_status': project.get('last_default_branch_pipeline_status'),
+                    'last_default_branch_pipeline_ref': project.get('last_default_branch_pipeline_ref'),
+                    'last_default_branch_pipeline_duration': project.get('last_default_branch_pipeline_duration'),
+                    'last_default_branch_pipeline_updated_at': project.get('last_default_branch_pipeline_updated_at'),
+                    # Success rate metrics
                     'recent_success_rate': project.get('recent_success_rate'),
+                    'recent_success_rate_default_branch': project.get('recent_success_rate_default_branch'),
+                    'recent_success_rate_all_branches': project.get('recent_success_rate_all_branches'),
                     'recent_default_branch_pipelines': project.get('recent_default_branch_pipelines', []),
                     'consecutive_default_branch_failures': project.get('consecutive_default_branch_failures', 0),
                     # DSO health fields (for dashboard tiles):
