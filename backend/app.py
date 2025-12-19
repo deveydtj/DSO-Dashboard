@@ -967,6 +967,7 @@ class BackgroundPoller(threading.Thread):
             - average_latency_ms: Running average latency in milliseconds
             - latency_ratio: current latency / average (if average > 0)
             - latency_trend: "normal" or "warning" based on degradation threshold
+            - latency_samples_ms: Array of recent latency samples (bounded by window_size)
         """
         log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
         
@@ -1002,6 +1003,8 @@ class BackgroundPoller(threading.Thread):
                 service['average_latency_ms'] = round(latency_ms, 2)
                 service['latency_ratio'] = 1.0
                 service['latency_trend'] = 'normal'
+                # Include one-element sample list for first sample
+                service['latency_samples_ms'] = [round(latency_ms, 2)]
                 continue
             
             history = self._service_latency_history[service_id]
@@ -1047,6 +1050,8 @@ class BackgroundPoller(threading.Thread):
             service['average_latency_ms'] = round(average_ms, 2)
             service['latency_ratio'] = round(latency_ratio, 2)
             service['latency_trend'] = latency_trend
+            # Add bounded sample list (rounded to 2 decimal places for consistency)
+            service['latency_samples_ms'] = [round(sample, 2) for sample in recent_samples]
         
         return services
     
