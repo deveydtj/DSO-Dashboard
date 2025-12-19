@@ -580,7 +580,7 @@ class BackgroundPoller(threading.Thread):
                     logger.debug(f"{log_prefix}No default-branch pipeline found in recent {PIPELINES_PER_PROJECT} pipelines for {project_name}, fetching default-branch pipelines explicitly")
                     default_branch_pipelines = self.gitlab_client.get_pipelines(
                         project_id, 
-                        per_page=1,  # Only need the most recent one
+                        per_page=PIPELINES_PER_PROJECT,  # Fetch enough for meaningful sparkline history
                         ref=default_branch
                     )
                     
@@ -593,10 +593,28 @@ class BackgroundPoller(threading.Thread):
                             pipeline['project_name'] = project_name
                             pipeline['project_id'] = project_id
                             pipeline['project_path'] = project_path
-                            # Add to both per-project and global collections (no risk of duplicates)
                             per_project_pipelines[project_id].append(pipeline)
                             all_pipelines.append(pipeline)
                         logger.debug(f"{log_prefix}Added {len(default_branch_pipelines)} default-branch pipeline(s) for {project_name}")
+                
+                # Deduplicate per-project pipelines by ID
+                # This defends against API anomalies that might return duplicate pipeline IDs,
+                # as well as potential overlap when both general and targeted fetches return
+                # the same pipelines (though unlikely in normal operation)
+                seen_ids = set()
+                deduped_pipelines = []
+                for pipeline in per_project_pipelines[project_id]:
+                    pipeline_id = pipeline.get('id')
+                    if pipeline_id is not None and pipeline_id not in seen_ids:
+                        seen_ids.add(pipeline_id)
+                        deduped_pipelines.append(pipeline)
+                    elif pipeline_id is None:
+                        # Pipelines without IDs can't be deduplicated, keep them
+                        deduped_pipelines.append(pipeline)
+                if len(deduped_pipelines) < len(per_project_pipelines[project_id]):
+                    logger.debug(f"{log_prefix}Removed {len(per_project_pipelines[project_id]) - len(deduped_pipelines)} duplicate pipeline(s) for {project_name}")
+                per_project_pipelines[project_id] = deduped_pipelines
+                # Note: Sorting will be done in enrich_projects_with_pipelines() for all projects
             
             # Handle partial failures
             if api_errors > 0:
@@ -607,11 +625,33 @@ class BackgroundPoller(threading.Thread):
                     return None
             
             # Resolve merge request refs to their source branch names
-            # This must happen before sorting so resolved refs are used in sorted results
+            # This must happen before deduplication and sorting so resolved refs are used
             try:
                 self.gitlab_client.resolve_merge_request_refs(all_pipelines, poll_id=poll_id)
             except Exception as e:
                 logger.warning(f"{log_prefix}MR ref resolution failed, continuing with unmodified refs: {e}")
+            
+            # Deduplicate global pipelines by ID (in case of overlap between general and targeted fetches)
+            # This prevents duplicate pipeline IDs in the /api/pipelines endpoint
+            seen_pipeline_ids = set()
+            deduped_all_pipelines = []
+            duplicates_removed = 0
+            for pipeline in all_pipelines:
+                pipeline_id = pipeline.get('id')
+                # Be defensive: only use non-None IDs for deduplication
+                if pipeline_id is None:
+                    deduped_all_pipelines.append(pipeline)
+                    continue
+                if pipeline_id not in seen_pipeline_ids:
+                    seen_pipeline_ids.add(pipeline_id)
+                    deduped_all_pipelines.append(pipeline)
+                else:
+                    duplicates_removed += 1
+            
+            if duplicates_removed > 0:
+                logger.debug(f"{log_prefix}Removed {duplicates_removed} duplicate pipeline(s) from global list")
+            
+            all_pipelines = deduped_all_pipelines
             
             # Sort by created_at descending for /api/pipelines
             # ISO 8601 string sorting works correctly; empty values sort to bottom
