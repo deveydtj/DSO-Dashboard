@@ -33,7 +33,13 @@
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-25T15:35:00.000Z",
       "recent_success_rate": 0.8,
-      "consecutive_default_branch_failures": 0
+      "consecutive_default_branch_failures": 0,
+      "last_default_branch_pipeline_status": "running",
+      "last_default_branch_pipeline_ref": "main",
+      "last_default_branch_pipeline_duration": null,
+      "last_default_branch_pipeline_updated_at": "2024-01-25T15:35:00.000Z",
+      "recent_success_rate_default_branch": 0.8,
+      "recent_success_rate_all_branches": 0.8
     },
     {
       "id": 40002,
@@ -52,7 +58,13 @@
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-25T15:30:00.000Z",
       "recent_success_rate": 0.75,
-      "consecutive_default_branch_failures": 0
+      "consecutive_default_branch_failures": 0,
+      "last_default_branch_pipeline_status": "running",
+      "last_default_branch_pipeline_ref": "main",
+      "last_default_branch_pipeline_duration": null,
+      "last_default_branch_pipeline_updated_at": "2024-01-25T15:30:00.000Z",
+      "recent_success_rate_default_branch": 0.75,
+      "recent_success_rate_all_branches": 0.75
     },
     {
       "id": 40003,
@@ -71,7 +83,13 @@
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-25T15:25:00.000Z",
       "recent_success_rate": 0.82,
-      "consecutive_default_branch_failures": 0
+      "consecutive_default_branch_failures": 0,
+      "last_default_branch_pipeline_status": null,
+      "last_default_branch_pipeline_ref": null,
+      "last_default_branch_pipeline_duration": null,
+      "last_default_branch_pipeline_updated_at": null,
+      "recent_success_rate_default_branch": 0.82,
+      "recent_success_rate_all_branches": 0.82
     },
     {
       "id": 40004,
@@ -90,7 +108,13 @@
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-25T15:20:00.000Z",
       "recent_success_rate": 0.88,
-      "consecutive_default_branch_failures": 0
+      "consecutive_default_branch_failures": 0,
+      "last_default_branch_pipeline_status": "running",
+      "last_default_branch_pipeline_ref": "main",
+      "last_default_branch_pipeline_duration": null,
+      "last_default_branch_pipeline_updated_at": "2024-01-25T15:20:00.000Z",
+      "recent_success_rate_default_branch": 0.88,
+      "recent_success_rate_all_branches": 0.88
     },
     {
       "id": 40005,
@@ -109,7 +133,13 @@
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-25T15:15:00.000Z",
       "recent_success_rate": 0.7,
-      "consecutive_default_branch_failures": 0
+      "consecutive_default_branch_failures": 0,
+      "last_default_branch_pipeline_status": "running",
+      "last_default_branch_pipeline_ref": "main",
+      "last_default_branch_pipeline_duration": null,
+      "last_default_branch_pipeline_updated_at": "2024-01-25T15:15:00.000Z",
+      "recent_success_rate_default_branch": 0.7,
+      "recent_success_rate_all_branches": 0.7
     },
     {
       "id": 40006,
@@ -128,7 +158,13 @@
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-25T15:10:00.000Z",
       "recent_success_rate": 0.73,
-      "consecutive_default_branch_failures": 0
+      "consecutive_default_branch_failures": 0,
+      "last_default_branch_pipeline_status": "running",
+      "last_default_branch_pipeline_ref": "main",
+      "last_default_branch_pipeline_duration": null,
+      "last_default_branch_pipeline_updated_at": "2024-01-25T15:10:00.000Z",
+      "recent_success_rate_default_branch": 0.73,
+      "recent_success_rate_all_branches": 0.73
     },
     {
       "id": 40007,
@@ -147,7 +183,13 @@
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-25T15:05:00.000Z",
       "recent_success_rate": 0.65,
-      "consecutive_default_branch_failures": 0
+      "consecutive_default_branch_failures": 0,
+      "last_default_branch_pipeline_status": "running",
+      "last_default_branch_pipeline_ref": "main",
+      "last_default_branch_pipeline_duration": null,
+      "last_default_branch_pipeline_updated_at": "2024-01-25T15:05:00.000Z",
+      "recent_success_rate_default_branch": 0.65,
+      "recent_success_rate_all_branches": 0.65
     },
     {
       "id": 40008,
@@ -166,7 +208,13 @@
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-25T14:05:00.000Z",
       "recent_success_rate": 0.6,
-      "consecutive_default_branch_failures": 0
+      "consecutive_default_branch_failures": 0,
+      "last_default_branch_pipeline_status": "running",
+      "last_default_branch_pipeline_ref": "main",
+      "last_default_branch_pipeline_duration": null,
+      "last_default_branch_pipeline_updated_at": "2024-01-25T14:05:00.000Z",
+      "recent_success_rate_default_branch": 0.6,
+      "recent_success_rate_all_branches": 0.6
     },
     {
       "id": 40009,
@@ -185,7 +233,13 @@
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-25T13:35:00.000Z",
       "recent_success_rate": 0.85,
-      "consecutive_default_branch_failures": 0
+      "consecutive_default_branch_failures": 0,
+      "last_default_branch_pipeline_status": "running",
+      "last_default_branch_pipeline_ref": "main",
+      "last_default_branch_pipeline_duration": null,
+      "last_default_branch_pipeline_updated_at": "2024-01-25T13:35:00.000Z",
+      "recent_success_rate_default_branch": 0.85,
+      "recent_success_rate_all_branches": 0.85
     },
     {
       "id": 40010,
@@ -204,7 +258,13 @@
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-25T12:50:00.000Z",
       "recent_success_rate": 0.78,
-      "consecutive_default_branch_failures": 0
+      "consecutive_default_branch_failures": 0,
+      "last_default_branch_pipeline_status": "pending",
+      "last_default_branch_pipeline_ref": "main",
+      "last_default_branch_pipeline_duration": null,
+      "last_default_branch_pipeline_updated_at": "2024-01-25T12:50:00.000Z",
+      "recent_success_rate_default_branch": 0.78,
+      "recent_success_rate_all_branches": 0.78
     },
     {
       "id": 40011,
@@ -223,7 +283,13 @@
       "last_pipeline_duration": 240,
       "last_pipeline_updated_at": "2024-01-25T11:10:00.000Z",
       "recent_success_rate": 0.95,
-      "consecutive_default_branch_failures": 0
+      "consecutive_default_branch_failures": 0,
+      "last_default_branch_pipeline_status": "success",
+      "last_default_branch_pipeline_ref": "main",
+      "last_default_branch_pipeline_duration": 240,
+      "last_default_branch_pipeline_updated_at": "2024-01-25T11:10:00.000Z",
+      "recent_success_rate_default_branch": 0.95,
+      "recent_success_rate_all_branches": 0.95
     },
     {
       "id": 40012,
@@ -242,7 +308,13 @@
       "last_pipeline_duration": null,
       "last_pipeline_updated_at": "2024-01-25T10:05:00.000Z",
       "recent_success_rate": 0.9,
-      "consecutive_default_branch_failures": 0
+      "consecutive_default_branch_failures": 0,
+      "last_default_branch_pipeline_status": "pending",
+      "last_default_branch_pipeline_ref": "main",
+      "last_default_branch_pipeline_duration": null,
+      "last_default_branch_pipeline_updated_at": "2024-01-25T10:05:00.000Z",
+      "recent_success_rate_default_branch": 0.9,
+      "recent_success_rate_all_branches": 0.9
     }
   ],
   "pipelines": [
