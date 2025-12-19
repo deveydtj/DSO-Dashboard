@@ -597,9 +597,9 @@ class BackgroundPoller(threading.Thread):
                             all_pipelines.append(pipeline)
                         logger.debug(f"{log_prefix}Added {len(default_branch_pipelines)} default-branch pipeline(s) for {project_name}")
                         
-                        # Deduplicate per-project pipelines by ID (in case of overlap)
-                        # This can happen if a default-branch pipeline was in the general fetch
-                        # but got filtered out by our check, or if there's timing overlap
+                        # Deduplicate per-project pipelines by ID
+                        # Overlap can occur in edge cases (e.g., default-branch pipeline created
+                        # between general fetch and targeted fetch, or check logic edge cases)
                         seen_ids = set()
                         deduped_pipelines = []
                         for pipeline in per_project_pipelines[project_id]:
@@ -608,13 +608,7 @@ class BackgroundPoller(threading.Thread):
                                 seen_ids.add(pipeline_id)
                                 deduped_pipelines.append(pipeline)
                         per_project_pipelines[project_id] = deduped_pipelines
-                        
-                        # Sort per-project pipelines by created_at descending (newest first)
-                        # This ensures consistent ordering for enrichment
-                        per_project_pipelines[project_id].sort(
-                            key=lambda x: x.get('created_at') or '', 
-                            reverse=True
-                        )
+                        # Note: Sorting will be done in enrich_projects_with_pipelines() for all projects
             
             # Handle partial failures
             if api_errors > 0:
