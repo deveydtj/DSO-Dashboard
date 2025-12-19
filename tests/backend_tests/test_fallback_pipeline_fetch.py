@@ -92,9 +92,9 @@ class TestDefaultBranchPipelineFallbackFetch(unittest.TestCase):
         first_call = self.poller.gitlab_client.get_pipelines.call_args_list[0]
         self.assertEqual(first_call, call(456, per_page=10))
         
-        # Verify second call was with ref='main' and per_page=1
+        # Verify second call was with ref='main' and per_page=PIPELINES_PER_PROJECT
         second_call = self.poller.gitlab_client.get_pipelines.call_args_list[1]
-        self.assertEqual(second_call, call(456, per_page=1, ref='main'))
+        self.assertEqual(second_call, call(456, per_page=10, ref='main'))
         
         # Verify result contains both feature pipelines and default-branch pipeline
         self.assertIsNotNone(result)
