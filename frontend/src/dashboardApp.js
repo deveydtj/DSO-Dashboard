@@ -256,11 +256,29 @@ export class DashboardApp {
 
     /**
      * Update service history buffers with latest latency values
+     * Prefers server-provided latency_samples_ms when available for persistence
+     * across browser refreshes. Falls back to client-side tracking otherwise.
      * @param {Array} services - Array of service objects
      */
     _updateServiceHistory(services) {
         for (const service of services) {
             const key = this._getServiceKey(service);
+            
+            // Prefer server-provided samples if available
+            // This enables sparklines to persist across browser refreshes
+            if (service.latency_samples_ms && Array.isArray(service.latency_samples_ms)) {
+                // Use server-provided samples directly
+                // Filter to ensure all values are valid numbers
+                const validSamples = service.latency_samples_ms.filter(
+                    v => typeof v === 'number' && Number.isFinite(v) && v >= 0
+                );
+                if (validSamples.length > 0) {
+                    this.serviceHistory.set(key, validSamples);
+                    continue;
+                }
+            }
+            
+            // Fallback: client-side tracking (original behavior)
             const latency = service.latency_ms;
 
             // Skip if latency is null, undefined, or not a number

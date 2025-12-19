@@ -489,7 +489,8 @@
       "error": null,
       "average_latency_ms": 52,
       "latency_ratio": 0.87,
-      "latency_trend": "improving"
+      "latency_trend": "improving",
+      "latency_samples_ms": [55, 58, 52, 48, 45, 50, 54, 49, 51, 52]
     },
     {
       "id": "confluence",
@@ -502,7 +503,8 @@
       "error": null,
       "average_latency_ms": 115,
       "latency_ratio": 1.11,
-      "latency_trend": "warning"
+      "latency_trend": "warning",
+      "latency_samples_ms": [110, 105, 118, 122, 128, 115, 112, 108, 120, 115]
     },
     {
       "id": "jira",
@@ -515,7 +517,8 @@
       "error": "Service Unavailable",
       "average_latency_ms": 85,
       "latency_ratio": 59.2,
-      "latency_trend": "degrading"
+      "latency_trend": "degrading",
+      "latency_samples_ms": [75, 78, 82, 88, 90, 85, 80, 95, 280, 5032]
     },
     {
       "id": "sonarqube",
