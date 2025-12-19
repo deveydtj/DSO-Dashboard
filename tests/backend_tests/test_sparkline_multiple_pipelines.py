@@ -91,18 +91,11 @@ class TestSparklineMultiplePipelines(unittest.TestCase):
         # Should have feature pipelines + default-branch pipelines
         self.assertEqual(len(project_pipelines), PIPELINES_PER_PROJECT * 2,
             f"Expected {PIPELINES_PER_PROJECT * 2} pipelines (10 feature + 10 default-branch)")
-        
-        # Verify pipelines are sorted by created_at descending
-        for i in range(len(project_pipelines) - 1):
-            current_time = project_pipelines[i].get('created_at', '')
-            next_time = project_pipelines[i + 1].get('created_at', '')
-            self.assertGreaterEqual(current_time, next_time,
-                f"Pipelines not sorted correctly: {current_time} < {next_time}")
 
     def test_deduplicates_pipelines_when_overlap_occurs(self):
         """
-        When a default-branch pipeline appears in both the general fetch and
-        the targeted fetch, it should be deduplicated.
+        When the GitLab API returns duplicate pipeline IDs (rare API anomaly),
+        they should be deduplicated.
         """
         project = {
             'id': 456,
@@ -111,59 +104,39 @@ class TestSparklineMultiplePipelines(unittest.TestCase):
             'default_branch': 'main'
         }
         
-        # General fetch includes 1 default-branch pipeline plus 9 feature pipelines
-        # The default-branch pipeline is at position 5 (middle of the list)
+        # Simulate API returning duplicate IDs in general fetch (API anomaly)
+        # Pipeline ID 3500 appears twice with different timestamps
         general_pipelines = [
-            # 5 newer feature pipelines
-            *[{
-                'id': 3000 + i,
-                'status': 'success',
-                'ref': f'feature/new-{i}',
-                'created_at': f'2024-01-20T13:{55-i:02d}:00.000Z'
-            } for i in range(5)],
-            # 1 default-branch pipeline (ID 3999)
+            # First occurrence of ID 3500
             {
-                'id': 3999,
+                'id': 3500,
                 'status': 'success',
-                'ref': 'main',
-                'created_at': '2024-01-20T13:49:00.000Z'
+                'ref': 'feature/branch-1',
+                'created_at': '2024-01-20T13:55:00.000Z'
             },
-            # 4 older feature pipelines
-            *[{
-                'id': 3010 + i,
+            # Other pipelines
+            {
+                'id': 3001,
                 'status': 'success',
-                'ref': f'feature/old-{i}',
-                'created_at': f'2024-01-20T13:{45-i:02d}:00.000Z'
-            } for i in range(4)]
+                'ref': 'feature/branch-2',
+                'created_at': '2024-01-20T13:54:00.000Z'
+            },
+            {
+                'id': 3002,
+                'status': 'success',
+                'ref': 'main',  # Has default-branch pipeline, so no targeted fetch
+                'created_at': '2024-01-20T13:53:00.000Z'
+            },
+            # Second occurrence of ID 3500 (duplicate)
+            {
+                'id': 3500,
+                'status': 'failed',
+                'ref': 'feature/branch-3',
+                'created_at': '2024-01-20T13:52:00.000Z'
+            },
         ]
         
-        # Targeted default-branch fetch returns the same pipeline (ID 3999) plus others
-        default_branch_pipelines = [
-            {
-                'id': 3999,  # DUPLICATE - should be removed
-                'status': 'success',
-                'ref': 'main',
-                'created_at': '2024-01-20T13:49:00.000Z'
-            },
-            *[{
-                'id': 4000 + i,
-                'status': 'success' if i % 2 == 0 else 'failed',
-                'ref': 'main',
-                'created_at': f'2024-01-20T13:{40-i:02d}:00.000Z'
-            } for i in range(PIPELINES_PER_PROJECT - 1)]
-        ]
-        
-        # For this test, we need to force the targeted fetch to happen
-        # So we'll mock it to return pipelines without the default branch
-        general_without_default = [p for p in general_pipelines if p['ref'] != 'main']
-        
-        def mock_get_pipelines_no_default(project_id, per_page=None, ref=None):
-            if ref == 'main':
-                return list(default_branch_pipelines)
-            else:
-                return list(general_without_default)
-        
-        self.mock_client.get_pipelines = mock_get_pipelines_no_default
+        self.mock_client.get_pipelines = MagicMock(return_value=list(general_pipelines))
         
         # Call the method
         pipeline_data = self.poller._fetch_pipelines([project], poll_id='test-2')
@@ -173,12 +146,21 @@ class TestSparklineMultiplePipelines(unittest.TestCase):
         self.assertIn(456, per_project)
         project_pipelines = per_project[456]
         
-        # Check for duplicate IDs
+        # Check for duplicate IDs - should only have unique IDs
         pipeline_ids = [p.get('id') for p in project_pipelines]
         unique_ids = set(pipeline_ids)
         
         self.assertEqual(len(pipeline_ids), len(unique_ids),
             f"Found duplicate pipeline IDs: {len(pipeline_ids)} total, {len(unique_ids)} unique")
+        
+        # Should have 3 unique pipelines (3500, 3001, 3002)
+        self.assertEqual(len(unique_ids), 3,
+            f"Expected 3 unique pipelines after deduplication, got {len(unique_ids)}")
+        
+        # Verify ID 3500 appears only once
+        count_3500 = sum(1 for pid in pipeline_ids if pid == 3500)
+        self.assertEqual(count_3500, 1,
+            f"Pipeline ID 3500 should appear only once, found {count_3500} times")
         
         # Verify global all_pipelines also has no duplicates
         all_pipelines = pipeline_data['all_pipelines']

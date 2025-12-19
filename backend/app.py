@@ -596,22 +596,22 @@ class BackgroundPoller(threading.Thread):
                             per_project_pipelines[project_id].append(pipeline)
                             all_pipelines.append(pipeline)
                         logger.debug(f"{log_prefix}Added {len(default_branch_pipelines)} default-branch pipeline(s) for {project_name}")
-                        
-                        # Deduplicate per-project pipelines by ID
-                        # Overlap is unlikely in normal operation (it would require a very
-                        # narrow race where a new default-branch pipeline appears between
-                        # the general and targeted fetches). This primarily defends against
-                        # logic bugs in has_default_branch_pipeline() or API anomalies that
-                        # might return overlapping/duplicate pipelines.
-                        seen_ids = set()
-                        deduped_pipelines = []
-                        for pipeline in per_project_pipelines[project_id]:
-                            pipeline_id = pipeline.get('id')
-                            if pipeline_id not in seen_ids:
-                                seen_ids.add(pipeline_id)
-                                deduped_pipelines.append(pipeline)
-                        per_project_pipelines[project_id] = deduped_pipelines
-                        # Note: Sorting will be done in enrich_projects_with_pipelines() for all projects
+                
+                # Deduplicate per-project pipelines by ID
+                # This defends against API anomalies that might return duplicate pipeline IDs,
+                # as well as potential overlap when both general and targeted fetches return
+                # the same pipelines (though unlikely in normal operation)
+                seen_ids = set()
+                deduped_pipelines = []
+                for pipeline in per_project_pipelines[project_id]:
+                    pipeline_id = pipeline.get('id')
+                    if pipeline_id not in seen_ids:
+                        seen_ids.add(pipeline_id)
+                        deduped_pipelines.append(pipeline)
+                if len(deduped_pipelines) < len(per_project_pipelines[project_id]):
+                    logger.debug(f"{log_prefix}Removed {len(per_project_pipelines[project_id]) - len(deduped_pipelines)} duplicate pipeline(s) for {project_name}")
+                per_project_pipelines[project_id] = deduped_pipelines
+                # Note: Sorting will be done in enrich_projects_with_pipelines() for all projects
             
             # Handle partial failures
             if api_errors > 0:
