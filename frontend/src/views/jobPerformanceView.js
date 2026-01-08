@@ -116,6 +116,25 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
     const canvas = document.getElementById('jobPerformanceChart');
     if (canvas) {
         renderJobPerformanceChart(canvas, analytics.data);
+        
+        // Set up resize handler to re-render chart on window resize
+        const oldResizeHandler = resizeHandlers.get(canvas);
+        if (oldResizeHandler) {
+            window.removeEventListener('resize', oldResizeHandler);
+        }
+        
+        const resizeHandler = () => {
+            // Debounce: only re-render after resize stops for 200ms
+            if (canvas._resizeTimeout) {
+                clearTimeout(canvas._resizeTimeout);
+            }
+            canvas._resizeTimeout = setTimeout(() => {
+                renderJobPerformanceChart(canvas, analytics.data);
+            }, 200);
+        };
+        
+        window.addEventListener('resize', resizeHandler);
+        resizeHandlers.set(canvas, resizeHandler);
     }
     
     // Attach refresh handler
@@ -184,6 +203,9 @@ const refreshButtonHandlers = new WeakMap();
 
 // WeakMap to store error timeout IDs for cleanup
 const errorTimeouts = new WeakMap();
+
+// WeakMap to store resize handlers for cleanup
+const resizeHandlers = new WeakMap();
 
 /**
  * Attach click handler for refresh button
