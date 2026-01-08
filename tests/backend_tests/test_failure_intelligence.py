@@ -100,8 +100,9 @@ class TestClassifyJobFailureOOM(unittest.TestCase):
     def test_no_oom_false_positive_for_java(self):
         """Test that Java OutOfMemoryError (no space) is NOT classified as OOM
         
-        This verifies we don't have false positives for application-level OOM
-        that doesn't match our explicit pattern.
+        This verifies the specificity of our OOM pattern matching by ensuring
+        that messages like Java OutOfMemoryError, which don't match our explicit
+        'out of memory' or 'oom' patterns, are not treated as OOM failures.
         """
         job = {
             'status': 'failed',

@@ -46,6 +46,10 @@ EPOCH_TIMESTAMP = '1970-01-01T00:00:00Z'  # Fallback for missing timestamps
 # Default branch constant
 DEFAULT_BRANCH_NAME = 'main'     # Default branch name fallback
 
+# Failure snippet truncation constants
+MAX_SNIPPET_LENGTH = 100         # Maximum length for failure_reason snippet
+TRUNCATION_SUFFIX = '...'        # Suffix appended to truncated snippets
+
 # Runner issue detection constants
 # These statuses indicate runner-related problems (pipeline level)
 RUNNER_ISSUE_STATUSES = ('stuck',)
@@ -179,8 +183,13 @@ def classify_job_failure(job):
     # Normalize for pattern matching
     failure_reason_lower = failure_reason.lower()
     
-    # Create bounded snippet (max 100 chars)
-    snippet = failure_reason[:100] if len(failure_reason) <= 100 else failure_reason[:97] + '...'
+    # Create bounded snippet (max MAX_SNIPPET_LENGTH chars)
+    if len(failure_reason) <= MAX_SNIPPET_LENGTH:
+        snippet = failure_reason
+    else:
+        # Truncate to fit within MAX_SNIPPET_LENGTH including suffix
+        max_content = MAX_SNIPPET_LENGTH - len(TRUNCATION_SUFFIX)
+        snippet = failure_reason[:max_content] + TRUNCATION_SUFFIX
     
     # Pattern matching for classification
     # Order matters: more specific patterns first
@@ -214,6 +223,10 @@ def classify_job_failure(job):
     # 4. Runner/system failure (must check before generic timeout)
     # IMPORTANT: Must check before generic timeout patterns because 
     # 'stuck_or_timeout_failure' contains 'timeout' but should be classified as runner_system
+    # 
+    # Note: Includes both underscore and space variants (e.g., 'system_failure' and 'system failure')
+    # because GitLab API returns enum values with underscores, but error messages may use spaces.
+    # Example: 'system_failure' is the enum, but 'Job failed (system failure)' appears in messages.
     if any(pattern in failure_reason_lower for pattern in [
         'runner_system_failure',
         'system_failure',
@@ -1346,9 +1359,20 @@ def enrich_projects_with_failure_intelligence(gitlab_client, projects, per_proje
             project['failure_snippet'] = None
         return projects
     
-    # Apply budget cap
+    # Apply budget cap with prioritization
     if len(candidates) > JOB_DETAIL_HYDRATION_BUDGET:
         logger.info(f"{log_prefix}Job detail hydration: capping from {len(candidates)} to {JOB_DETAIL_HYDRATION_BUDGET} requests")
+        # Prioritize candidates before applying budget cap:
+        # 1. Projects with runner issues (infrastructure problems are higher priority)
+        # 2. Projects with failing jobs (failures over other statuses)
+        # 3. More recent pipelines (by updated_at/created_at/id)
+        candidates.sort(
+            key=lambda c: (
+                not bool(c['project'].get('has_runner_issues')),  # False sorts before True, so invert
+                not bool(c['project'].get('has_failing_jobs')),    # False sorts before True, so invert
+                -(c['pipeline'].get('id') or 0),  # Negate for descending order
+            ),
+        )
         candidates = candidates[:JOB_DETAIL_HYDRATION_BUDGET]
     
     logger.info(f"{log_prefix}Job detail hydration: fetching jobs for {len(candidates)} unhealthy pipelines")
@@ -1375,10 +1399,20 @@ def enrich_projects_with_failure_intelligence(gitlab_client, projects, per_proje
                 # No jobs in pipeline (rare but valid)
                 continue
             
-            # Find first failed job and classify it
-            # Priority: failed jobs over other statuses
+            # Find earliest failed job (chronologically) and classify it
+            # Sort by created_at (if present), then by id as a stable tiebreaker
+            # This ensures we analyze the root cause (first failure) rather than a cascade failure
+            jobs_sorted = sorted(
+                jobs,
+                key=lambda j: (
+                    j.get('created_at') or '',
+                    j.get('id') or 0,
+                ),
+            )
+            
+            # Find first failed job in chronological order
             failed_job = None
-            for job in jobs:
+            for job in jobs_sorted:
                 if job.get('status') == 'failed':
                     failed_job = job
                     break
