@@ -95,3 +95,43 @@ export async function checkBackendHealth(apiBase, timeoutMs = DEFAULT_TIMEOUT) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return response.json();
 }
+
+/**
+ * Fetch job performance analytics for a specific project
+ * @param {string} apiBase - Base URL for API (e.g., window.location.origin)
+ * @param {number|string} projectId - GitLab project ID
+ * @param {number} [timeoutMs] - Optional timeout in milliseconds
+ * @returns {Promise<Object>} - Job analytics data with 7-day trend
+ * @throws {Error} - Throws on network or HTTP errors
+ */
+export async function fetchJobAnalytics(apiBase, projectId, timeoutMs = DEFAULT_TIMEOUT) {
+    const response = await fetchWithTimeout(`${apiBase}/api/job-analytics/${projectId}`, timeoutMs);
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const error = new Error(errorData.message || `HTTP ${response.status}`);
+        error.status = response.status;
+        error.data = errorData;
+        throw error;
+    }
+    return response.json();
+}
+
+/**
+ * Trigger a manual refresh of job analytics for a specific project
+ * @param {string} apiBase - Base URL for API (e.g., window.location.origin)
+ * @param {number|string} projectId - GitLab project ID
+ * @param {number} [timeoutMs] - Optional timeout in milliseconds (longer for compute operations)
+ * @returns {Promise<Object>} - Refresh result with updated analytics
+ * @throws {Error} - Throws on network or HTTP errors
+ */
+export async function refreshJobAnalytics(apiBase, projectId, timeoutMs = 30000) {
+    const response = await fetchWithTimeout(`${apiBase}/api/job-analytics/${projectId}/refresh`, timeoutMs);
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const error = new Error(errorData.message || `HTTP ${response.status}`);
+        error.status = response.status;
+        error.data = errorData;
+        throw error;
+    }
+    return response.json();
+}
