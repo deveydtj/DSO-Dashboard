@@ -36,6 +36,7 @@ from backend.config_loader import (
 from backend.gitlab_client import (
     GitLabAPIClient,
     enrich_projects_with_pipelines,
+    enrich_projects_with_failure_intelligence,
     get_summary,
     MAX_PROJECTS_FOR_PIPELINES,
     PIPELINES_PER_PROJECT,
@@ -399,6 +400,14 @@ class BackgroundPoller(threading.Thread):
         
         # Enrich projects with per-project pipeline health data
         enriched_projects = self._enrich_projects_with_pipelines(projects, pipeline_data['per_project'], poll_id)
+        
+        # Enrich projects with job-level failure intelligence
+        # This adds failure_category, failure_label, failure_snippet fields
+        enriched_projects = self._enrich_projects_with_failure_intelligence(
+            enriched_projects,
+            pipeline_data['per_project'],
+            poll_id
+        )
         
         # Both fetches succeeded - calculate summary and update STATE atomically
         summary = self._calculate_summary(enriched_projects, pipeline_data['all_pipelines'])
@@ -829,6 +838,18 @@ class BackgroundPoller(threading.Thread):
         Delegates to the gitlab_client module's enrich_projects_with_pipelines function.
         """
         return enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id)
+    
+    def _enrich_projects_with_failure_intelligence(self, projects, per_project_pipelines, poll_id=None):
+        """Enrich project data with job-level failure intelligence
+        
+        Delegates to the gitlab_client module's enrich_projects_with_failure_intelligence function.
+        """
+        return enrich_projects_with_failure_intelligence(
+            self.gitlab_client,
+            projects,
+            per_project_pipelines,
+            poll_id
+        )
     
     def _calculate_summary(self, projects, pipelines):
         """Calculate summary statistics
@@ -1267,7 +1288,14 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     # - has_runner_issues: True if pipelines are failing due to runner problems
                     'has_failing_jobs': project.get('has_failing_jobs', False),
                     'failing_jobs_count': project.get('failing_jobs_count', 0),
-                    'has_runner_issues': project.get('has_runner_issues', False)
+                    'has_runner_issues': project.get('has_runner_issues', False),
+                    # Failure intelligence fields (job-level failure classification):
+                    # - failure_category: machine-friendly category (pod_timeout, oom, script_failure, etc.) or None
+                    # - failure_label: human-readable short label or None
+                    # - failure_snippet: short excerpt from job failure_reason (max 100 chars) or None
+                    'failure_category': project.get('failure_category'),
+                    'failure_label': project.get('failure_label'),
+                    'failure_snippet': project.get('failure_snippet')
                 }
                 repos.append(repo)
             
