@@ -24,6 +24,13 @@ logger = logging.getLogger(__name__)
 # Pipeline fetching configuration constants
 MAX_PROJECTS_FOR_PIPELINES = 20  # Max projects to fetch pipelines from
 PIPELINES_PER_PROJECT = 10       # Pipelines to fetch per project
+# Target number of meaningful default-branch pipeline statuses for sparklines
+# (excludes skipped/manual/canceled statuses)
+TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES = 10
+# Fetch extra default-branch pipelines to account for ignored statuses
+# This ensures we can derive TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES meaningful statuses
+# even when some pipelines have ignored statuses (skipped/manual/canceled)
+DEFAULT_BRANCH_FETCH_LIMIT = 20  # Fetch 20 to reliably get 10 meaningful
 
 # Pipeline statuses to ignore when calculating consecutive failures and success rates
 # These statuses represent pipelines that didn't actually test the code
@@ -997,13 +1004,17 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
                 enriched['last_default_branch_pipeline_duration'] = None
                 enriched['last_default_branch_pipeline_updated_at'] = None
             
-            # Limit to the same window size as all-branches for consistency
-            recent_default_branch_pipelines = default_branch_pipelines[:PIPELINES_PER_PROJECT]
-            # Filter out statuses that should be ignored
-            meaningful_pipelines_default = [
-                p for p in recent_default_branch_pipelines 
+            # Filter default-branch pipelines for meaningful statuses
+            # (excludes skipped/manual/canceled) before taking the window
+            all_meaningful_default = [
+                p for p in default_branch_pipelines 
                 if p.get('status') not in IGNORED_PIPELINE_STATUSES
             ]
+            
+            # Take up to TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES meaningful pipelines
+            # for sparkline and success rate calculations
+            meaningful_pipelines_default = all_meaningful_default[:TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES]
+            
             if meaningful_pipelines_default:
                 success_count_default = sum(1 for p in meaningful_pipelines_default if p.get('status') == 'success')
                 enriched['recent_success_rate_default_branch'] = success_count_default / len(meaningful_pipelines_default)
@@ -1024,6 +1035,7 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
             # Provide list of recent pipeline statuses for sparkline visualization.
             # Each entry represents a pipeline status for display as individual bars.
             # Only includes meaningful statuses (excludes skipped/manual/canceled).
+            # Already limited to TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES above.
             enriched['recent_default_branch_pipelines'] = [
                 p.get('status') for p in meaningful_pipelines_default
             ]
