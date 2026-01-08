@@ -78,7 +78,7 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
                 ${renderRefreshButton(project.id, apiBase, '🔄 Refresh')}
             </div>
             <div class="chart-canvas-wrapper">
-                <canvas id="jobPerformanceChart"></canvas>
+                <canvas id="jobPerformanceChart" role="img" aria-label="Job performance chart showing average, P95, and P99 job durations over 7 days"></canvas>
             </div>
             <div class="chart-legend">
                 <div class="legend-item">
