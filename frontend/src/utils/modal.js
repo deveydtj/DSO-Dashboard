@@ -1,6 +1,9 @@
 // Modal utility functions
 // Pure JavaScript - no external dependencies
 
+// WeakMap to store event handlers for cleanup without memory leaks
+const modalHandlers = new WeakMap();
+
 /**
  * Open a modal by ID
  * @param {string} modalId - The ID of the modal element
@@ -56,14 +59,16 @@ function setupModalCloseHandlers(modal) {
     
     // Close on overlay click
     const overlay = modal.querySelector('.modal-overlay');
+    const overlayHandler = () => closeModal(modalId);
     if (overlay) {
-        overlay.addEventListener('click', () => closeModal(modalId));
+        overlay.addEventListener('click', overlayHandler);
     }
     
     // Close on close button click
     const closeBtn = modal.querySelector('.modal-close');
+    const closeBtnHandler = () => closeModal(modalId);
     if (closeBtn) {
-        closeBtn.addEventListener('click', () => closeModal(modalId));
+        closeBtn.addEventListener('click', closeBtnHandler);
     }
     
     // Close on Escape key
@@ -74,8 +79,14 @@ function setupModalCloseHandlers(modal) {
     };
     document.addEventListener('keydown', escapeHandler);
     
-    // Store handler for cleanup
-    modal._escapeHandler = escapeHandler;
+    // Store handlers in WeakMap for cleanup
+    modalHandlers.set(modal, {
+        escapeHandler,
+        overlayHandler,
+        closeBtnHandler,
+        overlay,
+        closeBtn
+    });
 }
 
 /**
@@ -83,11 +94,26 @@ function setupModalCloseHandlers(modal) {
  * @param {HTMLElement} modal - The modal element
  */
 function cleanupModalCloseHandlers(modal) {
+    const handlers = modalHandlers.get(modal);
+    if (!handlers) return;
+    
     // Remove escape key handler
-    if (modal._escapeHandler) {
-        document.removeEventListener('keydown', modal._escapeHandler);
-        delete modal._escapeHandler;
+    if (handlers.escapeHandler) {
+        document.removeEventListener('keydown', handlers.escapeHandler);
     }
+    
+    // Remove overlay click handler
+    if (handlers.overlay && handlers.overlayHandler) {
+        handlers.overlay.removeEventListener('click', handlers.overlayHandler);
+    }
+    
+    // Remove close button handler
+    if (handlers.closeBtn && handlers.closeBtnHandler) {
+        handlers.closeBtn.removeEventListener('click', handlers.closeBtnHandler);
+    }
+    
+    // Remove from WeakMap
+    modalHandlers.delete(modal);
 }
 
 /**

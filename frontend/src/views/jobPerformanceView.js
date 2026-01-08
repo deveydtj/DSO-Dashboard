@@ -6,6 +6,12 @@ import { openModal, closeModal, setModalContent, setModalLoading, setModalError 
 import { fetchJobAnalytics, refreshJobAnalytics } from '../api/apiClient.js';
 import { renderJobPerformanceChart } from '../utils/chart.js';
 
+// HTTP status code constants
+const HTTP_NOT_FOUND = 404;
+const HTTP_CONFLICT = 409;
+const HTTP_INTERNAL_SERVER_ERROR = 500;
+const HTTP_SERVICE_UNAVAILABLE = 503;
+
 /**
  * Open the job performance modal for a specific project
  * @param {Object} project - Project object with id, name, etc.
@@ -128,11 +134,11 @@ function handleJobAnalyticsError(modalId, error, project, apiBase) {
     let message = 'An unexpected error occurred while loading job analytics.';
     let showRefresh = false;
     
-    if (error.status === 404) {
+    if (error.status === HTTP_NOT_FOUND) {
         title = 'Analytics Not Available';
         message = error.message || 'Analytics have not been computed yet for this project.';
         showRefresh = true;
-    } else if (error.status === 503) {
+    } else if (error.status === HTTP_SERVICE_UNAVAILABLE) {
         title = 'Feature Not Available';
         message = error.message || 'Job analytics feature is not enabled or available.';
         showRefresh = false;
@@ -214,9 +220,9 @@ function attachRefreshHandler(modalId, project, apiBase) {
                 
                 let errorMessage = 'Failed to refresh analytics. Please try again.';
                 
-                if (error.status === 409) {
+                if (error.status === HTTP_CONFLICT) {
                     errorMessage = 'A refresh is already in progress. Please wait...';
-                } else if (error.status === 500) {
+                } else if (error.status === HTTP_INTERNAL_SERVER_ERROR) {
                     errorMessage = 'Refresh failed. The server may be unable to compute analytics.';
                 } else if (error.message) {
                     errorMessage = error.message;

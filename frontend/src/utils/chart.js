@@ -25,7 +25,7 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
     const height = container.clientHeight - 20;
     
     // Set device pixel ratio for sharp rendering on high-DPI displays
-    const dpr = window.devicePixelRatio || 1;
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1;
     canvas.width = width * dpr;
     canvas.height = height * dpr;
     canvas.style.width = `${width}px`;
@@ -156,9 +156,14 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
             .filter(d => d.p99_duration != null && d.p99_duration > 0)
             .map(d => ({ value: d.p99_duration }));
         
-        drawLine(avgData, '#3b82f6', 2);  // Blue for avg
-        drawLine(p95Data, '#f59e0b', 2);  // Orange for p95
-        drawLine(p99Data, '#ef4444', 2);  // Red for p99
+        // Use CSS variables for consistency with theme
+        const accentInfo = getComputedStyle(document.documentElement).getPropertyValue('--accent-info').trim() || '#3b82f6';
+        const accentWarning = getComputedStyle(document.documentElement).getPropertyValue('--accent-warning').trim() || '#f59e0b';
+        const accentError = getComputedStyle(document.documentElement).getPropertyValue('--accent-error').trim() || '#ef4444';
+        
+        drawLine(avgData, accentInfo, 2);     // Blue for avg
+        drawLine(p95Data, accentWarning, 2);  // Orange for p95
+        drawLine(p99Data, accentError, 2);    // Red for p99
     }
     
     // Render MR lines (dashed style)
@@ -175,11 +180,16 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
             .filter(d => d.p99_duration != null && d.p99_duration > 0)
             .map(d => ({ value: d.p99_duration }));
         
+        // Use CSS variables for consistency with theme
+        const accentPrimary = getComputedStyle(document.documentElement).getPropertyValue('--accent-primary').trim() || '#6366f1';
+        const accentWarning = getComputedStyle(document.documentElement).getPropertyValue('--accent-warning').trim() || '#f59e0b';
+        const accentError = getComputedStyle(document.documentElement).getPropertyValue('--accent-error').trim() || '#ef4444';
+        
         // Draw dashed lines for MR data
         ctx.setLineDash([5, 5]);
-        drawLine(avgData, '#6366f1', 2);  // Purple for MR avg
-        drawLine(p95Data, '#f59e0b', 2);  // Orange for MR p95
-        drawLine(p99Data, '#ef4444', 2);  // Red for MR p99
+        drawLine(avgData, accentPrimary, 2);  // Purple for MR avg
+        drawLine(p95Data, accentWarning, 2);  // Orange for MR p95
+        drawLine(p99Data, accentError, 2);    // Red for MR p99
         ctx.setLineDash([]);
     }
     
