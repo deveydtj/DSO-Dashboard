@@ -43,6 +43,9 @@ from backend.gitlab_client import (
     IGNORED_PIPELINE_STATUSES,
     DEFAULT_BRANCH_FETCH_LIMIT,
     TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES,
+    JOB_ANALYTICS_WINDOW_DAYS,
+    JOB_ANALYTICS_MAX_PIPELINES_PER_PROJECT,
+    JOB_ANALYTICS_MAX_JOB_CALLS_PER_REFRESH,
 )
 from backend.services import (
     get_service_statuses,
@@ -144,10 +147,12 @@ STATE = {
         'projects': [],
         'pipelines': [],
         'summary': dict(DEFAULT_SUMMARY),  # Use copy of default summary
-        'services': []  # External service health checks
+        'services': [],  # External service health checks
+        'job_analytics': {}  # Job performance analytics keyed by project_id
     },
     'last_updated': None,
     'services_last_updated': None,  # Separate timestamp for external services
+    'job_analytics_last_updated': {},  # Per-project timestamps for job analytics
     'status': 'INITIALIZING',
     'error': None
 }
@@ -258,6 +263,42 @@ def update_services_only(services):
         STATE['data']['services'] = services
         STATE['services_last_updated'] = datetime.now()
         # Don't change status or error - GitLab failure sets those
+
+
+def update_job_analytics(project_id, analytics_data):
+    """Thread-safe update of job analytics for a specific project
+    
+    Args:
+        project_id: GitLab project ID
+        analytics_data: Analytics dict computed by compute_job_analytics_for_project()
+    """
+    with STATE_LOCK:
+        STATE['data']['job_analytics'][project_id] = analytics_data
+        STATE['job_analytics_last_updated'][project_id] = datetime.now()
+        logger.debug(f"Updated job analytics for project {project_id}")
+
+
+def get_job_analytics(project_id):
+    """Thread-safe read of job analytics for a specific project
+    
+    Args:
+        project_id: GitLab project ID
+        
+    Returns:
+        dict: Analytics data for the project, or None if not computed yet
+    """
+    with STATE_LOCK:
+        analytics = STATE['data']['job_analytics'].get(project_id)
+        if analytics:
+            # Update staleness before returning
+            last_updated = STATE['job_analytics_last_updated'].get(project_id)
+            if last_updated:
+                staleness_seconds = (datetime.now() - last_updated).total_seconds()
+                # Create a copy to avoid modifying the stored data
+                analytics_copy = dict(analytics)
+                analytics_copy['staleness_seconds'] = staleness_seconds
+                return analytics_copy
+        return analytics
 
 
 class BackgroundPoller(threading.Thread):
@@ -1081,6 +1122,200 @@ class BackgroundPoller(threading.Thread):
         self.stop_event.set()  # Wake up the thread if it's sleeping
 
 
+class JobAnalyticsPoller(threading.Thread):
+    """Background thread that computes job performance analytics on a slow cadence
+    
+    This poller runs twice per day (default 12-hour interval) to compute 7-day
+    job performance analytics for configured projects. It operates independently
+    of the main BackgroundPoller to avoid impacting regular dashboard updates.
+    
+    Attributes:
+        gitlab_client: GitLabAPIClient instance for API calls
+        refresh_interval: Seconds between refresh cycles (default: 43200 = 12 hours)
+        project_ids: List of specific project IDs to compute analytics for
+        job_analytics_config: Configuration dict with:
+            - window_days (int): Days to look back (default: 7)
+            - max_pipelines_per_project (int): Max pipelines to inspect per project
+            - max_job_calls_per_refresh (int): Max job API calls per refresh cycle
+        _refresh_in_progress: Dict tracking ongoing refreshes per project (single-flight)
+    """
+    
+    def __init__(self, gitlab_client, refresh_interval_sec=43200, project_ids=None,
+                 job_analytics_config=None):
+        super().__init__(daemon=True)
+        self.gitlab_client = gitlab_client
+        self.refresh_interval = refresh_interval_sec
+        self.project_ids = project_ids or []
+        
+        # Job analytics configuration with defaults
+        default_config = {
+            'window_days': 7,
+            'max_pipelines_per_project': 100,
+            'max_job_calls_per_refresh': 50
+        }
+        self.job_analytics_config = dict(job_analytics_config) if job_analytics_config else default_config
+        
+        self.running = True
+        self.stop_event = threading.Event()
+        self.refresh_counter = 0
+        
+        # Single-flight protection: track ongoing refreshes per project
+        self._refresh_in_progress = {}
+        self._refresh_lock = threading.Lock()
+    
+    def _generate_refresh_id(self):
+        """Generate a unique refresh cycle identifier"""
+        self.refresh_counter += 1
+        return f"analytics-refresh-{self.refresh_counter}"
+    
+    def run(self):
+        """Main analytics refresh loop"""
+        logger.info("Job analytics poller started")
+        
+        while self.running:
+            refresh_id = self._generate_refresh_id()
+            try:
+                self.refresh_analytics(refresh_id)
+            except Exception as e:
+                logger.error(f"[refresh_id={refresh_id}] Error in job analytics poller: {e}")
+            
+            # Sleep for refresh interval with interruptible wait
+            logger.debug(f"Sleeping for {self.refresh_interval}s before next analytics refresh")
+            if self.stop_event.wait(timeout=self.refresh_interval):
+                # Event was set, exit loop
+                break
+    
+    def refresh_analytics(self, refresh_id):
+        """Refresh job analytics for configured projects
+        
+        Args:
+            refresh_id: Refresh cycle identifier for logging context
+        """
+        logger.info(f"[refresh_id={refresh_id}] Starting job analytics refresh...")
+        
+        if not self.project_ids:
+            logger.info(f"[refresh_id={refresh_id}] No projects configured for analytics")
+            return
+        
+        # Fetch project details to get default branch and name
+        projects_to_process = []
+        for project_id in self.project_ids:
+            project = self.gitlab_client.get_project(project_id)
+            if project:
+                projects_to_process.append(project)
+            else:
+                logger.warning(f"[refresh_id={refresh_id}] Failed to fetch project {project_id}")
+        
+        if not projects_to_process:
+            logger.warning(f"[refresh_id={refresh_id}] No valid projects to process")
+            return
+        
+        logger.info(f"[refresh_id={refresh_id}] Processing {len(projects_to_process)} projects")
+        
+        # Import compute function (avoid circular import)
+        from backend.gitlab_client import compute_job_analytics_for_project
+        
+        # Process each project
+        for project in projects_to_process:
+            project_id = project.get('id')
+            project_name = project.get('name', f'Project {project_id}')
+            default_branch = project.get('default_branch', 'main')
+            
+            # Check single-flight protection
+            with self._refresh_lock:
+                if self._refresh_in_progress.get(project_id):
+                    logger.info(f"[refresh_id={refresh_id}] Skipping project {project_id} - refresh already in progress")
+                    continue
+                self._refresh_in_progress[project_id] = True
+            
+            try:
+                # Compute analytics
+                analytics_data = compute_job_analytics_for_project(
+                    self.gitlab_client,
+                    project_id,
+                    project_name,
+                    default_branch,
+                    window_days=self.job_analytics_config['window_days'],
+                    max_pipelines=self.job_analytics_config['max_pipelines_per_project'],
+                    max_job_calls=self.job_analytics_config['max_job_calls_per_refresh']
+                )
+                
+                if analytics_data:
+                    # Update state
+                    update_job_analytics(project_id, analytics_data)
+                    logger.info(f"[refresh_id={refresh_id}] Updated analytics for project {project_id}")
+                else:
+                    logger.error(f"[refresh_id={refresh_id}] Failed to compute analytics for project {project_id}")
+            finally:
+                # Release single-flight lock
+                with self._refresh_lock:
+                    self._refresh_in_progress[project_id] = False
+        
+        logger.info(f"[refresh_id={refresh_id}] Job analytics refresh completed")
+    
+    def trigger_refresh_for_project(self, project_id):
+        """Manually trigger analytics refresh for a specific project
+        
+        This is called by the API endpoint handler to support on-demand refresh.
+        Uses single-flight protection to prevent concurrent refreshes.
+        
+        Args:
+            project_id: GitLab project ID to refresh
+            
+        Returns:
+            bool: True if refresh was triggered, False if already in progress
+        """
+        # Check single-flight protection
+        with self._refresh_lock:
+            if self._refresh_in_progress.get(project_id):
+                logger.info(f"Refresh for project {project_id} already in progress")
+                return False
+            self._refresh_in_progress[project_id] = True
+        
+        try:
+            # Fetch project details
+            project = self.gitlab_client.get_project(project_id)
+            if not project:
+                logger.error(f"Failed to fetch project {project_id}")
+                return False
+            
+            project_name = project.get('name', f'Project {project_id}')
+            default_branch = project.get('default_branch', 'main')
+            
+            # Import compute function
+            from backend.gitlab_client import compute_job_analytics_for_project
+            
+            # Compute analytics
+            analytics_data = compute_job_analytics_for_project(
+                self.gitlab_client,
+                project_id,
+                project_name,
+                default_branch,
+                window_days=self.job_analytics_config['window_days'],
+                max_pipelines=self.job_analytics_config['max_pipelines_per_project'],
+                max_job_calls=self.job_analytics_config['max_job_calls_per_refresh']
+            )
+            
+            if analytics_data:
+                # Update state
+                update_job_analytics(project_id, analytics_data)
+                logger.info(f"Manually refreshed analytics for project {project_id}")
+                return True
+            else:
+                logger.error(f"Failed to compute analytics for project {project_id}")
+                return False
+        finally:
+            # Release single-flight lock
+            with self._refresh_lock:
+                self._refresh_in_progress[project_id] = False
+    
+    def stop(self):
+        """Stop the analytics polling thread"""
+        logger.info("Stopping job analytics poller")
+        self.running = False
+        self.stop_event.set()  # Wake up the thread if it's sleeping
+
+
 class DashboardRequestHandler(SimpleHTTPRequestHandler):
     """Custom HTTP request handler for the dashboard"""
     
@@ -1154,6 +1389,13 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             self.handle_health()
         elif path == '/api/services':
             self.handle_services()
+        elif path.startswith('/api/job-analytics/'):
+            # Extract project_id from path: /api/job-analytics/{project_id}
+            try:
+                project_id = int(path.split('/')[-1])
+                self.handle_job_analytics(project_id)
+            except (ValueError, IndexError):
+                self.send_json_response({'error': 'Invalid project ID'}, status=400)
         else:
             # Serve static files
             super().do_GET()
@@ -1179,6 +1421,14 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         # API endpoints
         if path == '/api/mock/reload':
             self.handle_mock_reload()
+        elif path.startswith('/api/job-analytics/') and path.endswith('/refresh'):
+            # Extract project_id from path: /api/job-analytics/{project_id}/refresh
+            try:
+                parts = path.split('/')
+                project_id = int(parts[-2])  # Get the project_id before '/refresh'
+                self.handle_job_analytics_refresh(project_id)
+            except (ValueError, IndexError):
+                self.send_json_response({'error': 'Invalid project ID'}, status=400)
         else:
             # Unsupported POST endpoint
             self.send_json_response({'error': 'Endpoint not found'}, status=404)
@@ -1616,6 +1866,69 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'is_mock': MOCK_MODE_ENABLED
             }, status=500)
     
+    def handle_job_analytics(self, project_id):
+        """Handle GET /api/job-analytics/{project_id} endpoint
+        
+        Returns cached job performance analytics for the specified project.
+        
+        Args:
+            project_id: GitLab project ID
+        """
+        try:
+            analytics = get_job_analytics(project_id)
+            
+            if analytics is None:
+                self.send_json_response({
+                    'error': 'Analytics not available for this project',
+                    'message': 'Analytics may not have been computed yet. Try triggering a refresh.'
+                }, status=404)
+                return
+            
+            self.send_json_response(analytics)
+        except Exception as e:
+            logger.error(f"Error in handle_job_analytics for project {project_id}: {e}")
+            self.send_json_response({'error': str(e)}, status=500)
+    
+    def handle_job_analytics_refresh(self, project_id):
+        """Handle POST /api/job-analytics/{project_id}/refresh endpoint
+        
+        Triggers a manual refresh of job performance analytics for the specified project.
+        Uses single-flight protection to prevent concurrent refreshes.
+        
+        Args:
+            project_id: GitLab project ID
+        """
+        try:
+            # Get the analytics poller from the server instance
+            analytics_poller = getattr(self.server, 'analytics_poller', None)
+            
+            if analytics_poller is None:
+                self.send_json_response({
+                    'error': 'Analytics poller not available',
+                    'message': 'Job analytics feature may not be enabled'
+                }, status=503)
+                return
+            
+            # Trigger refresh (uses single-flight protection internally)
+            success = analytics_poller.trigger_refresh_for_project(project_id)
+            
+            if success:
+                # Fetch the updated analytics
+                analytics = get_job_analytics(project_id)
+                self.send_json_response({
+                    'message': 'Analytics refresh completed',
+                    'analytics': analytics
+                })
+            else:
+                # Refresh was already in progress or failed
+                self.send_json_response({
+                    'message': 'Refresh already in progress or failed',
+                    'status': 'in_progress_or_failed'
+                }, status=409)
+        except Exception as e:
+            logger.error(f"Error in handle_job_analytics_refresh for project {project_id}: {e}")
+            self.send_json_response({'error': str(e)}, status=500)
+    
     def send_json_response(self, data, status=200):
         """Send JSON response with security headers"""
         self.send_response(status)
@@ -1766,10 +2079,41 @@ def main():
         )
         poller.start()
         logger.info(f"Background poller started (interval: {config['poll_interval_sec']}s)")
+        
+        # Start job analytics poller if project IDs are configured
+        analytics_poller = None
+        if config['project_ids']:
+            # Job analytics configuration with defaults
+            job_analytics_config = {
+                'window_days': 7,
+                'max_pipelines_per_project': 100,
+                'max_job_calls_per_refresh': 50
+            }
+            
+            # Override from config if present
+            if 'job_analytics' in config:
+                job_analytics_config.update(config['job_analytics'])
+            
+            # Default refresh interval: 43200 seconds (12 hours, twice per day)
+            refresh_interval = config.get('job_analytics_refresh_interval_sec', 43200)
+            
+            analytics_poller = JobAnalyticsPoller(
+                gitlab_client,
+                refresh_interval_sec=refresh_interval,
+                project_ids=config['project_ids'],
+                job_analytics_config=job_analytics_config
+            )
+            analytics_poller.start()
+            logger.info(f"Job analytics poller started (interval: {refresh_interval}s, projects: {len(config['project_ids'])})")
+        else:
+            logger.info("Job analytics poller not started (no project_ids configured)")
     
     # Create server
     server_address = ('', config['port'])
     httpd = DashboardServer(server_address, DashboardRequestHandler, gitlab_client)
+    
+    # Attach analytics poller to server so request handlers can access it
+    httpd.analytics_poller = analytics_poller
     
     logger.info(f"Server running at http://localhost:{config['port']}/")
     logger.info("Press Ctrl+C to stop the server")
@@ -1783,6 +2127,11 @@ def main():
             poller.join(timeout=5)  # Wait for poller thread to finish
             if poller.is_alive():
                 logger.warning("Poller thread did not stop cleanly")
+        if analytics_poller:
+            analytics_poller.stop()
+            analytics_poller.join(timeout=5)  # Wait for analytics poller thread to finish
+            if analytics_poller.is_alive():
+                logger.warning("Analytics poller thread did not stop cleanly")
         httpd.shutdown()
         logger.info("Server stopped.")
     

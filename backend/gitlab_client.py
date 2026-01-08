@@ -36,6 +36,11 @@ DEFAULT_BRANCH_FETCH_LIMIT = 20  # Fetch 20 to reliably get 10 meaningful
 # Similar to duration_hydration_config but for job-level failure analysis
 JOB_DETAIL_HYDRATION_BUDGET = 10  # Max job detail requests per poll cycle
 
+# Job performance analytics constants
+JOB_ANALYTICS_WINDOW_DAYS = 7     # 7-day window for job performance analytics
+JOB_ANALYTICS_MAX_PIPELINES_PER_PROJECT = 100  # Max pipelines to inspect per project
+JOB_ANALYTICS_MAX_JOB_CALLS_PER_REFRESH = 50   # Max job list API calls per refresh cycle
+
 # Pipeline statuses to ignore when calculating consecutive failures and success rates
 # These statuses represent pipelines that didn't actually test the code
 IGNORED_PIPELINE_STATUSES = ('skipped', 'manual', 'canceled', 'cancelled')
@@ -264,6 +269,172 @@ def classify_job_failure(job):
         'category': 'unknown',
         'label': 'Unknown',
         'snippet': snippet
+    }
+
+
+def is_merge_request_pipeline(pipeline):
+    """Check if a pipeline is a merge request pipeline
+    
+    Identifies pipelines explicitly created for merge requests by checking the
+    'source' field. GitLab marks MR pipelines with 'merge_request_event' source.
+    
+    Args:
+        pipeline: Pipeline dict from GitLab API
+        
+    Returns:
+        bool: True if pipeline is for a merge request, False otherwise
+        
+    Examples:
+        >>> is_merge_request_pipeline({'source': 'merge_request_event'})
+        True
+        >>> is_merge_request_pipeline({'source': 'push'})
+        False
+        >>> is_merge_request_pipeline({})
+        False
+    """
+    source = pipeline.get('source', '')
+    return source == 'merge_request_event'
+
+
+def filter_valid_jobs(jobs):
+    """Filter jobs to only include those suitable for performance analytics
+    
+    Excludes jobs that are:
+    - manual (user-triggered, not automatic)
+    - skipped (didn't run)
+    - missing duration (no timing data available)
+    
+    Args:
+        jobs: List of job dicts from GitLab API
+        
+    Returns:
+        list: Filtered list of jobs with valid duration data
+        
+    Examples:
+        >>> filter_valid_jobs([
+        ...     {'status': 'success', 'duration': 120.5},
+        ...     {'status': 'manual', 'duration': 0},
+        ...     {'status': 'skipped', 'duration': None},
+        ...     {'status': 'failed', 'duration': 45.2}
+        ... ])
+        [{'status': 'success', 'duration': 120.5}, {'status': 'failed', 'duration': 45.2}]
+    """
+    valid_jobs = []
+    for job in jobs:
+        # Skip manual and skipped jobs
+        status = job.get('status', '')
+        if status in ('manual', 'skipped'):
+            continue
+            
+        # Skip jobs without duration
+        duration = job.get('duration')
+        if duration is None or duration == 0:
+            continue
+            
+        valid_jobs.append(job)
+    
+    return valid_jobs
+
+
+def calculate_percentiles(values, percentiles):
+    """Calculate percentiles for a list of numeric values
+    
+    Uses linear interpolation between closest ranks for percentile calculation.
+    Returns None for percentiles if insufficient data (< 2 values).
+    
+    Args:
+        values: List of numeric values (will be sorted internally)
+        percentiles: List of percentile values to calculate (e.g., [50, 95, 99])
+        
+    Returns:
+        dict: Mapping of percentile -> calculated value
+              Returns None for each percentile if insufficient data
+              
+    Examples:
+        >>> calculate_percentiles([1, 2, 3, 4, 5], [50, 95])
+        {50: 3.0, 95: 4.8}
+        >>> calculate_percentiles([1], [50, 95])
+        {50: None, 95: None}
+        >>> calculate_percentiles([], [50])
+        {50: None}
+    """
+    if not values or len(values) < 2:
+        # Insufficient data for meaningful percentile calculation
+        return {p: None for p in percentiles}
+    
+    sorted_values = sorted(values)
+    n = len(sorted_values)
+    result = {}
+    
+    for p in percentiles:
+        # Calculate rank using linear interpolation method
+        # Rank = (percentile/100) * (n - 1)
+        rank = (p / 100.0) * (n - 1)
+        lower_idx = int(rank)
+        upper_idx = min(lower_idx + 1, n - 1)
+        
+        # Linear interpolation between lower and upper values
+        fraction = rank - lower_idx
+        lower_val = sorted_values[lower_idx]
+        upper_val = sorted_values[upper_idx]
+        
+        result[p] = lower_val + fraction * (upper_val - lower_val)
+    
+    return result
+
+
+def calculate_job_statistics(jobs):
+    """Calculate aggregate statistics for a list of jobs
+    
+    Computes average, p95, and p99 job durations from a list of jobs.
+    Only processes jobs with valid duration values.
+    
+    Args:
+        jobs: List of job dicts from GitLab API (must have 'duration' field)
+        
+    Returns:
+        dict: Statistics with keys:
+            - avg_duration: Average job duration in seconds (float or None)
+            - p95_duration: 95th percentile duration in seconds (float or None)
+            - p99_duration: 99th percentile duration in seconds (float or None)
+            - job_count: Number of valid jobs included in calculations (int)
+            
+    Examples:
+        >>> calculate_job_statistics([
+        ...     {'duration': 100.0},
+        ...     {'duration': 200.0},
+        ...     {'duration': 300.0}
+        ... ])
+        {'avg_duration': 200.0, 'p95_duration': 290.0, 'p99_duration': 298.0, 'job_count': 3}
+        
+        >>> calculate_job_statistics([])
+        {'avg_duration': None, 'p95_duration': None, 'p99_duration': None, 'job_count': 0}
+    """
+    # Filter to valid jobs with duration
+    valid_jobs = filter_valid_jobs(jobs)
+    
+    if not valid_jobs:
+        return {
+            'avg_duration': None,
+            'p95_duration': None,
+            'p99_duration': None,
+            'job_count': 0
+        }
+    
+    # Extract durations
+    durations = [job['duration'] for job in valid_jobs]
+    
+    # Calculate average
+    avg_duration = sum(durations) / len(durations)
+    
+    # Calculate percentiles
+    percentiles = calculate_percentiles(durations, [95, 99])
+    
+    return {
+        'avg_duration': avg_duration,
+        'p95_duration': percentiles[95],
+        'p99_duration': percentiles[99],
+        'job_count': len(valid_jobs)
     }
 
 
@@ -694,6 +865,47 @@ class GitLabAPIClient:
             logger.debug(f"Failed to fetch jobs for pipeline {pipeline_id} in project {project_id}")
             return None
         return result.get('data', [])
+    
+    def get_pipelines_with_time_filter(self, project_id, updated_after=None, updated_before=None, 
+                                       ref=None, max_pages=None):
+        """Get pipelines for a project with time-based filtering
+        
+        Fetches pipelines within a specified time window. Useful for analytics
+        that need to compute statistics over a specific time period.
+        
+        Args:
+            project_id: GitLab project ID
+            updated_after: ISO 8601 datetime string (e.g., '2024-01-01T00:00:00Z')
+                          Only pipelines updated after this time are returned
+            updated_before: ISO 8601 datetime string
+                           Only pipelines updated before this time are returned
+            ref: Optional ref filter (branch/tag name)
+            max_pages: Optional maximum number of pages to fetch (caps API calls)
+        
+        Returns:
+            list: List of pipeline dicts, or None on API error
+            
+        Examples:
+            >>> client.get_pipelines_with_time_filter(
+            ...     123, 
+            ...     updated_after='2024-01-01T00:00:00Z',
+            ...     ref='main',
+            ...     max_pages=5
+            ... )
+        """
+        params = {}
+        if updated_after:
+            params['updated_after'] = updated_after
+        if updated_before:
+            params['updated_before'] = updated_before
+        if ref:
+            params['ref'] = ref
+        
+        return self._make_paginated_request(
+            f'projects/{project_id}/pipelines',
+            params if params else None,
+            max_pages=max_pages
+        )
     
     def get_all_pipelines(self, per_page=20):
         """Get recent pipelines across all projects
@@ -1463,3 +1675,151 @@ def enrich_projects_with_failure_intelligence(gitlab_client, projects, per_proje
         enriched_projects.append(enriched)
     
     return enriched_projects
+
+
+def compute_job_analytics_for_project(gitlab_client, project_id, project_name, default_branch, 
+                                       window_days=7, max_pipelines=100, max_job_calls=50):
+    """Compute 7-day job performance analytics for a project
+    
+    Fetches pipelines within the specified time window and computes aggregate
+    job duration statistics (avg, p95, p99) for both default-branch and
+    merge-request pipelines.
+    
+    This function implements the requirements from the GitHub issue:
+    - 7-day time window for analysis
+    - Separate analytics for default-branch vs MR pipelines
+    - Filters out manual/skipped jobs and jobs without duration
+    - Respects caps to protect GitLab API and dashboard server
+    
+    Args:
+        gitlab_client: GitLabAPIClient instance for API calls
+        project_id: GitLab project ID
+        project_name: Human-readable project name for logging
+        default_branch: Default branch name for the project
+        window_days: Number of days to look back (default: 7)
+        max_pipelines: Maximum pipelines to inspect (default: 100)
+        max_job_calls: Maximum job API calls to make (default: 50)
+    
+    Returns:
+        dict: Analytics data with structure:
+            {
+                'project_id': int,
+                'window_days': int,
+                'computed_at': str (ISO 8601 timestamp),
+                'data': [
+                    {
+                        'pipeline_id': int,
+                        'pipeline_ref': str,
+                        'pipeline_status': str,
+                        'created_at': str (ISO 8601 timestamp),
+                        'is_default_branch': bool,
+                        'is_merge_request': bool,
+                        'avg_duration': float or None,
+                        'p95_duration': float or None,
+                        'p99_duration': float or None,
+                        'job_count': int
+                    },
+                    ...
+                ],
+                'staleness_seconds': 0 (initially fresh),
+                'error': None or str (error message if computation failed)
+            }
+        None: If API error occurred
+    
+    Examples:
+        >>> compute_job_analytics_for_project(client, 123, 'my-project', 'main')
+        {...}  # Returns analytics data
+    """
+    from datetime import datetime, timedelta, timezone
+    
+    log_prefix = f"[job_analytics project_id={project_id}]"
+    logger.info(f"{log_prefix} Computing job analytics for {project_name}")
+    
+    # Calculate time window
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(days=window_days)
+    
+    # Format timestamps for GitLab API (ISO 8601)
+    updated_after = window_start.isoformat()
+    
+    # Fetch pipelines within time window with cap
+    logger.debug(f"{log_prefix} Fetching pipelines updated after {updated_after}")
+    pipelines = gitlab_client.get_pipelines_with_time_filter(
+        project_id,
+        updated_after=updated_after,
+        max_pages=max_pipelines // gitlab_client.per_page + 1
+    )
+    
+    if pipelines is None:
+        logger.error(f"{log_prefix} Failed to fetch pipelines")
+        return {
+            'project_id': project_id,
+            'window_days': window_days,
+            'computed_at': now.isoformat(),
+            'data': [],
+            'staleness_seconds': 0,
+            'error': 'Failed to fetch pipelines from GitLab API'
+        }
+    
+    # Limit pipelines to max_pipelines cap
+    if len(pipelines) > max_pipelines:
+        logger.info(f"{log_prefix} Capping pipelines from {len(pipelines)} to {max_pipelines}")
+        pipelines = pipelines[:max_pipelines]
+    
+    logger.info(f"{log_prefix} Processing {len(pipelines)} pipelines")
+    
+    # Process each pipeline and compute job statistics
+    analytics_data = []
+    job_calls_made = 0
+    
+    for pipeline in pipelines:
+        # Check if we've hit the job API call cap
+        if job_calls_made >= max_job_calls:
+            logger.warning(f"{log_prefix} Reached job API call cap ({max_job_calls}), stopping")
+            break
+        
+        pipeline_id = pipeline.get('id')
+        pipeline_ref = pipeline.get('ref', '')
+        pipeline_status = pipeline.get('status', 'unknown')
+        created_at = pipeline.get('created_at', EPOCH_TIMESTAMP)
+        
+        # Identify pipeline type
+        is_default_branch = (pipeline_ref == default_branch)
+        is_merge_request = is_merge_request_pipeline(pipeline)
+        
+        # Fetch jobs for this pipeline
+        jobs = gitlab_client.get_pipeline_jobs(project_id, pipeline_id)
+        job_calls_made += 1
+        
+        if jobs is None:
+            logger.warning(f"{log_prefix} Failed to fetch jobs for pipeline {pipeline_id}")
+            # Skip this pipeline but continue with others
+            continue
+        
+        # Calculate job statistics
+        stats = calculate_job_statistics(jobs)
+        
+        # Add to analytics data
+        analytics_data.append({
+            'pipeline_id': pipeline_id,
+            'pipeline_ref': pipeline_ref,
+            'pipeline_status': pipeline_status,
+            'created_at': created_at,
+            'is_default_branch': is_default_branch,
+            'is_merge_request': is_merge_request,
+            'avg_duration': stats['avg_duration'],
+            'p95_duration': stats['p95_duration'],
+            'p99_duration': stats['p99_duration'],
+            'job_count': stats['job_count']
+        })
+    
+    logger.info(f"{log_prefix} Computed analytics for {len(analytics_data)} pipelines ({job_calls_made} job API calls)")
+    
+    return {
+        'project_id': project_id,
+        'window_days': window_days,
+        'computed_at': now.isoformat(),
+        'data': analytics_data,
+        'staleness_seconds': 0,
+        'error': None
+    }
