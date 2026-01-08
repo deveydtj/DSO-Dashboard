@@ -554,7 +554,7 @@ class TestEnrichProjectsWithFailureIntelligence(unittest.TestCase):
         }
         
         # Temporarily reduce budget to test prioritization
-        import backend.gitlab_client as gc
+        gc = sys.modules["backend.gitlab_client"]
         original_budget = gc.JOB_DETAIL_HYDRATION_BUDGET
         gc.JOB_DETAIL_HYDRATION_BUDGET = 1
         
