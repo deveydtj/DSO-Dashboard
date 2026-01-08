@@ -32,6 +32,10 @@ TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES = 10
 # even when some pipelines have ignored statuses (skipped/manual/canceled)
 DEFAULT_BRANCH_FETCH_LIMIT = 20  # Fetch 20 to reliably get 10 meaningful
 
+# Job detail hydration budget (limits API calls per poll cycle)
+# Similar to duration_hydration_config but for job-level failure analysis
+JOB_DETAIL_HYDRATION_BUDGET = 10  # Max job detail requests per poll cycle
+
 # Pipeline statuses to ignore when calculating consecutive failures and success rates
 # These statuses represent pipelines that didn't actually test the code
 IGNORED_PIPELINE_STATUSES = ('skipped', 'manual', 'canceled', 'cancelled')
@@ -122,6 +126,129 @@ def is_runner_related_failure(pipeline):
         return any(reason in failure_reason_lower for reason in RUNNER_ISSUE_FAILURE_REASONS)
     
     return False
+
+
+def classify_job_failure(job):
+    """Classify a job failure into normalized categories based on failure_reason
+    
+    Analyzes the job's failure_reason field and returns a structured classification
+    with machine-friendly category, human-readable label, and optional snippet.
+    
+    This function supports the GitHub issue requirement to distinguish between
+    different failure types, especially pod-start timeout failures vs OOM vs
+    regular script failures.
+    
+    Categories:
+        - pod_timeout: Kubernetes pod start/readiness timeout
+        - timeout: Generic timeout (not pod-specific)
+        - oom: Out of memory error
+        - runner_system: Runner/infrastructure failure
+        - script_failure: User script/code failure
+        - unknown: Unclassified or missing failure_reason
+    
+    Args:
+        job: Job dict from GitLab API with 'failure_reason' and 'status' fields
+    
+    Returns:
+        dict: Classification result with keys:
+            - category (str): Machine-friendly category identifier
+            - label (str): Human-readable short label
+            - snippet (str|None): Short excerpt from failure_reason (max 100 chars)
+    
+    Examples:
+        >>> classify_job_failure({'failure_reason': 'prepare environment: waiting for pod running: timed out waiting for pod to start', 'status': 'failed'})
+        {'category': 'pod_timeout', 'label': 'Pod start timeout', 'snippet': 'prepare environment: waiting for pod running: timed out waiting for pod to start'}
+        
+        >>> classify_job_failure({'failure_reason': 'script_failure', 'status': 'failed'})
+        {'category': 'script_failure', 'label': 'Script failure', 'snippet': 'script_failure'}
+        
+        >>> classify_job_failure({'status': 'failed'})
+        {'category': 'unknown', 'label': 'Unknown', 'snippet': None}
+    """
+    # Extract failure_reason (may be None or empty string)
+    failure_reason = job.get('failure_reason', '') or ''
+    
+    # If no failure_reason, return unknown category
+    if not failure_reason:
+        return {
+            'category': 'unknown',
+            'label': 'Unknown',
+            'snippet': None
+        }
+    
+    # Normalize for pattern matching
+    failure_reason_lower = failure_reason.lower()
+    
+    # Create bounded snippet (max 100 chars)
+    snippet = failure_reason[:100] if len(failure_reason) <= 100 else failure_reason[:97] + '...'
+    
+    # Pattern matching for classification
+    # Order matters: more specific patterns first
+    
+    # 1. Pod-start timeout (GitHub issue requirement)
+    # Matches: "waiting for pod running: timed out waiting for pod to start"
+    if 'waiting for pod' in failure_reason_lower and 'timed out' in failure_reason_lower:
+        return {
+            'category': 'pod_timeout',
+            'label': 'Pod start timeout',
+            'snippet': snippet
+        }
+    
+    # 2. Generic pod timeout (broader pattern)
+    if 'pod' in failure_reason_lower and 'timeout' in failure_reason_lower:
+        return {
+            'category': 'pod_timeout',
+            'label': 'Pod timeout',
+            'snippet': snippet
+        }
+    
+    # 3. OOM (Out of Memory) - explicit OOM indication required
+    # Note: We check for explicit OOM patterns to avoid false positives
+    if 'out of memory' in failure_reason_lower or 'oom' in failure_reason_lower:
+        return {
+            'category': 'oom',
+            'label': 'Out of memory',
+            'snippet': snippet
+        }
+    
+    # 4. Generic timeout (not pod-specific)
+    if 'timeout' in failure_reason_lower or 'timed out' in failure_reason_lower:
+        return {
+            'category': 'timeout',
+            'label': 'Timeout',
+            'snippet': snippet
+        }
+    
+    # 5. Runner/system failure
+    if any(pattern in failure_reason_lower for pattern in [
+        'runner_system_failure',
+        'system_failure',
+        'system failure',
+        'stuck_or_timeout_failure',
+        'runner_unsupported',
+        'scheduler_failure',
+        'api_failure',
+    ]):
+        return {
+            'category': 'runner_system',
+            'label': 'Runner system failure',
+            'snippet': snippet
+        }
+    
+    # 6. Script failure (user code)
+    if 'script_failure' in failure_reason_lower or 'script failure' in failure_reason_lower:
+        return {
+            'category': 'script_failure',
+            'label': 'Script failure',
+            'snippet': snippet
+        }
+    
+    # 7. Fallback to unknown
+    return {
+        'category': 'unknown',
+        'label': 'Unknown',
+        'snippet': snippet
+    }
 
 
 class GitLabAPIClient:
@@ -532,6 +659,26 @@ class GitLabAPIClient:
             return None
         return result.get('data', None)
     
+    def get_pipeline_jobs(self, project_id, pipeline_id):
+        """Get jobs for a specific pipeline
+        
+        Fetches the list of jobs (CI tasks) that comprise a pipeline.
+        Each job contains status, failure_reason, and other execution details.
+        
+        Args:
+            project_id: GitLab project ID
+            pipeline_id: Pipeline ID
+        
+        Returns:
+            list: List of job dicts from GitLab API, or None on error
+                  Empty list if pipeline has no jobs (valid state)
+        """
+        result = self.gitlab_request(f'projects/{project_id}/pipelines/{pipeline_id}/jobs')
+        if result is None:
+            logger.debug(f"Failed to fetch jobs for pipeline {pipeline_id} in project {project_id}")
+            return None
+        return result.get('data', [])
+    
     def get_all_pipelines(self, per_page=20):
         """Get recent pipelines across all projects
         
@@ -759,6 +906,11 @@ def get_repositories(projects):
         - has_failing_jobs: Whether recent default-branch pipelines contain any with 'failed' status (excludes skipped/manual/canceled)
         - failing_jobs_count: Count of pipelines with 'failed' status on default branch (excludes skipped/manual/canceled)
         - has_runner_issues: Whether failures are runner-related
+    
+    Failure intelligence fields (job-level classification):
+        - failure_category: Machine-friendly category (pod_timeout, oom, script_failure, etc.) or None
+        - failure_label: Human-readable short label or None
+        - failure_snippet: Short excerpt from job failure_reason (max 100 chars) or None
     """
     if projects is None:
         projects = []
@@ -804,7 +956,14 @@ def get_repositories(projects):
             # - has_runner_issues: True if pipelines are failing due to runner problems
             'has_failing_jobs': project.get('has_failing_jobs', False),
             'failing_jobs_count': project.get('failing_jobs_count', 0),
-            'has_runner_issues': project.get('has_runner_issues', False)
+            'has_runner_issues': project.get('has_runner_issues', False),
+            # Failure intelligence fields (job-level classification):
+            # - failure_category: Machine-friendly category (pod_timeout, oom, script_failure, etc.) or None
+            # - failure_label: Human-readable short label or None
+            # - failure_snippet: Short excerpt from job failure_reason (max 100 chars) or None
+            'failure_category': project.get('failure_category'),
+            'failure_label': project.get('failure_label'),
+            'failure_snippet': project.get('failure_snippet')
         }
         repos.append(repo)
     
@@ -1112,3 +1271,139 @@ def enrich_projects_with_pipelines(projects, per_project_pipelines, poll_id=None
     
     logger.debug(f"{log_prefix}Enriched {len(enriched_projects)} projects with pipeline data")
     return enriched_projects
+
+
+def enrich_projects_with_failure_intelligence(gitlab_client, projects, per_project_pipelines, poll_id=None):
+    """Enrich projects with job-level failure intelligence
+    
+    Fetches job details for unhealthy default-branch pipelines and classifies
+    failure reasons into normalized categories (pod_timeout, oom, script_failure, etc).
+    
+    Only fetches job details when:
+    - Project has a default-branch pipeline that is failed/stuck
+    - OR project has runner issues (detected in earlier enrichment)
+    
+    Applies a budget cap (JOB_DETAIL_HYDRATION_BUDGET) to limit API calls.
+    
+    Args:
+        gitlab_client: GitLabAPIClient instance for making API calls
+        projects: List of enriched project dicts (with has_failing_jobs, has_runner_issues)
+        per_project_pipelines: Dict mapping project_id -> list of pipelines
+        poll_id: Optional poll cycle identifier for logging context
+    
+    Returns:
+        list: Projects with added failure intelligence fields:
+            - failure_category: machine-friendly category (or None)
+            - failure_label: human-readable label (or None)
+            - failure_snippet: short excerpt from failure_reason (or None)
+    
+    Side effects:
+        Makes API calls to GitLab (bounded by JOB_DETAIL_HYDRATION_BUDGET)
+    """
+    log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
+    
+    if not projects:
+        logger.debug(f"{log_prefix}No projects to enrich with failure intelligence")
+        return []
+    
+    # Identify projects that need job detail hydration
+    # Criteria: has_failing_jobs OR has_runner_issues on default branch
+    candidates = []
+    for project in projects:
+        # Skip projects without issues
+        if not project.get('has_failing_jobs') and not project.get('has_runner_issues'):
+            continue
+        
+        project_id = project.get('id')
+        default_branch = project.get('default_branch', DEFAULT_BRANCH_NAME)
+        
+        # Find the most recent default-branch pipeline that is unhealthy
+        pipelines = per_project_pipelines.get(project_id, [])
+        
+        # Look for failed or stuck default-branch pipeline
+        for pipeline in pipelines:
+            if pipeline.get('ref') != default_branch:
+                continue
+            
+            status = pipeline.get('status')
+            if status in ('failed', 'stuck'):
+                # Found unhealthy default-branch pipeline
+                candidates.append({
+                    'project': project,
+                    'pipeline': pipeline
+                })
+                break  # Only need the most recent unhealthy one
+    
+    if not candidates:
+        logger.debug(f"{log_prefix}No projects need job detail hydration")
+        # Still return projects with None fields
+        for project in projects:
+            project['failure_category'] = None
+            project['failure_label'] = None
+            project['failure_snippet'] = None
+        return projects
+    
+    # Apply budget cap
+    if len(candidates) > JOB_DETAIL_HYDRATION_BUDGET:
+        logger.info(f"{log_prefix}Job detail hydration: capping from {len(candidates)} to {JOB_DETAIL_HYDRATION_BUDGET} requests")
+        candidates = candidates[:JOB_DETAIL_HYDRATION_BUDGET]
+    
+    logger.info(f"{log_prefix}Job detail hydration: fetching jobs for {len(candidates)} unhealthy pipelines")
+    
+    # Fetch jobs and classify failures
+    hydrated_count = 0
+    skipped_error = 0
+    
+    for candidate in candidates:
+        project = candidate['project']
+        pipeline = candidate['pipeline']
+        project_id = project.get('id')
+        pipeline_id = pipeline.get('id')
+        
+        try:
+            jobs = gitlab_client.get_pipeline_jobs(project_id, pipeline_id)
+            
+            if jobs is None:
+                # API error
+                skipped_error += 1
+                continue
+            
+            if not jobs:
+                # No jobs in pipeline (rare but valid)
+                continue
+            
+            # Find first failed job and classify it
+            # Priority: failed jobs over other statuses
+            failed_job = None
+            for job in jobs:
+                if job.get('status') == 'failed':
+                    failed_job = job
+                    break
+            
+            if failed_job:
+                # Classify the failure
+                classification = classify_job_failure(failed_job)
+                
+                # Add to project
+                project['failure_category'] = classification['category']
+                project['failure_label'] = classification['label']
+                project['failure_snippet'] = classification['snippet']
+                
+                hydrated_count += 1
+            
+        except Exception as e:
+            logger.debug(f"{log_prefix}Error fetching/classifying jobs for pipeline {pipeline_id}: {e}")
+            skipped_error += 1
+    
+    logger.info(f"{log_prefix}Job detail hydration complete: hydrated={hydrated_count}, skipped_error={skipped_error}")
+    
+    # Ensure all projects have the new fields (None if not hydrated)
+    for project in projects:
+        if 'failure_category' not in project:
+            project['failure_category'] = None
+        if 'failure_label' not in project:
+            project['failure_label'] = None
+        if 'failure_snippet' not in project:
+            project['failure_snippet'] = None
+    
+    return projects
