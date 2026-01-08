@@ -40,6 +40,8 @@ from backend.gitlab_client import (
     MAX_PROJECTS_FOR_PIPELINES,
     PIPELINES_PER_PROJECT,
     IGNORED_PIPELINE_STATUSES,
+    DEFAULT_BRANCH_FETCH_LIMIT,
+    TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES,
 )
 from backend.services import (
     get_service_statuses,
@@ -568,34 +570,30 @@ class BackgroundPoller(threading.Thread):
                         all_pipelines.append(pipeline)
                         per_project_pipelines[project_id].append(pipeline)
                 
-                # Check if we got any default-branch pipelines in the general fetch
-                has_default_branch_pipeline = any(
-                    p.get('ref') == default_branch for p in pipelines
-                ) if pipelines else False
+                # ALWAYS fetch default-branch pipelines explicitly to ensure sparkline completeness
+                # This guarantees we have enough default-branch pipelines to derive up to
+                # TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES (10) meaningful statuses,
+                # even when recent pipelines are dominated by feature branches.
+                # Fetch DEFAULT_BRANCH_FETCH_LIMIT (20) to account for ignored statuses.
+                logger.debug(f"{log_prefix}Fetching default-branch pipelines for {project_name} to ensure sparkline completeness")
+                default_branch_pipelines = self.gitlab_client.get_pipelines(
+                    project_id, 
+                    per_page=DEFAULT_BRANCH_FETCH_LIMIT,  # Fetch extra to account for ignored statuses
+                    ref=default_branch
+                )
                 
-                # If no default-branch pipeline in the general fetch, make a targeted request
-                # This ensures we always have the latest default-branch pipeline data even
-                # when feature branches dominate the recent pipeline list
-                if not has_default_branch_pipeline:
-                    logger.debug(f"{log_prefix}No default-branch pipeline found in recent {PIPELINES_PER_PROJECT} pipelines for {project_name}, fetching default-branch pipelines explicitly")
-                    default_branch_pipelines = self.gitlab_client.get_pipelines(
-                        project_id, 
-                        per_page=PIPELINES_PER_PROJECT,  # Fetch enough for meaningful sparkline history
-                        ref=default_branch
-                    )
-                    
-                    if default_branch_pipelines is None:
-                        # API error on default-branch fetch - log but don't fail entire poll
-                        logger.warning(f"{log_prefix}Failed to fetch default-branch pipelines for {project_name}")
-                    elif default_branch_pipelines:
-                        # Add the default-branch pipeline(s) to our collections
-                        for pipeline in default_branch_pipelines:
-                            pipeline['project_name'] = project_name
-                            pipeline['project_id'] = project_id
-                            pipeline['project_path'] = project_path
-                            per_project_pipelines[project_id].append(pipeline)
-                            all_pipelines.append(pipeline)
-                        logger.debug(f"{log_prefix}Added {len(default_branch_pipelines)} default-branch pipeline(s) for {project_name}")
+                if default_branch_pipelines is None:
+                    # API error on default-branch fetch - log but don't fail entire poll
+                    logger.warning(f"{log_prefix}Failed to fetch default-branch pipelines for {project_name}")
+                elif default_branch_pipelines:
+                    # Add the default-branch pipeline(s) to our collections
+                    for pipeline in default_branch_pipelines:
+                        pipeline['project_name'] = project_name
+                        pipeline['project_id'] = project_id
+                        pipeline['project_path'] = project_path
+                        per_project_pipelines[project_id].append(pipeline)
+                        all_pipelines.append(pipeline)
+                    logger.debug(f"{log_prefix}Added {len(default_branch_pipelines)} default-branch pipeline(s) for {project_name}")
                 
                 # Deduplicate per-project pipelines by ID
                 # This defends against API anomalies that might return duplicate pipeline IDs,

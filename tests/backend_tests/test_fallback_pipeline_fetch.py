@@ -2,11 +2,15 @@
 import unittest
 from unittest.mock import MagicMock, call
 from backend.app import BackgroundPoller
-from backend.gitlab_client import GitLabAPIClient
+from backend.gitlab_client import GitLabAPIClient, DEFAULT_BRANCH_FETCH_LIMIT
 
 
 class TestDefaultBranchPipelineFallbackFetch(unittest.TestCase):
-    """Test the fallback fetch logic in _fetch_pipelines when default-branch pipelines are missing."""
+    """Test the default-branch pipeline fetch logic in _fetch_pipelines.
+    
+    Note: After the sparkline accuracy improvements, the backend ALWAYS fetches
+    default-branch pipelines explicitly to guarantee up to 10 meaningful statuses.
+    """
 
     def setUp(self):
         """Set up test fixtures."""
@@ -27,14 +31,13 @@ class TestDefaultBranchPipelineFallbackFetch(unittest.TestCase):
 
     def test_fallback_fetch_when_only_feature_branches(self):
         """
-        Test that fallback fetch is triggered when initial fetch returns only feature branch pipelines.
+        Test that default-branch pipelines are ALWAYS fetched explicitly.
         
         Scenario:
         - Initial fetch returns 10 feature branch pipelines
-        - No default-branch pipeline in initial fetch
-        - Fallback fetch should be triggered with ref='main'
-        - Fallback returns 1 default-branch pipeline
-        - Pipeline should be added to per_project_pipelines and all_pipelines
+        - Default-branch fetch is ALWAYS triggered (not conditional)
+        - Default-branch fetch requests DEFAULT_BRANCH_FETCH_LIMIT pipelines
+        - Both sets should be combined
         """
         projects = [
             {
@@ -56,7 +59,7 @@ class TestDefaultBranchPipelineFallbackFetch(unittest.TestCase):
             for i in range(10)
         ]
         
-        # Fallback fetch returns default-branch pipeline
+        # Default-branch fetch returns default-branch pipeline
         default_branch_pipeline = [
             {
                 'id': 100,
@@ -74,7 +77,7 @@ class TestDefaultBranchPipelineFallbackFetch(unittest.TestCase):
         # Mock get_pipelines to return different results based on parameters
         def mock_get_pipelines(project_id, per_page=None, ref=None):
             if ref == 'main':
-                # Fallback fetch with ref filter
+                # Default-branch fetch with ref filter
                 return default_branch_pipeline
             else:
                 # Initial fetch without ref filter
@@ -85,16 +88,16 @@ class TestDefaultBranchPipelineFallbackFetch(unittest.TestCase):
         # Call _fetch_pipelines
         result = self.poller._fetch_pipelines(projects, poll_id='test-1')
         
-        # Verify get_pipelines was called twice: once for initial fetch, once for fallback
+        # Verify get_pipelines was called twice: once for initial fetch, once for default-branch
         self.assertEqual(self.poller.gitlab_client.get_pipelines.call_count, 2)
         
         # Verify first call was without ref filter
         first_call = self.poller.gitlab_client.get_pipelines.call_args_list[0]
         self.assertEqual(first_call, call(456, per_page=10))
         
-        # Verify second call was with ref='main' and per_page=PIPELINES_PER_PROJECT
+        # Verify second call was with ref='main' and per_page=DEFAULT_BRANCH_FETCH_LIMIT
         second_call = self.poller.gitlab_client.get_pipelines.call_args_list[1]
-        self.assertEqual(second_call, call(456, per_page=10, ref='main'))
+        self.assertEqual(second_call, call(456, per_page=DEFAULT_BRANCH_FETCH_LIMIT, ref='main'))
         
         # Verify result contains both feature pipelines and default-branch pipeline
         self.assertIsNotNone(result)
@@ -115,12 +118,14 @@ class TestDefaultBranchPipelineFallbackFetch(unittest.TestCase):
 
     def test_no_fallback_when_default_branch_in_initial_fetch(self):
         """
-        Test that fallback fetch is NOT triggered when default-branch pipeline is in initial fetch.
+        Test that default-branch pipelines are ALWAYS fetched explicitly,
+        even when default-branch pipeline is in initial fetch.
         
         Scenario:
         - Initial fetch returns 9 feature pipelines + 1 default-branch pipeline
-        - Default-branch pipeline is already present
-        - No fallback fetch should be triggered
+        - Default-branch pipeline is already present in general fetch
+        - Default-branch fetch is STILL triggered (not conditional)
+        - Both fetches should be combined and deduplicated
         """
         projects = [
             {
@@ -152,19 +157,41 @@ class TestDefaultBranchPipelineFallbackFetch(unittest.TestCase):
             }
         ]
         
+        # Default-branch fetch returns same pipeline (will be deduplicated)
+        default_branch_pipelines = [
+            {
+                'id': 100,
+                'status': 'success',
+                'ref': 'main',
+                'created_at': '2024-01-20T10:40:00.000Z'
+            }
+        ]
+        
         self.poller.gitlab_client.get_projects.return_value = projects
-        self.poller.gitlab_client.get_pipelines.return_value = mixed_pipelines
+        
+        def mock_get_pipelines(project_id, per_page=None, ref=None):
+            if ref == 'main':
+                return default_branch_pipelines
+            else:
+                return mixed_pipelines
+        
+        self.poller.gitlab_client.get_pipelines.side_effect = mock_get_pipelines
         
         # Call _fetch_pipelines
         result = self.poller._fetch_pipelines(projects, poll_id='test-2')
         
-        # Verify get_pipelines was called only once (no fallback)
-        self.assertEqual(self.poller.gitlab_client.get_pipelines.call_count, 1)
+        # Verify get_pipelines was called twice (general + default-branch)
+        self.assertEqual(self.poller.gitlab_client.get_pipelines.call_count, 2)
         
-        # Verify the call was without ref filter
-        self.poller.gitlab_client.get_pipelines.assert_called_once_with(789, per_page=10)
+        # Verify first call was without ref filter
+        first_call = self.poller.gitlab_client.get_pipelines.call_args_list[0]
+        self.assertEqual(first_call, call(789, per_page=10))
         
-        # Verify result contains all 10 pipelines
+        # Verify second call was with ref='main'
+        second_call = self.poller.gitlab_client.get_pipelines.call_args_list[1]
+        self.assertEqual(second_call, call(789, per_page=DEFAULT_BRANCH_FETCH_LIMIT, ref='main'))
+        
+        # Verify result contains deduplicated pipelines (10 unique, not 11)
         self.assertIsNotNone(result)
         self.assertEqual(len(result['all_pipelines']), 10)
         self.assertEqual(len(result['per_project'][789]), 10)

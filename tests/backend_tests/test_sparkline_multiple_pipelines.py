@@ -6,7 +6,12 @@ often render only 1 bar due to insufficient default-branch pipeline fetch.
 import unittest
 from unittest.mock import MagicMock
 from backend.app import BackgroundPoller
-from backend.gitlab_client import GitLabAPIClient, PIPELINES_PER_PROJECT
+from backend.gitlab_client import (
+    GitLabAPIClient, 
+    PIPELINES_PER_PROJECT,
+    DEFAULT_BRANCH_FETCH_LIMIT,
+    TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES,
+)
 
 
 class TestSparklineMultiplePipelines(unittest.TestCase):
@@ -28,9 +33,9 @@ class TestSparklineMultiplePipelines(unittest.TestCase):
 
     def test_fetches_multiple_default_branch_pipelines_when_missing_from_general(self):
         """
-        When feature branches dominate the general pipeline list and no default-branch
-        pipeline is present, the targeted fetch should request PIPELINES_PER_PROJECT
-        default-branch pipelines, not just 1.
+        The backend should ALWAYS fetch default-branch pipelines explicitly to ensure
+        sparkline completeness, requesting DEFAULT_BRANCH_FETCH_LIMIT pipelines to
+        guarantee TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES meaningful statuses.
         """
         # Mock project with feature-heavy activity
         project = {
@@ -52,6 +57,7 @@ class TestSparklineMultiplePipelines(unittest.TestCase):
         ]
         
         # Targeted default-branch fetch should return multiple pipelines
+        # Generate enough to reach DEFAULT_BRANCH_FETCH_LIMIT
         default_branch_pipelines = [
             {
                 'id': 2000 + i,
@@ -59,15 +65,15 @@ class TestSparklineMultiplePipelines(unittest.TestCase):
                 'ref': 'main',
                 'created_at': f'2024-01-20T11:{50-i:02d}:00.000Z'
             }
-            for i in range(PIPELINES_PER_PROJECT)
+            for i in range(DEFAULT_BRANCH_FETCH_LIMIT)
         ]
         
         # Mock get_pipelines to return different results based on ref parameter
         def mock_get_pipelines(project_id, per_page=None, ref=None):
             if ref == 'main':
-                # Should be called with per_page=PIPELINES_PER_PROJECT
-                self.assertEqual(per_page, PIPELINES_PER_PROJECT,
-                    f"Expected targeted default-branch fetch to use per_page={PIPELINES_PER_PROJECT}, got {per_page}")
+                # Should be called with per_page=DEFAULT_BRANCH_FETCH_LIMIT
+                self.assertEqual(per_page, DEFAULT_BRANCH_FETCH_LIMIT,
+                    f"Expected targeted default-branch fetch to use per_page={DEFAULT_BRANCH_FETCH_LIMIT}, got {per_page}")
                 return list(default_branch_pipelines)  # Return copy
             else:
                 # General fetch (no ref filter)
@@ -89,8 +95,9 @@ class TestSparklineMultiplePipelines(unittest.TestCase):
         project_pipelines = per_project[123]
         
         # Should have feature pipelines + default-branch pipelines
-        self.assertEqual(len(project_pipelines), PIPELINES_PER_PROJECT * 2,
-            f"Expected {PIPELINES_PER_PROJECT * 2} pipelines (10 feature + 10 default-branch)")
+        expected_count = PIPELINES_PER_PROJECT + DEFAULT_BRANCH_FETCH_LIMIT
+        self.assertEqual(len(project_pipelines), expected_count,
+            f"Expected {expected_count} pipelines ({PIPELINES_PER_PROJECT} feature + {DEFAULT_BRANCH_FETCH_LIMIT} default-branch)")
 
     def test_deduplicates_pipelines_when_overlap_occurs(self):
         """
@@ -290,6 +297,54 @@ class TestSparklineMultiplePipelines(unittest.TestCase):
         # Verify count
         self.assertEqual(len(default_branch_statuses), 4,
             f"Expected 4 meaningful statuses (excluded 3 ignored), got {len(default_branch_statuses)}")
+
+    def test_guarantees_up_to_10_meaningful_default_branch_statuses(self):
+        """
+        Verify that when enough default-branch pipelines are available, the sparkline
+        gets up to TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES (10) meaningful statuses,
+        even when some pipelines have ignored statuses (skipped/manual/canceled).
+        """
+        from backend.gitlab_client import enrich_projects_with_pipelines
+        
+        project = {
+            'id': 888,
+            'name': 'rich-history-project',
+            'default_branch': 'main'
+        }
+        
+        # Simulate 20 default-branch pipelines with mix of meaningful and ignored statuses
+        # Pattern: 3 meaningful, 1 ignored, repeated 5 times = 15 meaningful, 5 ignored
+        pipelines = []
+        for i in range(20):
+            if i % 4 == 3:  # Every 4th pipeline is ignored
+                status = 'skipped'
+            else:
+                status = 'success' if i % 6 < 4 else 'failed'
+            
+            pipelines.append({
+                'id': 8000 + i,
+                'status': status,
+                'ref': 'main',
+                'created_at': f'2024-01-20T16:{59-i:02d}:00.000Z'
+            })
+        
+        per_project_pipelines = {888: pipelines}
+        
+        # Enrich the project
+        enriched = enrich_projects_with_pipelines([project], per_project_pipelines)
+        enriched_project = enriched[0]
+        
+        # Verify sparkline contains up to TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES
+        default_branch_statuses = enriched_project.get('recent_default_branch_pipelines', [])
+        
+        # Should have exactly 10 meaningful statuses (after filtering ignored ones)
+        self.assertEqual(len(default_branch_statuses), TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES,
+            f"Expected {TARGET_MEANINGFUL_DEFAULT_BRANCH_STATUSES} meaningful statuses, got {len(default_branch_statuses)}")
+        
+        # Verify no ignored statuses in the sparkline
+        for status in default_branch_statuses:
+            self.assertNotIn(status, ['skipped', 'manual', 'canceled', 'cancelled'],
+                f"Sparkline should not contain ignored status: {status}")
 
 
 if __name__ == '__main__':
