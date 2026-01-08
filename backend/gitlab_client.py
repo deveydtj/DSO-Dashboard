@@ -1296,8 +1296,8 @@ def enrich_projects_with_failure_intelligence(gitlab_client, projects, per_proje
     failure reasons into normalized categories (pod_timeout, oom, script_failure, etc).
     
     Only fetches job details when:
-    - Project has a default-branch pipeline that is failed/stuck
-    - OR project has runner issues (detected in earlier enrichment)
+    - Project has has_failing_jobs or has_runner_issues (detected in earlier enrichment)
+      AND the project has a default-branch pipeline that is failed/stuck
     
     Applies a budget cap (JOB_DETAIL_HYDRATION_BUDGET) to limit API calls.
     

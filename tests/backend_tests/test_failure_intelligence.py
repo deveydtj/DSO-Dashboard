@@ -14,7 +14,7 @@ import os
 # Add parent directory to path to import from backend
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from backend.gitlab_client import classify_job_failure, enrich_projects_with_failure_intelligence
+from backend.gitlab_client import classify_job_failure
 
 
 class TestClassifyJobFailurePodTimeout(unittest.TestCase):
