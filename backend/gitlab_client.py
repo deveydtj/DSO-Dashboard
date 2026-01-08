@@ -212,7 +212,8 @@ def classify_job_failure(job):
         }
     
     # 4. Runner/system failure (must check before generic timeout)
-    # Check this before generic timeout because some patterns contain 'timeout'
+    # IMPORTANT: Must check before generic timeout patterns because 
+    # 'stuck_or_timeout_failure' contains 'timeout' but should be classified as runner_system
     if any(pattern in failure_reason_lower for pattern in [
         'runner_system_failure',
         'system_failure',
@@ -229,6 +230,7 @@ def classify_job_failure(job):
         }
     
     # 5. Generic timeout (not pod-specific, not runner-specific)
+    # Checked after runner_system to avoid misclassifying runner-specific timeout patterns
     if 'timeout' in failure_reason_lower or 'timed out' in failure_reason_lower:
         return {
             'category': 'timeout',
