@@ -4,8 +4,8 @@
 // WeakMap to store event handlers for cleanup without memory leaks
 const modalHandlers = new WeakMap();
 
-// Store original body overflow value
-let originalBodyOverflow = '';
+// Store original body overflow value per modal (in case multiple modals opened in sequence)
+const originalBodyOverflowMap = new WeakMap();
 
 /**
  * Open a modal by ID
@@ -20,9 +20,9 @@ export function openModal(modalId) {
     
     modal.style.display = 'flex';
     
-    // Store original overflow value before modifying
-    if (!originalBodyOverflow) {
-        originalBodyOverflow = document.body.style.overflow || '';
+    // Store original overflow value before modifying (per modal to handle sequences)
+    if (!originalBodyOverflowMap.has(modal)) {
+        originalBodyOverflowMap.set(modal, document.body.style.overflow || '');
     }
     
     // Prevent body scroll when modal is open
@@ -55,12 +55,27 @@ export function closeModal(modalId) {
     
     modal.style.display = 'none';
     
-    // Restore original body scroll value
-    document.body.style.overflow = originalBodyOverflow;
-    originalBodyOverflow = '';
+    // Restore original body scroll value for this modal
+    const originalOverflow = originalBodyOverflowMap.get(modal);
+    if (originalOverflow !== undefined) {
+        document.body.style.overflow = originalOverflow;
+        originalBodyOverflowMap.delete(modal);
+    }
     
     // Clean up event listeners
     cleanupModalCloseHandlers(modal);
+    
+    // Call modal-specific cleanup if available
+    if (modalId === 'jobPerformanceModal') {
+        // Dynamic import to avoid circular dependency
+        import('../views/jobPerformanceView.js').then(module => {
+            if (module.cleanupJobPerformanceModal) {
+                module.cleanupJobPerformanceModal();
+            }
+        }).catch(err => {
+            console.warn('Failed to cleanup job performance modal:', err);
+        });
+    }
 }
 
 /**

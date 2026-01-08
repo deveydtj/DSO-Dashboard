@@ -495,6 +495,9 @@ export function renderRepositories(repos, previousState) {
     return nextState;
 }
 
+// WeakMap to store repo card event delegation handlers
+const repoCardHandlers = new WeakMap();
+
 /**
  * Attach event handlers to repository cards
  * Should be called after renderRepositories() to wire up job performance buttons
@@ -508,8 +511,9 @@ export function attachRepoCardHandlers(apiBase, openModalCallback) {
     if (!container) return;
     
     // Remove previous delegated handler if it exists
-    if (container._repoJobPerfHandler) {
-        container.removeEventListener('click', container._repoJobPerfHandler);
+    const oldHandler = repoCardHandlers.get(container);
+    if (oldHandler) {
+        container.removeEventListener('click', oldHandler);
     }
     
     // Use event delegation - single listener on container
@@ -538,6 +542,6 @@ export function attachRepoCardHandlers(apiBase, openModalCallback) {
     };
     
     container.addEventListener('click', handler);
-    // Store handler reference for cleanup on next call
-    container._repoJobPerfHandler = handler;
+    // Store handler reference in WeakMap for cleanup on next call
+    repoCardHandlers.set(container, handler);
 }

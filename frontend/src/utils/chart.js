@@ -175,7 +175,7 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
         // Draw dots at each data point
         ctx.fillStyle = color;
         dataPoints.forEach((point, i) => {
-            const x = xScale(i, dataPoints.length);
+            const x = xScale(point.timestamp);
             const y = yScale(point.value);
             
             ctx.beginPath();
@@ -187,7 +187,7 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
     /**
      * Helper to render duration series for a dataset
      * @param {Array} sourceData - Array of data points
-     * @param {Object} colors - Object with accentInfo, accentWarning, accentError keys
+     * @param {Object} colors - Object with avg, p95, and p99 keys
      * @param {boolean} isDashed - Whether to use dashed lines
      */
     const renderDurationSeries = (sourceData, colors, isDashed = false) => {
@@ -271,11 +271,11 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
     ctx.fillStyle = '#e0e0e0';
     ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('Job Duration Trend (7 days)', padding.left, padding.top - 10);
+    ctx.fillText('Job Duration Trend (7 days)', CHART_PADDING.left, CHART_PADDING.top - 10);
     
     // Y-axis label
     ctx.save();
-    ctx.translate(20, padding.top + chartHeight / 2);
+    ctx.translate(20, CHART_PADDING.top + chartHeight / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.fillStyle = '#a0a0b0';
     ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';

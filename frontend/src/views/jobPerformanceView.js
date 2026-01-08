@@ -29,6 +29,7 @@ export async function openJobPerformanceModal(project, apiBase) {
     
     const modalTitle = modal.querySelector('.modal-title');
     if (modalTitle) {
+        // Use textContent for safety (already safe, but consistent with codebase practices)
         modalTitle.textContent = `Job Performance: ${project.name}`;
     }
     
@@ -117,20 +118,31 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
     if (canvas) {
         renderJobPerformanceChart(canvas, analytics.data);
         
-        // Set up resize handler to re-render chart on window resize
+        // Clean up old resize handler and timeout if exists
         const oldResizeHandler = resizeHandlers.get(canvas);
         if (oldResizeHandler) {
             window.removeEventListener('resize', oldResizeHandler);
         }
+        const oldResizeTimeout = resizeTimeouts.get(canvas);
+        if (oldResizeTimeout) {
+            clearTimeout(oldResizeTimeout);
+            resizeTimeouts.delete(canvas);
+        }
         
         const resizeHandler = () => {
             // Debounce: only re-render after resize stops for 200ms
-            if (canvas._resizeTimeout) {
-                clearTimeout(canvas._resizeTimeout);
+            const oldTimeout = resizeTimeouts.get(canvas);
+            if (oldTimeout) {
+                clearTimeout(oldTimeout);
             }
-            canvas._resizeTimeout = setTimeout(() => {
-                renderJobPerformanceChart(canvas, analytics.data);
+            const timeoutId = setTimeout(() => {
+                // Check if canvas still exists before rendering
+                if (document.contains(canvas)) {
+                    renderJobPerformanceChart(canvas, analytics.data);
+                }
+                resizeTimeouts.delete(canvas);
             }, 200);
+            resizeTimeouts.set(canvas, timeoutId);
         };
         
         window.addEventListener('resize', resizeHandler);
@@ -206,6 +218,40 @@ const errorTimeouts = new WeakMap();
 
 // WeakMap to store resize handlers for cleanup
 const resizeHandlers = new WeakMap();
+
+// WeakMap to store resize timeout IDs for cleanup
+const resizeTimeouts = new WeakMap();
+
+/**
+ * Cleanup function to be called when modal closes
+ * Removes resize handlers and clears timeouts
+ */
+export function cleanupJobPerformanceModal() {
+    // Clean up all resize handlers
+    const canvas = document.getElementById('jobPerformanceChart');
+    if (canvas) {
+        const resizeHandler = resizeHandlers.get(canvas);
+        if (resizeHandler) {
+            window.removeEventListener('resize', resizeHandler);
+            resizeHandlers.delete(canvas);
+        }
+        const resizeTimeout = resizeTimeouts.get(canvas);
+        if (resizeTimeout) {
+            clearTimeout(resizeTimeout);
+            resizeTimeouts.delete(canvas);
+        }
+    }
+    
+    // Clean up error timeouts
+    const modal = document.getElementById('jobPerformanceModal');
+    if (modal) {
+        const errorTimeout = errorTimeouts.get(modal);
+        if (errorTimeout) {
+            clearTimeout(errorTimeout);
+            errorTimeouts.delete(modal);
+        }
+    }
+}
 
 /**
  * Attach click handler for refresh button
