@@ -6,18 +6,23 @@ This script demonstrates:
 1. Fetching analytics for a project (GET endpoint)
 2. Triggering a manual refresh (POST endpoint)
 3. Verifying analytics data structure
+
+Usage:
+    python3 tests/manual_test_job_analytics.py [--project-id PROJECT_ID] [--base-url BASE_URL]
+
+Examples:
+    python3 tests/manual_test_job_analytics.py
+    python3 tests/manual_test_job_analytics.py --project-id 456
+    python3 tests/manual_test_job_analytics.py --project-id 789 --base-url http://localhost:9090
 """
 
 import json
 import requests
 import sys
-
-# Configure test parameters
-BASE_URL = "http://localhost:8080"
-PROJECT_ID = 123  # Test project ID
+import argparse
 
 
-def test_get_analytics():
+def test_get_analytics(base_url, project_id):
     """Test GET /api/job-analytics/{project_id}"""
     print(f"\n{'='*70}")
     print(f"Testing GET /api/job-analytics/{PROJECT_ID}")
@@ -103,14 +108,25 @@ def validate_analytics_structure(data):
 
 def main():
     """Run all tests"""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Test job analytics API endpoints')
+    parser.add_argument('--project-id', type=int, default=123,
+                        help='GitLab project ID to test (default: 123)')
+    parser.add_argument('--base-url', type=str, default='http://localhost:8080',
+                        help='Base URL of the server (default: http://localhost:8080)')
+    args = parser.parse_args()
+    
+    base_url = args.base_url
+    project_id = args.project_id
+    
     print("\n" + "="*70)
     print("JOB ANALYTICS API ENDPOINT VALIDATION")
     print("="*70)
-    print(f"Base URL: {BASE_URL}")
-    print(f"Project ID: {PROJECT_ID}")
+    print(f"Base URL: {base_url}")
+    print(f"Project ID: {project_id}")
     
     # Test 1: GET analytics (should be 404 initially)
-    status, data = test_get_analytics()
+    status, data = test_get_analytics(base_url, project_id)
     if status == 404:
         print("\n✓ GET returns 404 as expected (no analytics computed yet)")
     else:
@@ -121,7 +137,7 @@ def main():
     # 1. Server is running in non-mock mode
     # 2. Project ID is in configured project_ids
     # 3. GitLab API is accessible
-    status, data = test_refresh_analytics()
+    status, data = test_refresh_analytics(base_url, project_id)
     if status == 503:
         print("\n⚠ Analytics poller not available (expected in mock mode or if project not configured)")
     elif status == 200:
@@ -137,7 +153,7 @@ def main():
     print("\n" + "="*70)
     print("TESTING GET AGAIN AFTER REFRESH")
     print("="*70)
-    status, data = test_get_analytics()
+    status, data = test_get_analytics(base_url, project_id)
     if status == 200:
         print("\n✓ Analytics available")
         validate_analytics_structure(data)
@@ -152,9 +168,10 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except requests.exceptions.ConnectionError:
+    except requests.exceptions.ConnectionError as e:
         print("\n✗ ERROR: Could not connect to server")
-        print(f"  Make sure the server is running at {BASE_URL}")
+        print(f"  Make sure the server is running")
+        print(f"  Use --base-url to specify a different server URL")
         sys.exit(1)
     except Exception as e:
         print(f"\n✗ ERROR: {e}")

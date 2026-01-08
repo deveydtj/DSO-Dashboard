@@ -40,6 +40,7 @@ JOB_DETAIL_HYDRATION_BUDGET = 10  # Max job detail requests per poll cycle
 JOB_ANALYTICS_WINDOW_DAYS = 7     # 7-day window for job performance analytics
 JOB_ANALYTICS_MAX_PIPELINES_PER_PROJECT = 100  # Max pipelines to inspect per project
 JOB_ANALYTICS_MAX_JOB_CALLS_PER_REFRESH = 50   # Max job list API calls per refresh cycle
+MIN_VALUES_FOR_PERCENTILE = 2      # Minimum data points required for meaningful percentile calculation
 
 # Pipeline statuses to ignore when calculating consecutive failures and success rates
 # These statuses represent pipelines that didn't actually test the code
@@ -358,7 +359,7 @@ def calculate_percentiles(values, percentiles):
         >>> calculate_percentiles([], [50])
         {50: None}
     """
-    if not values or len(values) < 2:
+    if not values or len(values) < MIN_VALUES_FOR_PERCENTILE:
         # Insufficient data for meaningful percentile calculation
         return {p: None for p in percentiles}
     
@@ -1744,10 +1745,15 @@ def compute_job_analytics_for_project(gitlab_client, project_id, project_name, d
     
     # Fetch pipelines within time window with cap
     logger.debug(f"{log_prefix} Fetching pipelines updated after {updated_after}")
+    # Calculate max_pages based on per_page setting to respect max_pipelines cap
+    # Default to 100 per page if not set, then calculate pages needed
+    per_page = getattr(gitlab_client, 'per_page', 100)
+    max_pages = (max_pipelines // per_page) + 1
+    
     pipelines = gitlab_client.get_pipelines_with_time_filter(
         project_id,
         updated_after=updated_after,
-        max_pages=max_pipelines // gitlab_client.per_page + 1
+        max_pages=max_pages
     )
     
     if pipelines is None:

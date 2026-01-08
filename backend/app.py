@@ -46,6 +46,7 @@ from backend.gitlab_client import (
     JOB_ANALYTICS_WINDOW_DAYS,
     JOB_ANALYTICS_MAX_PIPELINES_PER_PROJECT,
     JOB_ANALYTICS_MAX_JOB_CALLS_PER_REFRESH,
+    MIN_VALUES_FOR_PERCENTILE,
 )
 from backend.services import (
     get_service_statuses,
@@ -1395,7 +1396,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 project_id = int(path.split('/')[-1])
                 self.handle_job_analytics(project_id)
             except (ValueError, IndexError):
-                self.send_json_response({'error': 'Invalid project ID'}, status=400)
+                self.send_json_response({'error': 'Invalid project ID in URL path'}, status=400)
         else:
             # Serve static files
             super().do_GET()
@@ -1428,7 +1429,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 project_id = int(parts[-2])  # Get the project_id before '/refresh'
                 self.handle_job_analytics_refresh(project_id)
             except (ValueError, IndexError):
-                self.send_json_response({'error': 'Invalid project ID'}, status=400)
+                self.send_json_response({'error': 'Invalid project ID in URL path'}, status=400)
         else:
             # Unsupported POST endpoint
             self.send_json_response({'error': 'Endpoint not found'}, status=404)
