@@ -1264,13 +1264,15 @@ class JobAnalyticsPoller(threading.Thread):
             project_id: GitLab project ID to refresh
             
         Returns:
-            bool: True if refresh was triggered, False if already in progress
+            str: 'success' if refresh completed successfully
+                 'in_progress' if refresh already in progress
+                 'failed' if refresh failed (project fetch or computation error)
         """
         # Check single-flight protection
         with self._refresh_lock:
             if self._refresh_in_progress.get(project_id):
                 logger.info(f"Refresh for project {project_id} already in progress")
-                return False
+                return 'in_progress'
             self._refresh_in_progress[project_id] = True
         
         try:
@@ -1278,7 +1280,7 @@ class JobAnalyticsPoller(threading.Thread):
             project = self.gitlab_client.get_project(project_id)
             if not project:
                 logger.error(f"Failed to fetch project {project_id}")
-                return False
+                return 'failed'
             
             project_name = project.get('name', f'Project {project_id}')
             default_branch = project.get('default_branch', 'main')
@@ -1301,10 +1303,10 @@ class JobAnalyticsPoller(threading.Thread):
                 # Update state
                 update_job_analytics(project_id, analytics_data)
                 logger.info(f"Manually refreshed analytics for project {project_id}")
-                return True
+                return 'success'
             else:
                 logger.error(f"Failed to compute analytics for project {project_id}")
-                return False
+                return 'failed'
         finally:
             # Release single-flight lock
             with self._refresh_lock:
@@ -1911,21 +1913,28 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 return
             
             # Trigger refresh (uses single-flight protection internally)
-            success = analytics_poller.trigger_refresh_for_project(project_id)
+            result = analytics_poller.trigger_refresh_for_project(project_id)
             
-            if success:
+            if result == 'success':
                 # Fetch the updated analytics
                 analytics = get_job_analytics(project_id)
                 self.send_json_response({
                     'message': 'Analytics refresh completed',
                     'analytics': analytics
                 })
-            else:
-                # Refresh was already in progress or failed
+            elif result == 'in_progress':
+                # Another refresh is already running
                 self.send_json_response({
-                    'message': 'Refresh already in progress or failed',
-                    'status': 'in_progress_or_failed'
+                    'message': 'Refresh already in progress for this project',
+                    'status': 'in_progress'
                 }, status=409)
+            else:  # result == 'failed'
+                # Refresh failed (project fetch or computation error)
+                self.send_json_response({
+                    'message': 'Analytics refresh failed',
+                    'status': 'failed',
+                    'hint': 'Check server logs for details. Retry is possible.'
+                }, status=500)
         except Exception as e:
             logger.error(f"Error in handle_job_analytics_refresh for project {project_id}: {e}")
             self.send_json_response({'error': str(e)}, status=500)

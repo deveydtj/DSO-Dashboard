@@ -10,7 +10,7 @@ Tests cover:
 """
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from datetime import datetime, timezone, timedelta
 
 # Import functions to test

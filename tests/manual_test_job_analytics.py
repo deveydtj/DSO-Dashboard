@@ -17,43 +17,78 @@ Examples:
 """
 
 import json
-import requests
 import sys
 import argparse
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
 
 
 def test_get_analytics(base_url, project_id):
     """Test GET /api/job-analytics/{project_id}"""
     print(f"\n{'='*70}")
-    print(f"Testing GET /api/job-analytics/{PROJECT_ID}")
+    print(f"Testing GET /api/job-analytics/{project_id}")
     print(f"{'='*70}")
     
-    url = f"{BASE_URL}/api/job-analytics/{PROJECT_ID}"
-    response = requests.get(url)
+    url = f"{base_url}/api/job-analytics/{project_id}"
+    request = Request(url)
     
-    print(f"Status Code: {response.status_code}")
-    print(f"Response Headers: {dict(response.headers)}")
+    try:
+        with urlopen(request, timeout=10) as response:
+            status_code = response.status
+            headers = dict(response.headers)
+            body = response.read().decode('utf-8')
+            data = json.loads(body)
+    except HTTPError as e:
+        status_code = e.code
+        headers = dict(e.headers)
+        body = e.read().decode('utf-8')
+        try:
+            data = json.loads(body)
+        except:
+            data = {'error': body}
+    except URLError as e:
+        raise ConnectionError(f"Could not connect to server: {e.reason}")
+    
+    print(f"Status Code: {status_code}")
+    print(f"Response Headers: {headers}")
     print(f"\nResponse Body:")
-    print(json.dumps(response.json(), indent=2))
+    print(json.dumps(data, indent=2))
     
-    return response.status_code, response.json()
+    return status_code, data
 
 
-def test_refresh_analytics():
+def test_refresh_analytics(base_url, project_id):
     """Test POST /api/job-analytics/{project_id}/refresh"""
     print(f"\n{'='*70}")
-    print(f"Testing POST /api/job-analytics/{PROJECT_ID}/refresh")
+    print(f"Testing POST /api/job-analytics/{project_id}/refresh")
     print(f"{'='*70}")
     
-    url = f"{BASE_URL}/api/job-analytics/{PROJECT_ID}/refresh"
-    response = requests.post(url)
+    url = f"{base_url}/api/job-analytics/{project_id}/refresh"
+    request = Request(url, method='POST')
     
-    print(f"Status Code: {response.status_code}")
-    print(f"Response Headers: {dict(response.headers)}")
+    try:
+        with urlopen(request, timeout=10) as response:
+            status_code = response.status
+            headers = dict(response.headers)
+            body = response.read().decode('utf-8')
+            data = json.loads(body)
+    except HTTPError as e:
+        status_code = e.code
+        headers = dict(e.headers)
+        body = e.read().decode('utf-8')
+        try:
+            data = json.loads(body)
+        except:
+            data = {'error': body}
+    except URLError as e:
+        raise ConnectionError(f"Could not connect to server: {e.reason}")
+    
+    print(f"Status Code: {status_code}")
+    print(f"Response Headers: {headers}")
     print(f"\nResponse Body:")
-    print(json.dumps(response.json(), indent=2))
+    print(json.dumps(data, indent=2))
     
-    return response.status_code, response.json()
+    return status_code, data
 
 
 def validate_analytics_structure(data):
@@ -168,7 +203,7 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except requests.exceptions.ConnectionError as e:
+    except ConnectionError as e:
         print("\n✗ ERROR: Could not connect to server")
         print(f"  Make sure the server is running")
         print(f"  Use --base-url to specify a different server URL")
