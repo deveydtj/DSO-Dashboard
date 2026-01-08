@@ -1308,19 +1308,26 @@ def enrich_projects_with_failure_intelligence(gitlab_client, projects, per_proje
         poll_id: Optional poll cycle identifier for logging context
     
     Returns:
-        list: Projects with added failure intelligence fields:
+        list: New list of projects with added failure intelligence fields:
             - failure_category: machine-friendly category (or None)
             - failure_label: human-readable label (or None)
             - failure_snippet: short excerpt from failure_reason (or None)
     
     Side effects:
         Makes API calls to GitLab (bounded by JOB_DETAIL_HYDRATION_BUDGET)
+    
+    Note:
+        Creates new project dictionaries instead of mutating input to avoid
+        threading issues. Follows the same pattern as enrich_projects_with_pipelines().
     """
     log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
     
     if not projects:
         logger.debug(f"{log_prefix}No projects to enrich with failure intelligence")
         return []
+    
+    # Build a map of project_id -> failure intelligence for efficient lookup
+    failure_intelligence_map = {}
     
     # Identify projects that need job detail hydration
     # Criteria: has_failing_jobs OR has_runner_issues on default branch
@@ -1352,12 +1359,15 @@ def enrich_projects_with_failure_intelligence(gitlab_client, projects, per_proje
     
     if not candidates:
         logger.debug(f"{log_prefix}No projects need job detail hydration")
-        # Still return projects with None fields
+        # Return new list with None fields added
+        enriched_projects = []
         for project in projects:
-            project['failure_category'] = None
-            project['failure_label'] = None
-            project['failure_snippet'] = None
-        return projects
+            enriched = dict(project)  # Create a copy
+            enriched['failure_category'] = None
+            enriched['failure_label'] = None
+            enriched['failure_snippet'] = None
+            enriched_projects.append(enriched)
+        return enriched_projects
     
     # Apply budget cap with prioritization
     if len(candidates) > JOB_DETAIL_HYDRATION_BUDGET:
@@ -1377,7 +1387,7 @@ def enrich_projects_with_failure_intelligence(gitlab_client, projects, per_proje
     
     logger.info(f"{log_prefix}Job detail hydration: fetching jobs for {len(candidates)} unhealthy pipelines")
     
-    # Fetch jobs and classify failures
+    # Fetch jobs and classify failures, storing results in map
     hydrated_count = 0
     skipped_error = 0
     
@@ -1418,14 +1428,13 @@ def enrich_projects_with_failure_intelligence(gitlab_client, projects, per_proje
                     break
             
             if failed_job:
-                # Classify the failure
+                # Classify the failure and store in map
                 classification = classify_job_failure(failed_job)
-                
-                # Add to project
-                project['failure_category'] = classification['category']
-                project['failure_label'] = classification['label']
-                project['failure_snippet'] = classification['snippet']
-                
+                failure_intelligence_map[project_id] = {
+                    'failure_category': classification['category'],
+                    'failure_label': classification['label'],
+                    'failure_snippet': classification['snippet']
+                }
                 hydrated_count += 1
             
         except Exception as e:
@@ -1434,13 +1443,23 @@ def enrich_projects_with_failure_intelligence(gitlab_client, projects, per_proje
     
     logger.info(f"{log_prefix}Job detail hydration complete: hydrated={hydrated_count}, skipped_error={skipped_error}")
     
-    # Ensure all projects have the new fields (None if not hydrated)
+    # Create new enriched projects list with failure intelligence fields
+    enriched_projects = []
     for project in projects:
-        if 'failure_category' not in project:
-            project['failure_category'] = None
-        if 'failure_label' not in project:
-            project['failure_label'] = None
-        if 'failure_snippet' not in project:
-            project['failure_snippet'] = None
+        enriched = dict(project)  # Create a copy to avoid mutating input
+        project_id = project.get('id')
+        
+        # Add failure intelligence fields from map (or None if not found)
+        if project_id in failure_intelligence_map:
+            intelligence = failure_intelligence_map[project_id]
+            enriched['failure_category'] = intelligence['failure_category']
+            enriched['failure_label'] = intelligence['failure_label']
+            enriched['failure_snippet'] = intelligence['failure_snippet']
+        else:
+            enriched['failure_category'] = None
+            enriched['failure_label'] = None
+            enriched['failure_snippet'] = None
+        
+        enriched_projects.append(enriched)
     
-    return projects
+    return enriched_projects
