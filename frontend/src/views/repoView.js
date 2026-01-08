@@ -498,6 +498,7 @@ export function renderRepositories(repos, previousState) {
 /**
  * Attach event handlers to repository cards
  * Should be called after renderRepositories() to wire up job performance buttons
+ * Uses event delegation to avoid memory leaks on re-render
  * 
  * @param {string} apiBase - Base URL for API
  * @param {Function} openModalCallback - Callback to open job performance modal
@@ -506,27 +507,37 @@ export function attachRepoCardHandlers(apiBase, openModalCallback) {
     const container = document.getElementById('repoGrid');
     if (!container) return;
     
-    // Find all job performance buttons
-    const jobPerfButtons = container.querySelectorAll('.repo-job-performance-btn');
+    // Remove previous delegated handler if it exists
+    if (container._repoJobPerfHandler) {
+        container.removeEventListener('click', container._repoJobPerfHandler);
+    }
     
-    jobPerfButtons.forEach(button => {
-        button.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const projectId = button.dataset.projectId;
-            const projectName = button.dataset.projectName;
-            
-            if (!projectId) {
-                console.error('No project ID found on job performance button');
-                return;
-            }
-            
-            // Call the callback with project info
-            openModalCallback({
-                id: parseInt(projectId, 10),
-                name: projectName
-            }, apiBase);
-        });
-    });
+    // Use event delegation - single listener on container
+    const handler = (event) => {
+        const button = event.target.closest('.repo-job-performance-btn');
+        if (!button || !container.contains(button)) {
+            return;
+        }
+        
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const projectId = button.dataset.projectId;
+        const projectName = button.dataset.projectName;
+        
+        if (!projectId) {
+            console.error('No project ID found on job performance button');
+            return;
+        }
+        
+        // Call the callback with project info
+        openModalCallback({
+            id: parseInt(projectId, 10),
+            name: projectName
+        }, apiBase);
+    };
+    
+    container.addEventListener('click', handler);
+    // Store handler reference for cleanup on next call
+    container._repoJobPerfHandler = handler;
 }

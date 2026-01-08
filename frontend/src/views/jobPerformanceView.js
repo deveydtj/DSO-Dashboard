@@ -2,7 +2,7 @@
 // Pure JavaScript - no external dependencies
 
 import { escapeHtml } from '../utils/formatters.js';
-import { openModal, closeModal, setModalContent, setModalLoading, setModalError } from '../utils/modal.js';
+import { openModal, setModalContent, setModalLoading } from '../utils/modal.js';
 import { fetchJobAnalytics, refreshJobAnalytics } from '../api/apiClient.js';
 import { renderJobPerformanceChart } from '../utils/chart.js';
 
@@ -131,7 +131,7 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
  */
 function handleJobAnalyticsError(modalId, error, project, apiBase) {
     let title = 'Error Loading Analytics';
-    let message = 'An unexpected error occurred while loading job analytics.';
+    let message;
     let showRefresh = false;
     
     if (error.status === HTTP_NOT_FOUND) {
@@ -179,6 +179,12 @@ function renderRefreshButton(projectId, apiBase, label) {
     `;
 }
 
+// WeakMap to store refresh button handlers for cleanup
+const refreshButtonHandlers = new WeakMap();
+
+// WeakMap to store error timeout IDs for cleanup
+const errorTimeouts = new WeakMap();
+
 /**
  * Attach click handler for refresh button
  * @param {string} modalId - Modal element ID
@@ -192,7 +198,21 @@ function attachRefreshHandler(modalId, project, apiBase) {
     const refreshBtn = modal.querySelector('[data-action="refresh"]');
     if (!refreshBtn) return;
     
-    refreshBtn.addEventListener('click', async () => {
+    // Remove old handler if exists
+    const oldHandler = refreshButtonHandlers.get(refreshBtn);
+    if (oldHandler) {
+        refreshBtn.removeEventListener('click', oldHandler);
+    }
+    
+    // Clear any existing error timeout
+    const oldTimeoutId = errorTimeouts.get(modal);
+    if (oldTimeoutId) {
+        clearTimeout(oldTimeoutId);
+        errorTimeouts.delete(modal);
+    }
+    
+    // Define the handler
+    const handler = async () => {
         // Disable button during refresh
         refreshBtn.disabled = true;
         refreshBtn.textContent = '⏳ Computing...';
@@ -240,11 +260,19 @@ function attachRefreshHandler(modalId, project, apiBase) {
                 refreshBtn.disabled = false;
                 refreshBtn.textContent = '🔄 Retry';
                 
-                // Remove error after 5 seconds
-                setTimeout(() => errorDiv.remove(), 5000);
+                // Remove error after 5 seconds - store timeout ID
+                const timeoutId = setTimeout(() => {
+                    errorDiv.remove();
+                    errorTimeouts.delete(modal);
+                }, 5000);
+                errorTimeouts.set(modal, timeoutId);
             }
         }
-    });
+    };
+    
+    // Add new handler and store reference
+    refreshBtn.addEventListener('click', handler);
+    refreshButtonHandlers.set(refreshBtn, handler);
 }
 
 /**

@@ -10,15 +10,19 @@ export const DEFAULT_TIMEOUT = 8000;
  * Fetch with timeout support using AbortController
  * @param {string} url - The URL to fetch
  * @param {number} timeoutMs - Timeout in milliseconds (default: 8000ms)
+ * @param {Object} options - Fetch options (method, headers, body, etc.)
  * @returns {Promise<Response>} - Fetch response
  * @throws {Error} - Throws on timeout or fetch errors
  */
-export async function fetchWithTimeout(url, timeoutMs = DEFAULT_TIMEOUT) {
+export async function fetchWithTimeout(url, timeoutMs = DEFAULT_TIMEOUT, options = {}) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
     try {
-        const response = await fetch(url, { signal: controller.signal });
+        const response = await fetch(url, { 
+            ...options,
+            signal: controller.signal 
+        });
         clearTimeout(timeoutId);
         return response;
     } catch (error) {
@@ -125,7 +129,11 @@ export async function fetchJobAnalytics(apiBase, projectId, timeoutMs = DEFAULT_
  * @throws {Error} - Throws on network or HTTP errors
  */
 export async function refreshJobAnalytics(apiBase, projectId, timeoutMs = 30000) {
-    const response = await fetchWithTimeout(`${apiBase}/api/job-analytics/${projectId}/refresh`, timeoutMs);
+    const response = await fetchWithTimeout(
+        `${apiBase}/api/job-analytics/${projectId}/refresh`, 
+        timeoutMs,
+        { method: 'POST' }
+    );
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         const error = new Error(errorData.message || `HTTP ${response.status}`);

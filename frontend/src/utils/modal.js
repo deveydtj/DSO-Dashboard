@@ -4,6 +4,9 @@
 // WeakMap to store event handlers for cleanup without memory leaks
 const modalHandlers = new WeakMap();
 
+// Store original body overflow value
+let originalBodyOverflow = '';
+
 /**
  * Open a modal by ID
  * @param {string} modalId - The ID of the modal element
@@ -17,14 +20,26 @@ export function openModal(modalId) {
     
     modal.style.display = 'flex';
     
+    // Store original overflow value before modifying
+    if (!originalBodyOverflow) {
+        originalBodyOverflow = document.body.style.overflow || '';
+    }
+    
     // Prevent body scroll when modal is open
     document.body.style.overflow = 'hidden';
     
     // Set up event listeners for closing
     setupModalCloseHandlers(modal);
     
-    // Focus the modal for accessibility
-    modal.focus();
+    // Focus the close button for accessibility (modal itself may not be focusable)
+    const closeBtn = modal.querySelector('.modal-close');
+    if (closeBtn) {
+        closeBtn.focus();
+    } else {
+        // Fallback: add tabindex to modal if no close button
+        modal.setAttribute('tabindex', '-1');
+        modal.focus();
+    }
 }
 
 /**
@@ -40,8 +55,9 @@ export function closeModal(modalId) {
     
     modal.style.display = 'none';
     
-    // Restore body scroll
-    document.body.style.overflow = '';
+    // Restore original body scroll value
+    document.body.style.overflow = originalBodyOverflow;
+    originalBodyOverflow = '';
     
     // Clean up event listeners
     cleanupModalCloseHandlers(modal);
