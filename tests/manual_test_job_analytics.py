@@ -44,7 +44,7 @@ def test_get_analytics(base_url, project_id):
         body = e.read().decode('utf-8')
         try:
             data = json.loads(body)
-        except:
+        except (json.JSONDecodeError, ValueError):
             data = {'error': body}
     except URLError as e:
         raise ConnectionError(f"Could not connect to server: {e.reason}")
@@ -78,7 +78,7 @@ def test_refresh_analytics(base_url, project_id):
         body = e.read().decode('utf-8')
         try:
             data = json.loads(body)
-        except:
+        except (json.JSONDecodeError, ValueError):
             data = {'error': body}
     except URLError as e:
         raise ConnectionError(f"Could not connect to server: {e.reason}")

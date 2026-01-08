@@ -135,8 +135,8 @@ Trigger a manual refresh of analytics for a specific project.
 **Response (409 Conflict):**
 ```json
 {
-  "message": "Refresh already in progress or failed",
-  "status": "in_progress_or_failed"
+  "message": "Refresh already in progress for this project",
+  "status": "in_progress"
 }
 ```
 
@@ -201,31 +201,40 @@ curl http://localhost:8080/api/job-analytics/123 | jq
 curl -X POST http://localhost:8080/api/job-analytics/123/refresh | jq
 ```
 
-### Python Example
+### Python Example (stdlib-only)
 
 ```python
-import requests
+import json
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
 # Fetch analytics
-response = requests.get('http://localhost:8080/api/job-analytics/123')
-if response.status_code == 200:
-    analytics = response.json()
-    print(f"Project: {analytics['project_id']}")
-    print(f"Data points: {len(analytics['data'])}")
-    
-    # Find default-branch pipelines
-    default_branch_pipelines = [
-        item for item in analytics['data'] 
-        if item['is_default_branch']
-    ]
-    print(f"Default-branch pipelines: {len(default_branch_pipelines)}")
+try:
+    request = Request('http://localhost:8080/api/job-analytics/123')
+    with urlopen(request, timeout=10) as response:
+        analytics = json.loads(response.read().decode('utf-8'))
+        print(f"Project: {analytics['project_id']}")
+        print(f"Data points: {len(analytics['data'])}")
+        
+        # Find default-branch pipelines
+        default_branch_pipelines = [
+            item for item in analytics['data'] 
+            if item['is_default_branch']
+        ]
+        print(f"Default-branch pipelines: {len(default_branch_pipelines)}")
+except HTTPError as e:
+    print(f"Error: {e.code}")
 
 # Trigger refresh
-response = requests.post('http://localhost:8080/api/job-analytics/123/refresh')
-if response.status_code == 200:
-    print("Refresh successful")
-elif response.status_code == 409:
-    print("Refresh already in progress")
+try:
+    request = Request('http://localhost:8080/api/job-analytics/123/refresh', method='POST')
+    with urlopen(request, timeout=10) as response:
+        print("Refresh successful")
+except HTTPError as e:
+    if e.code == 409:
+        print("Refresh already in progress")
+    elif e.code == 500:
+        print("Refresh failed")
 ```
 
 ## Troubleshooting
