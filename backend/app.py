@@ -2055,6 +2055,7 @@ def main():
         # No GitLab client or poller in mock mode
         gitlab_client = None
         poller = None
+        analytics_poller = None
         
     else:
         # Normal mode: Initialize GitLab client and poller

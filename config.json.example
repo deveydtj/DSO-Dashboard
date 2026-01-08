@@ -42,6 +42,12 @@
     "global_cap": 200,
     "per_project_cap": 2
   },
+  "job_analytics": {
+    "window_days": 7,
+    "max_pipelines_per_project": 100,
+    "max_job_calls_per_refresh": 50
+  },
+  "job_analytics_refresh_interval_sec": 43200,
   "comment": "group_ids and project_ids can be numeric (e.g., [123, 456]) or strings (e.g., ['proj-1', 'proj-2'])",
   "note1": "Environment variables override config.json values when explicitly set.",
   "note2": "Set GITLAB_GROUP_IDS='' (empty) to clear configured scope at runtime.",
@@ -54,5 +60,7 @@
   "note9": "service_latency: Configuration for service latency monitoring. 'enabled' (bool, default true) enables/disables tracking. 'window_size' (int, default 10) sets the number of samples for running average. 'degradation_threshold_ratio' (float, default 1.5) sets the ratio above average that triggers a warning.",
   "note10": "slo: Service Level Objective configuration for default-branch pipeline success rate. 'enabled' (bool, default false) enables/disables the SLO tile. 'default_branch_success_target' (float, default 0.99) sets the target success rate between 0 and 1 (e.g., 0.99 = 99%). Used to drive error budget view and highlight repos below target.",
   "note11": "slo.enabled: Override with env var SLO_ENABLED. slo.default_branch_success_target: Override with env var SLO_DEFAULT_BRANCH_SUCCESS_TARGET. Must be > 0 and < 1. Values outside this range will cause validation failure at startup.",
-  "note12": "duration_hydration: Configuration for fetching accurate pipeline durations. 'global_cap' (int, default 200) limits total detail API requests per poll cycle. 'per_project_cap' (int, default 2) limits detail requests per project for repo tiles. Override with env vars DURATION_HYDRATION_GLOBAL_CAP and DURATION_HYDRATION_PER_PROJECT_CAP."
+  "note12": "duration_hydration: Configuration for fetching accurate pipeline durations. 'global_cap' (int, default 200) limits total detail API requests per poll cycle. 'per_project_cap' (int, default 2) limits detail requests per project for repo tiles. Override with env vars DURATION_HYDRATION_GLOBAL_CAP and DURATION_HYDRATION_PER_PROJECT_CAP.",
+  "note13": "job_analytics: Configuration for 7-day job performance analytics. 'window_days' (int, default 7) sets the lookback period. 'max_pipelines_per_project' (int, default 100) limits pipelines inspected per project. 'max_job_calls_per_refresh' (int, default 50) limits job API calls per refresh cycle.",
+  "note14": "job_analytics_refresh_interval_sec: Seconds between automatic analytics refreshes (default 43200 = 12 hours, twice per day). Analytics only run if project_ids are configured."
 }
