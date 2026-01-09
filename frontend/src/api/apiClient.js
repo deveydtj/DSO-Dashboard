@@ -10,15 +10,19 @@ export const DEFAULT_TIMEOUT = 8000;
  * Fetch with timeout support using AbortController
  * @param {string} url - The URL to fetch
  * @param {number} timeoutMs - Timeout in milliseconds (default: 8000ms)
+ * @param {Object} options - Fetch options (method, headers, body, etc.)
  * @returns {Promise<Response>} - Fetch response
  * @throws {Error} - Throws on timeout or fetch errors
  */
-export async function fetchWithTimeout(url, timeoutMs = DEFAULT_TIMEOUT) {
+export async function fetchWithTimeout(url, timeoutMs = DEFAULT_TIMEOUT, options = {}) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
     try {
-        const response = await fetch(url, { signal: controller.signal });
+        const response = await fetch(url, { 
+            ...options,
+            signal: controller.signal 
+        });
         clearTimeout(timeoutId);
         return response;
     } catch (error) {
@@ -93,5 +97,51 @@ export async function fetchServices(apiBase, timeoutMs = DEFAULT_TIMEOUT) {
 export async function checkBackendHealth(apiBase, timeoutMs = DEFAULT_TIMEOUT) {
     const response = await fetchWithTimeout(`${apiBase}/api/health`, timeoutMs);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+}
+
+/**
+ * Fetch job performance analytics for a specific project
+ * @param {string} apiBase - Base URL for API (e.g., window.location.origin)
+ * @param {number|string} projectId - GitLab project ID
+ * @param {number} [timeoutMs] - Optional timeout in milliseconds
+ * @returns {Promise<Object>} - Job analytics data with 7-day trend
+ * @throws {Error} - Throws on network or HTTP errors
+ */
+export async function fetchJobAnalytics(apiBase, projectId, timeoutMs = DEFAULT_TIMEOUT) {
+    const response = await fetchWithTimeout(`${apiBase}/api/job-analytics/${projectId}`, timeoutMs);
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const error = new Error(errorData.message || `HTTP ${response.status}`);
+        error.status = response.status;
+        error.data = errorData;
+        throw error;
+    }
+    return response.json();
+}
+
+/**
+ * Trigger a manual refresh of job analytics for a specific project
+ * @param {string} apiBase - Base URL for API (e.g., window.location.origin)
+ * @param {number|string} projectId - GitLab project ID
+ * @param {number} [timeoutMs] - Optional timeout in milliseconds (default: 30 seconds).
+ *                                This should be sufficient for most job analytics computations.
+ *                                Increase if backend processing typically takes longer.
+ * @returns {Promise<Object>} - Refresh result with updated analytics
+ * @throws {Error} - Throws on network or HTTP errors
+ */
+export async function refreshJobAnalytics(apiBase, projectId, timeoutMs = 30000) {
+    const response = await fetchWithTimeout(
+        `${apiBase}/api/job-analytics/${projectId}/refresh`, 
+        timeoutMs,
+        { method: 'POST' }
+    );
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const error = new Error(errorData.message || `HTTP ${response.status}`);
+        error.status = response.status;
+        error.data = errorData;
+        throw error;
+    }
     return response.json();
 }

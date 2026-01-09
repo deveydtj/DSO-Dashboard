@@ -319,9 +319,19 @@ export function createRepoCard(repo, extraClasses = '') {
 
     // Only display description if repo has one
     const descriptionHtml = description ? `<p class="repo-description">${escapeHtml(description)}</p>` : '';
+    
+    // Add actions section with GitLab link and Job Performance button
+    const actionsHtml = `
+        <div class="repo-actions">
+            ${repo.web_url ? `<a href="${repo.web_url}" target="_blank" rel="noopener noreferrer" class="repo-link">View on GitLab →</a>` : ''}
+            <button class="repo-job-performance-btn" data-project-id="${repo.id}" data-project-name="${escapeHtml(repo.name)}" aria-label="View job performance analytics">
+                📊 Job Performance
+            </button>
+        </div>
+    `;
 
     return `
-        <div class="${cardClasses}">
+        <div class="${cardClasses}" data-repo-id="${repo.id}">
             <div class="repo-header">
                 <div>
                     <h3 class="repo-name">${escapeHtml(repo.name)}</h3>
@@ -332,7 +342,7 @@ export function createRepoCard(repo, extraClasses = '') {
             ${indicatorsHtml}
             ${pipelineInfo}
             ${successRateSection}
-            ${repo.web_url ? `<a href="${repo.web_url}" target="_blank" rel="noopener noreferrer" class="repo-link">View on GitLab →</a>` : ''}
+            ${actionsHtml}
         </div>
     `;
 }
@@ -483,4 +493,55 @@ export function renderRepositories(repos, previousState) {
 
     // Return updated state for subsequent refreshes
     return nextState;
+}
+
+// WeakMap to store repo card event delegation handlers
+const repoCardHandlers = new WeakMap();
+
+/**
+ * Attach event handlers to repository cards
+ * Should be called after renderRepositories() to wire up job performance buttons
+ * Uses event delegation to avoid memory leaks on re-render
+ * 
+ * @param {string} apiBase - Base URL for API
+ * @param {Function} openModalCallback - Callback to open job performance modal
+ */
+export function attachRepoCardHandlers(apiBase, openModalCallback) {
+    const container = document.getElementById('repoGrid');
+    if (!container) return;
+    
+    // Remove previous delegated handler if it exists
+    const oldHandler = repoCardHandlers.get(container);
+    if (oldHandler) {
+        container.removeEventListener('click', oldHandler);
+    }
+    
+    // Use event delegation - single listener on container
+    const handler = (event) => {
+        const button = event.target.closest('.repo-job-performance-btn');
+        if (!button || !container.contains(button)) {
+            return;
+        }
+        
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const projectId = button.dataset.projectId;
+        const projectName = button.dataset.projectName;
+        
+        if (!projectId) {
+            console.error('No project ID found on job performance button');
+            return;
+        }
+        
+        // Call the callback with project info
+        openModalCallback({
+            id: parseInt(projectId, 10),
+            name: projectName
+        }, apiBase);
+    };
+    
+    container.addEventListener('click', handler);
+    // Store handler reference in WeakMap for cleanup on next call
+    repoCardHandlers.set(container, handler);
 }

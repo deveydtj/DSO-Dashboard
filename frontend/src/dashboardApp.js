@@ -21,10 +21,11 @@ import {
 // Import view modules
 import { initHeaderToggles } from './views/headerView.js';
 import { renderSummaryKpis } from './views/kpiView.js';
-import { renderRepositories, getRepoKey } from './views/repoView.js';
+import { renderRepositories, getRepoKey, attachRepoCardHandlers } from './views/repoView.js';
 import { renderPipelines } from './views/pipelineView.js';
 import { renderServices } from './views/serviceView.js';
 import { renderAttentionStrip } from './views/attentionView.js';
+import { openJobPerformanceModal } from './views/jobPerformanceView.js';
 
 export class DashboardApp {
     constructor() {
@@ -139,6 +140,8 @@ export class DashboardApp {
             this._updateRepoHistory(data.repositories || []);
             // Render repos and track state for attention animations (status degradation, position changes)
             this.repoState = renderRepositories(data.repositories || [], this.repoState);
+            // Attach event handlers for job performance buttons
+            attachRepoCardHandlers(this.apiBase, openJobPerformanceModal);
             console.log(`✅ Loaded ${data.repositories?.length || 0} repositories`);
             return true;
         } catch (error) {
@@ -147,6 +150,8 @@ export class DashboardApp {
             if (this.cachedData.repos) {
                 console.log('📦 Using cached repositories data');
                 this.repoState = renderRepositories(this.cachedData.repos, this.repoState);
+                // Attach event handlers for cached data too
+                attachRepoCardHandlers(this.apiBase, openJobPerformanceModal);
             } else {
                 showError('Failed to load repositories', 'repoGrid');
             }
