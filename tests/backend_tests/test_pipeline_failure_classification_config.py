@@ -22,7 +22,7 @@ class TestPipelineFailureClassificationConfigDefaults(unittest.TestCase):
     
     def test_default_config_structure(self):
         """Test DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG structure"""
-        config = server.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG
+        config = config_loader.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG
         
         self.assertIn('enabled', config)
         self.assertIn('max_job_calls_per_poll', config)
@@ -31,12 +31,12 @@ class TestPipelineFailureClassificationConfigDefaults(unittest.TestCase):
     
     def test_default_enabled_is_true(self):
         """Test that classification is enabled by default"""
-        config = server.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG
+        config = config_loader.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG
         self.assertTrue(config['enabled'])
     
     def test_default_budget_is_reasonable(self):
         """Test that default budget is safe and reasonable"""
-        config = server.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG
+        config = config_loader.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG
         budget = config['max_job_calls_per_poll']
         
         # Budget should be positive
@@ -61,8 +61,8 @@ class TestPipelineFailureClassificationConfigLoading(unittest.TestCase):
             
             self.assertIn('pipeline_failure_classification', config)
             pfc = config['pipeline_failure_classification']
-            self.assertEqual(pfc['enabled'], server.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['enabled'])
-            self.assertEqual(pfc['max_job_calls_per_poll'], server.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['max_job_calls_per_poll'])
+            self.assertEqual(pfc['enabled'], config_loader.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['enabled'])
+            self.assertEqual(pfc['max_job_calls_per_poll'], config_loader.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['max_job_calls_per_poll'])
     
     def test_partial_section_fills_missing_with_defaults(self):
         """Test that partial section is filled with defaults for missing keys"""
@@ -90,7 +90,7 @@ class TestPipelineFailureClassificationConfigLoading(unittest.TestCase):
                 
                 pfc = config['pipeline_failure_classification']
                 self.assertEqual(pfc['enabled'], False)  # From config
-                self.assertEqual(pfc['max_job_calls_per_poll'], server.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['max_job_calls_per_poll'])  # Default
+                self.assertEqual(pfc['max_job_calls_per_poll'], config_loader.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['max_job_calls_per_poll'])  # Default
 
 
 class TestPipelineFailureClassificationConfigEnvVars(unittest.TestCase):
@@ -171,7 +171,7 @@ class TestPipelineFailureClassificationConfigEnvVars(unittest.TestCase):
                 # Should use default when env var is invalid
                 self.assertEqual(
                     config['pipeline_failure_classification']['max_job_calls_per_poll'],
-                    server.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['max_job_calls_per_poll']
+                    config_loader.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['max_job_calls_per_poll']
                 )
 
 
@@ -223,8 +223,8 @@ class TestPipelineFailureClassificationConfigTypeSafety(unittest.TestCase):
                     
                     # Should use defaults when config is invalid
                     pfc = config['pipeline_failure_classification']
-                    self.assertEqual(pfc['enabled'], server.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['enabled'])
-                    self.assertEqual(pfc['max_job_calls_per_poll'], server.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['max_job_calls_per_poll'])
+                    self.assertEqual(pfc['enabled'], config_loader.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['enabled'])
+                    self.assertEqual(pfc['max_job_calls_per_poll'], config_loader.DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['max_job_calls_per_poll'])
 
 
 if __name__ == '__main__':

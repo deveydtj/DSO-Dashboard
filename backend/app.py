@@ -47,7 +47,6 @@ from backend.gitlab_client import (
     JOB_ANALYTICS_MAX_PIPELINES_PER_PROJECT,
     JOB_ANALYTICS_MAX_JOB_CALLS_PER_REFRESH,
     MIN_VALUES_FOR_PERCENTILE,
-    PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL,
 )
 from backend.services import (
     get_service_statuses,
