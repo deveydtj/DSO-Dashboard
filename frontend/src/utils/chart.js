@@ -5,6 +5,10 @@
 const CHART_PADDING = { top: 30, right: 30, bottom: 60, left: 70 };
 const DASH_PATTERN = [5, 5];
 
+// Duration scaling thresholds (in seconds)
+const THRESHOLD_HOURS = 3600; // >= 1 hour, use hours
+const THRESHOLD_MINUTES = 300; // >= 5 minutes, use minutes
+
 // Cache for CSS variables to avoid repeated DOM queries
 let cssVariableCache = null;
 let cssVariableSignature = '';
@@ -49,6 +53,38 @@ function getCachedCSSVariables() {
 export function clearChartCssVariableCache() {
     cssVariableCache = null;
     cssVariableSignature = '';
+}
+
+/**
+ * Determine the best unit for displaying duration values
+ * @param {Array} data - Array of data points with duration fields
+ * @returns {Object} - Object with unit name, label, and divisor
+ */
+export function determineDurationUnit(data) {
+    // Extract all valid duration values
+    const allDurations = [];
+    data.forEach(d => {
+        if (d.avg_duration != null && d.avg_duration > 0) allDurations.push(d.avg_duration);
+        if (d.p95_duration != null && d.p95_duration > 0) allDurations.push(d.p95_duration);
+        if (d.p99_duration != null && d.p99_duration > 0) allDurations.push(d.p99_duration);
+    });
+    
+    // If no valid durations, default to seconds
+    if (allDurations.length === 0) {
+        return { unit: 's', label: 'seconds', divisor: 1 };
+    }
+    
+    // Find maximum duration to determine appropriate unit
+    const maxDuration = Math.max(...allDurations);
+    
+    // Select unit based on thresholds
+    if (maxDuration >= THRESHOLD_HOURS) {
+        return { unit: 'hr', label: 'hours', divisor: 3600 };
+    } else if (maxDuration >= THRESHOLD_MINUTES) {
+        return { unit: 'min', label: 'minutes', divisor: 60 };
+    } else {
+        return { unit: 's', label: 'seconds', divisor: 1 };
+    }
 }
 
 /**
@@ -130,8 +166,11 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
         return;
     }
     
-    const maxDuration = Math.max(...allDurations);
-    const minDuration = Math.min(...allDurations);
+    // Determine the appropriate unit for display
+    const durationScale = determineDurationUnit(data);
+    
+    const maxDuration = Math.max(...allDurations) / durationScale.divisor;
+    const minDuration = Math.min(...allDurations) / durationScale.divisor;
     
     // Create unified time range for consistent x-axis scaling
     const now = Date.now();
@@ -177,12 +216,16 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
         ctx.lineTo(CHART_PADDING.left + chartWidth, y);
         ctx.stroke();
         
-        // Y-axis labels (duration in seconds)
+        // Y-axis labels (duration in selected unit)
         const value = maxDuration - (maxDuration - minDuration) * i / 5;
         ctx.fillStyle = '#a0a0b0';
         ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
         ctx.textAlign = 'right';
-        ctx.fillText(`${Math.round(value)}s`, CHART_PADDING.left - 10, y + 4);
+        // Format value with 1 decimal place if using minutes or hours
+        const formattedValue = (durationScale.divisor === 1) 
+            ? Math.round(value) 
+            : value.toFixed(1);
+        ctx.fillText(`${formattedValue} ${durationScale.unit}`, CHART_PADDING.left - 10, y + 4);
     }
     
     // Draw axes
@@ -232,22 +275,23 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
      * @param {Array} sourceData - Array of data points
      * @param {Object} colors - Object with avg, p95, and p99 keys
      * @param {boolean} isDashed - Whether to use dashed lines
+     * @param {number} divisor - Scaling divisor for duration values
      */
-    const renderDurationSeries = (sourceData, colors, isDashed = false) => {
+    const renderDurationSeries = (sourceData, colors, isDashed = false, divisor = 1) => {
         if (sourceData.length === 0) return;
         
-        // Prepare data series with timestamps
+        // Prepare data series with timestamps and scaled values
         const avgData = sourceData
             .filter(d => d.avg_duration != null && d.avg_duration > 0)
-            .map(d => ({ value: d.avg_duration, timestamp: d.created_at }));
+            .map(d => ({ value: d.avg_duration / divisor, timestamp: d.created_at }));
         
         const p95Data = sourceData
             .filter(d => d.p95_duration != null && d.p95_duration > 0)
-            .map(d => ({ value: d.p95_duration, timestamp: d.created_at }));
+            .map(d => ({ value: d.p95_duration / divisor, timestamp: d.created_at }));
         
         const p99Data = sourceData
             .filter(d => d.p99_duration != null && d.p99_duration > 0)
-            .map(d => ({ value: d.p99_duration, timestamp: d.created_at }));
+            .map(d => ({ value: d.p99_duration / divisor, timestamp: d.created_at }));
         
         // Set dash pattern if needed
         if (isDashed) {
@@ -273,14 +317,14 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
         avg: cssVars.accentInfo,
         p95: cssVars.accentWarning,
         p99: cssVars.accentError
-    }, false);
+    }, false, durationScale.divisor);
     
     // Render MR lines (dashed)
     renderDurationSeries(mrData, {
         avg: cssVars.accentPrimary,
         p95: cssVars.accentWarning,
         p99: cssVars.accentError
-    }, true);
+    }, true, durationScale.divisor);
     
     // X-axis labels (date/time) - use time-based positioning
     ctx.fillStyle = '#a0a0b0';
@@ -320,13 +364,13 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
     ctx.textAlign = 'left';
     ctx.fillText(title, CHART_PADDING.left, CHART_PADDING.top - 10);
     
-    // Y-axis label
+    // Y-axis label with dynamic unit
     ctx.save();
     ctx.translate(20, CHART_PADDING.top + chartHeight / 2);
     ctx.rotate(-Math.PI / 2);
     ctx.fillStyle = '#a0a0b0';
     ctx.font = '12px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('Duration (seconds)', 0, 0);
+    ctx.fillText(`Duration (${durationScale.label})`, 0, 0);
     ctx.restore();
 }
