@@ -64,6 +64,7 @@ from backend.config_loader import (
     DEFAULT_SERVICE_LATENCY_CONFIG,
     DEFAULT_SLO_CONFIG,
     DEFAULT_DURATION_HYDRATION_CONFIG,
+    DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG,
     VALID_LOG_LEVELS,
 )
 from backend.services import DEFAULT_SERVICE_CHECK_TIMEOUT
@@ -321,6 +322,9 @@ class BackgroundPoller(threading.Thread):
         duration_hydration_config: Configuration for pipeline duration hydration
             - global_cap (int): Max total detail requests per poll cycle
             - per_project_cap (int): Max detail requests per project (for tiles)
+        pipeline_failure_classification_config: Configuration for pipeline failure classification
+            - enabled (bool): Whether to classify pipeline failures
+            - max_job_calls_per_poll (int): Max job list API calls per poll cycle
         _service_latency_history: Internal dict tracking per-service latency state.
             Keyed by service ID (string). Each entry contains:
             - average_ms (float): Running average latency in milliseconds
@@ -331,7 +335,7 @@ class BackgroundPoller(threading.Thread):
     
     def __init__(self, gitlab_client, poll_interval_sec, group_ids=None, project_ids=None,
                  external_services=None, service_latency_config=None, slo_config=None,
-                 duration_hydration_config=None):
+                 duration_hydration_config=None, pipeline_failure_classification_config=None):
         super().__init__(daemon=True)
         self.gitlab_client = gitlab_client
         self.poll_interval = poll_interval_sec
@@ -348,6 +352,9 @@ class BackgroundPoller(threading.Thread):
         # Duration hydration configuration for fetching accurate pipeline durations
         # Use shallow copy to prevent mutation of the module-level constant
         self.duration_hydration_config = dict(duration_hydration_config) if duration_hydration_config else dict(DEFAULT_DURATION_HYDRATION_CONFIG)
+        # Pipeline failure classification configuration for failure domain analysis
+        # Use shallow copy to prevent mutation of the module-level constant
+        self.pipeline_failure_classification_config = dict(pipeline_failure_classification_config) if pipeline_failure_classification_config else dict(DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG)
         self.running = True
         self.stop_event = threading.Event()
         self.poll_counter = 0
@@ -914,8 +921,8 @@ class BackgroundPoller(threading.Thread):
         - Merge request pipelines (detected via source == 'merge_request_event')
         - Other branch pipelines
         
-        Applies strict budget (PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL)
-        to limit API calls per poll cycle.
+        Applies strict budget (from pipeline_failure_classification_config) to limit API calls per poll cycle.
+        Skips classification entirely if config has enabled=False.
         
         Args:
             pipelines: List of pipeline dicts (mutated in place with classification fields)
@@ -942,6 +949,18 @@ class BackgroundPoller(threading.Thread):
         
         if not pipelines:
             logger.debug(f"{log_prefix}No pipelines to classify")
+            return
+        
+        # Check if classification is enabled
+        if not self.pipeline_failure_classification_config.get('enabled', True):
+            logger.debug(f"{log_prefix}Pipeline failure classification disabled by config")
+            # Add is_merge_request field to all pipelines (cheap, no API calls)
+            for pipeline in pipelines:
+                pipeline['is_merge_request'] = is_merge_request_pipeline(pipeline)
+                # Set classification fields to None for all pipelines
+                pipeline['failure_domain'] = None
+                pipeline['failure_category'] = None
+                pipeline['classification_attempted'] = None
             return
         
         # Build project_id -> default_branch map
@@ -995,8 +1014,8 @@ class BackgroundPoller(threading.Thread):
         # (newer pipelines first)
         candidates.sort(key=lambda c: (c['priority'], -(c['pipeline'].get('id') or 0)))
         
-        # Apply budget cap
-        budget = PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL
+        # Apply budget cap from config
+        budget = self.pipeline_failure_classification_config.get('max_job_calls_per_poll', DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['max_job_calls_per_poll'])
         if len(candidates) > budget:
             logger.info(f"{log_prefix}Pipeline classification: capping from {len(candidates)} to {budget} requests")
             candidates = candidates[:budget]
@@ -2376,7 +2395,8 @@ def main():
             external_services=config.get('external_services', []),
             service_latency_config=config.get('service_latency'),
             slo_config=config.get('slo'),
-            duration_hydration_config=config.get('duration_hydration')
+            duration_hydration_config=config.get('duration_hydration'),
+            pipeline_failure_classification_config=config.get('pipeline_failure_classification')
         )
         poller.start()
         logger.info(f"Background poller started (interval: {config['poll_interval_sec']}s)")
