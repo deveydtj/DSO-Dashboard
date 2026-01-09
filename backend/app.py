@@ -1768,6 +1768,34 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             ref_filter = query_params.get('ref', [None])[0] if query_params.get('ref') else None
             project_filter = query_params.get('project', [None])[0] if query_params.get('project') else None
             
+            # DSO-mode filtering parameters (default dso_only=false for backward compatibility)
+            # dso_only: when true, filter to infra failures and verified unknowns only
+            # scope: 'default_branch' or 'all' (default 'all' to include MR pipelines)
+            try:
+                dso_only_str = query_params.get('dso_only', ['false'])[0]
+                # Normalize to lowercase for comparison after extracting
+                dso_only = dso_only_str.lower() in ('true', '1', 'yes')
+            except (ValueError, IndexError, AttributeError):
+                dso_only = False  # Backward-compatible default: no DSO-only filtering
+            
+            # Extract scope parameter with default
+            try:
+                scope = query_params.get('scope', ['all'])[0]
+            except (IndexError, AttributeError):
+                scope = 'all'
+            
+            # Validate scope parameter
+            if scope not in ('default_branch', 'all'):
+                logger.info(f"Invalid scope parameter received: {scope!r}")
+                self.send_json_response(
+                    {
+                        'error': "Invalid 'scope' parameter. Allowed values are 'default_branch' and 'all'.",
+                        'is_mock': MOCK_MODE_ENABLED
+                    },
+                    status=400,
+                )
+                return
+            
             # Build project_id to metadata map for enriching pipelines
             project_metadata_map = {}
             if projects:
@@ -1782,9 +1810,10 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                         }
             
             # Format and filter pipeline data
+            # Apply filters in order: user filters (status, ref, project) -> scope -> DSO -> limit
             filtered_pipelines = []
             for pipeline in pipelines:
-                # Apply filters
+                # Apply user filters first
                 if status_filter and pipeline.get('status') != status_filter:
                     continue
                 if ref_filter and pipeline.get('ref') != ref_filter:
@@ -1804,6 +1833,40 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     if (project_filter_lower not in project_name.lower() and 
                         project_filter_lower not in project_path.lower()):
                         continue
+                
+                # Apply scope filter (default_branch vs all)
+                if scope == 'default_branch' and not is_default_branch:
+                    continue
+                
+                # Apply DSO filtering if enabled (after user filters, before limit)
+                # DSO-mode includes only:
+                # - failure_domain == 'infra' (infrastructure failures)
+                # - OR (failure_domain == 'unknown' AND classification_attempted == true) (verified unknowns)
+                # - Non-failing pipelines (no failure_domain set)
+                # Explicitly excludes:
+                # - failure_domain == 'code' (application code failures)
+                # - failure_domain == 'unclassified' (no classification attempted)
+                if dso_only:
+                    failure_domain = pipeline.get('failure_domain')
+                    classification_attempted = pipeline.get('classification_attempted')
+                    
+                    # If pipeline has a failure_domain, apply DSO filtering rules
+                    # Treat both None and empty string as "no failure domain" (non-failing pipeline)
+                    if failure_domain:
+                        # Exclude code failures and unclassified failures
+                        if failure_domain == 'code':
+                            continue
+                        if failure_domain == 'unclassified':
+                            continue
+                        
+                        # For 'unknown' domain, only include if classification was attempted (verified unknown)
+                        # Use explicit check for True to handle None case correctly
+                        if failure_domain == 'unknown' and classification_attempted is not True:
+                            continue
+                        
+                        # 'infra' domain is always included
+                        # 'unknown' with classification_attempted=True is included (verified unknown)
+                    # Non-failing pipelines (failure_domain is None or empty string) are always included
                 
                 formatted = {
                     'id': pipeline.get('id'),
