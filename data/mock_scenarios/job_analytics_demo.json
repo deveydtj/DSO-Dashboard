@@ -1,0 +1,271 @@
+{
+  "summary": {
+    "total_repositories": 3,
+    "active_repositories": 3,
+    "total_pipelines": 30,
+    "successful_pipelines": 27,
+    "failed_pipelines": 2,
+    "running_pipelines": 1,
+    "pending_pipelines": 0,
+    "pipeline_success_rate": 0.9,
+    "last_updated": "2026-01-09T16:00:00Z"
+  },
+  "repositories": [
+    {
+      "id": 1,
+      "name": "fast-service",
+      "path_with_namespace": "demo/fast-service",
+      "description": "A fast microservice with short job durations (seconds)",
+      "web_url": "https://gitlab.com/demo/fast-service",
+      "last_activity_at": "2026-01-09T15:30:00Z",
+      "star_count": 15,
+      "forks_count": 3,
+      "open_issues_count": 2,
+      "default_branch": "main",
+      "last_pipeline_status": "success",
+      "recent_success_rate": 0.95
+    },
+    {
+      "id": 2,
+      "name": "medium-service",
+      "path_with_namespace": "demo/medium-service",
+      "description": "A medium service with moderate job durations (minutes)",
+      "web_url": "https://gitlab.com/demo/medium-service",
+      "last_activity_at": "2026-01-09T15:45:00Z",
+      "star_count": 22,
+      "forks_count": 5,
+      "open_issues_count": 4,
+      "default_branch": "main",
+      "last_pipeline_status": "success",
+      "recent_success_rate": 0.92
+    },
+    {
+      "id": 3,
+      "name": "slow-service",
+      "path_with_namespace": "demo/slow-service",
+      "description": "A large service with long job durations (hours)",
+      "web_url": "https://gitlab.com/demo/slow-service",
+      "last_activity_at": "2026-01-09T14:00:00Z",
+      "star_count": 8,
+      "forks_count": 2,
+      "open_issues_count": 6,
+      "default_branch": "main",
+      "last_pipeline_status": "success",
+      "recent_success_rate": 0.88
+    }
+  ],
+  "pipelines": [
+    {
+      "id": 101,
+      "project_id": 1,
+      "project_name": "fast-service",
+      "project_path": "demo/fast-service",
+      "status": "success",
+      "ref": "main",
+      "sha": "abc123",
+      "web_url": "https://gitlab.com/demo/fast-service/-/pipelines/101",
+      "created_at": "2026-01-09T15:30:00Z",
+      "updated_at": "2026-01-09T15:32:00Z",
+      "duration": 120
+    },
+    {
+      "id": 201,
+      "project_id": 2,
+      "project_name": "medium-service",
+      "project_path": "demo/medium-service",
+      "status": "success",
+      "ref": "main",
+      "sha": "def456",
+      "web_url": "https://gitlab.com/demo/medium-service/-/pipelines/201",
+      "created_at": "2026-01-09T15:45:00Z",
+      "updated_at": "2026-01-09T15:55:00Z",
+      "duration": 600
+    },
+    {
+      "id": 301,
+      "project_id": 3,
+      "project_name": "slow-service",
+      "project_path": "demo/slow-service",
+      "status": "success",
+      "ref": "main",
+      "sha": "ghi789",
+      "web_url": "https://gitlab.com/demo/slow-service/-/pipelines/301",
+      "created_at": "2026-01-09T14:00:00Z",
+      "updated_at": "2026-01-09T16:00:00Z",
+      "duration": 7200
+    }
+  ],
+  "job_analytics": {
+    "1": {
+      "project_id": 1,
+      "window_days": 7,
+      "computed_at": "2026-01-09T16:00:00Z",
+      "data": [
+        {
+          "created_at": "2026-01-09T10:00:00Z",
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 45,
+          "p95_duration": 78,
+          "p99_duration": 95
+        },
+        {
+          "created_at": "2026-01-09T11:00:00Z",
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 52,
+          "p95_duration": 85,
+          "p99_duration": 102
+        },
+        {
+          "created_at": "2026-01-09T12:00:00Z",
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 48,
+          "p95_duration": 80,
+          "p99_duration": 98
+        },
+        {
+          "created_at": "2026-01-09T13:00:00Z",
+          "pipeline_ref": "feature-x",
+          "pipeline_status": "success",
+          "is_default_branch": false,
+          "is_merge_request": true,
+          "avg_duration": 55,
+          "p95_duration": 88,
+          "p99_duration": 105
+        },
+        {
+          "created_at": "2026-01-09T14:00:00Z",
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 50,
+          "p95_duration": 82,
+          "p99_duration": 100
+        }
+      ]
+    },
+    "2": {
+      "project_id": 2,
+      "window_days": 7,
+      "computed_at": "2026-01-09T16:00:00Z",
+      "data": [
+        {
+          "created_at": "2026-01-09T10:00:00Z",
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 420,
+          "p95_duration": 650,
+          "p99_duration": 780
+        },
+        {
+          "created_at": "2026-01-09T11:00:00Z",
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 450,
+          "p95_duration": 680,
+          "p99_duration": 820
+        },
+        {
+          "created_at": "2026-01-09T12:00:00Z",
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 440,
+          "p95_duration": 670,
+          "p99_duration": 800
+        },
+        {
+          "created_at": "2026-01-09T13:00:00Z",
+          "pipeline_ref": "feature-y",
+          "pipeline_status": "success",
+          "is_default_branch": false,
+          "is_merge_request": true,
+          "avg_duration": 480,
+          "p95_duration": 720,
+          "p99_duration": 860
+        },
+        {
+          "created_at": "2026-01-09T14:00:00Z",
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 460,
+          "p95_duration": 690,
+          "p99_duration": 830
+        }
+      ]
+    },
+    "3": {
+      "project_id": 3,
+      "window_days": 7,
+      "computed_at": "2026-01-09T16:00:00Z",
+      "data": [
+        {
+          "created_at": "2026-01-09T08:00:00Z",
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 5400,
+          "p95_duration": 7200,
+          "p99_duration": 8100
+        },
+        {
+          "created_at": "2026-01-09T10:00:00Z",
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 5200,
+          "p95_duration": 6900,
+          "p99_duration": 7800
+        },
+        {
+          "created_at": "2026-01-09T12:00:00Z",
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 5600,
+          "p95_duration": 7500,
+          "p99_duration": 8400
+        },
+        {
+          "created_at": "2026-01-09T13:00:00Z",
+          "pipeline_ref": "feature-z",
+          "pipeline_status": "success",
+          "is_default_branch": false,
+          "is_merge_request": true,
+          "avg_duration": 5800,
+          "p95_duration": 7800,
+          "p99_duration": 8700
+        },
+        {
+          "created_at": "2026-01-09T14:00:00Z",
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 5300,
+          "p95_duration": 7100,
+          "p99_duration": 7950
+        }
+      ]
+    }
+  }
+}
