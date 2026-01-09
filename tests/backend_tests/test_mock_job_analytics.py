@@ -81,12 +81,13 @@ class TestMockJobAnalyticsLoading(unittest.TestCase):
         
         # Simulate loading job_analytics into STATE
         job_analytics_data = {}
+        job_analytics_timestamps = {}
         for project_id_str, analytics in mock_data['job_analytics'].items():
             try:
                 project_id = int(project_id_str)
                 job_analytics_data[project_id] = analytics
-                with server.STATE_LOCK:
-                    server.STATE['job_analytics_last_updated'][project_id] = datetime.now()
+                # Collect timestamps to apply after the atomic state update
+                job_analytics_timestamps[project_id] = datetime.now()
             except (ValueError, TypeError):
                 # Skip any invalid project_id keys in the mock data
                 pass
@@ -97,6 +98,12 @@ class TestMockJobAnalyticsLoading(unittest.TestCase):
             'summary': mock_data['summary'],
             'job_analytics': job_analytics_data
         })
+        
+        # Update timestamps after atomic state update (matching production code pattern)
+        if job_analytics_timestamps:
+            with server.STATE_LOCK:
+                for project_id, timestamp in job_analytics_timestamps.items():
+                    server.STATE['job_analytics_last_updated'][project_id] = timestamp
         
         # Verify job_analytics was loaded correctly
         job_analytics = server.get_state('job_analytics')
