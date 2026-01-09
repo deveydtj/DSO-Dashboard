@@ -1789,7 +1789,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 logger.info(f"Invalid scope parameter received: {scope!r}")
                 self.send_json_response(
                     {
-                        'error': "Invalid 'scope' parameter. Allowed values are 'default_branch' and 'all'."
+                        'error': "Invalid 'scope' parameter. Allowed values are 'default_branch' and 'all'.",
+                        'is_mock': MOCK_MODE_ENABLED
                     },
                     status=400,
                 )
@@ -1850,7 +1851,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     classification_attempted = pipeline.get('classification_attempted')
                     
                     # If pipeline has a failure_domain, apply DSO filtering rules
-                    # Handle both None and empty string cases
+                    # Treat both None and empty string as "no failure domain" (non-failing pipeline)
                     if failure_domain:
                         # Exclude code failures and unclassified failures
                         if failure_domain == 'code':
@@ -1865,7 +1866,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                         
                         # 'infra' domain is always included
                         # 'unknown' with classification_attempted=True is included (verified unknown)
-                    # Non-failing pipelines (failure_domain is None) are always included
+                    # Non-failing pipelines (failure_domain is None or empty string) are always included
                 
                 formatted = {
                     'id': pipeline.get('id'),

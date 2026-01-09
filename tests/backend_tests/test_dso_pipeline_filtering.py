@@ -322,6 +322,7 @@ class TestDSOPipelineFiltering(unittest.TestCase):
         self.assertEqual(status, 400, "Invalid scope should return 400 status")
         self.assertIn('error', response, "Response should contain error message")
         self.assertIn('scope', response['error'].lower(), "Error message should mention 'scope'")
+        self.assertIn('is_mock', response, "Response should contain is_mock field for consistency")
     
     def test_backward_compatibility_no_query_params(self):
         """Test backward compatibility: no query params returns all pipelines (dso_only=false default)"""
