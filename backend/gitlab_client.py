@@ -36,6 +36,10 @@ DEFAULT_BRANCH_FETCH_LIMIT = 20  # Fetch 20 to reliably get 10 meaningful
 # Similar to duration_hydration_config but for job-level failure analysis
 JOB_DETAIL_HYDRATION_BUDGET = 10  # Max job detail requests per poll cycle
 
+# Pipeline failure classification budget (limits API calls per poll cycle)
+# Used for classifying pipeline failures across all refs (default + MR + other)
+PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL = 20  # Max job list API calls per poll cycle for classification
+
 # Job performance analytics constants
 JOB_ANALYTICS_WINDOW_DAYS = 7     # 7-day window for job performance analytics
 JOB_ANALYTICS_MAX_PIPELINES_PER_PROJECT = 100  # Max pipelines to inspect per project
@@ -295,6 +299,112 @@ def is_merge_request_pipeline(pipeline):
     """
     source = pipeline.get('source', '')
     return source == 'merge_request_event'
+
+
+def classify_pipeline_failure(pipeline, jobs=None):
+    """Classify a pipeline failure into failure domain and category
+    
+    Analyzes a failed pipeline and its jobs to determine:
+    - failure_domain: High-level categorization (infra/code/unknown/unclassified)
+    - failure_category: Specific failure type (pod_timeout, oom, script_failure, etc.)
+    - classification_attempted: Whether classification was attempted (False if jobs unavailable)
+    
+    Failure domain mapping:
+    - 'infra': Infrastructure failures (pod_timeout, oom, timeout, runner_system)
+    - 'code': Code/script failures (script_failure)
+    - 'unknown': Classification attempted but category is unknown
+    - 'unclassified': Classification not attempted (jobs data unavailable)
+    
+    Args:
+        pipeline: Pipeline dict from GitLab API
+        jobs: Optional list of job dicts for this pipeline. If None, returns unclassified.
+        
+    Returns:
+        dict: Classification result with keys:
+            - failure_domain (str): 'infra', 'code', 'unknown', or 'unclassified'
+            - failure_category (str): Job category from classify_job_failure() or None
+            - classification_attempted (bool): True if jobs were analyzed, False otherwise
+    
+    Examples:
+        >>> # MR pipeline with pod timeout
+        >>> pipeline = {'id': 123, 'status': 'failed', 'source': 'merge_request_event'}
+        >>> jobs = [{'status': 'failed', 'failure_reason': 'waiting for pod: timed out'}]
+        >>> classify_pipeline_failure(pipeline, jobs)
+        {'failure_domain': 'infra', 'failure_category': 'pod_timeout', 'classification_attempted': True}
+        
+        >>> # Script failure
+        >>> jobs = [{'status': 'failed', 'failure_reason': 'script_failure'}]
+        >>> classify_pipeline_failure(pipeline, jobs)
+        {'failure_domain': 'code', 'failure_category': 'script_failure', 'classification_attempted': True}
+        
+        >>> # Jobs unavailable
+        >>> classify_pipeline_failure(pipeline, None)
+        {'failure_domain': 'unclassified', 'failure_category': None, 'classification_attempted': False}
+    """
+    # If jobs are unavailable (None or API error), return unclassified
+    if jobs is None:
+        return {
+            'failure_domain': 'unclassified',
+            'failure_category': None,
+            'classification_attempted': False
+        }
+    
+    # If no jobs (empty list), classification was attempted but no jobs found
+    if not jobs:
+        return {
+            'failure_domain': 'unknown',
+            'failure_category': 'unknown',
+            'classification_attempted': True
+        }
+    
+    # Find first failed job chronologically (root cause)
+    # Sort by created_at, then by id for stable ordering
+    jobs_sorted = sorted(
+        jobs,
+        key=lambda j: (
+            j.get('created_at') or '',
+            j.get('id', float('inf'))
+        )
+    )
+    
+    # Find first failed job
+    failed_job = None
+    for job in jobs_sorted:
+        if job.get('status') == 'failed':
+            failed_job = job
+            break
+    
+    # If no failed job found, return unknown (pipeline failed but no job failed?)
+    if not failed_job:
+        return {
+            'failure_domain': 'unknown',
+            'failure_category': 'unknown',
+            'classification_attempted': True
+        }
+    
+    # Classify the failed job
+    job_classification = classify_job_failure(failed_job)
+    failure_category = job_classification['category']
+    
+    # Map category to domain
+    # Infrastructure failures: pod_timeout, oom, timeout, runner_system
+    if failure_category in ('pod_timeout', 'oom', 'timeout', 'runner_system'):
+        failure_domain = 'infra'
+    # Code failures: script_failure
+    elif failure_category == 'script_failure':
+        failure_domain = 'code'
+    # Unknown category: classification attempted but pattern not recognized
+    elif failure_category == 'unknown':
+        failure_domain = 'unknown'
+    else:
+        # Defensive: any other category falls to unknown
+        failure_domain = 'unknown'
+    
+    return {
+        'failure_domain': failure_domain,
+        'failure_category': failure_category,
+        'classification_attempted': True
+    }
 
 
 def filter_valid_jobs(jobs):

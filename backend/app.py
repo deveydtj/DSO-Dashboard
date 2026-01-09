@@ -47,6 +47,7 @@ from backend.gitlab_client import (
     JOB_ANALYTICS_MAX_PIPELINES_PER_PROJECT,
     JOB_ANALYTICS_MAX_JOB_CALLS_PER_REFRESH,
     MIN_VALUES_FOR_PERCENTILE,
+    PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL,
 )
 from backend.services import (
     get_service_statuses,
@@ -448,6 +449,15 @@ class BackgroundPoller(threading.Thread):
         enriched_projects = self._enrich_projects_with_failure_intelligence(
             enriched_projects,
             pipeline_data['per_project'],
+            poll_id
+        )
+        
+        # Classify failing pipelines across all refs (default + MR + other)
+        # This adds is_merge_request field to ALL pipelines, and adds failure_domain,
+        # failure_category, classification_attempted fields to failing pipelines
+        self._classify_failing_pipelines(
+            pipeline_data['all_pipelines'],
+            enriched_projects,
             poll_id
         )
         
@@ -892,6 +902,152 @@ class BackgroundPoller(threading.Thread):
             per_project_pipelines,
             poll_id
         )
+    
+    def _classify_failing_pipelines(self, pipelines, projects, poll_id=None):
+        """Classify failure domain for failing pipelines across all refs
+        
+        Fetches job details for a bounded number of failing pipelines and classifies
+        them into failure domains (infra/code/unknown/unclassified).
+        
+        Supports all refs:
+        - Default branch pipelines (highest priority)
+        - Merge request pipelines (detected via source == 'merge_request_event')
+        - Other branch pipelines
+        
+        Applies strict budget (PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL)
+        to limit API calls per poll cycle.
+        
+        Args:
+            pipelines: List of pipeline dicts (mutated in place with classification fields)
+            projects: List of project dicts (for default_branch lookup)
+            poll_id: Optional poll cycle identifier for logging context
+        
+        Side effects:
+            Mutates pipeline dicts in place:
+            - is_merge_request (bool): Added to ALL pipelines to indicate whether the
+              pipeline is for a merge request
+            - failure_domain (str|None): Added to failing pipelines only; set to 'infra',
+              'code', 'unknown', 'unclassified', or None for non-failing pipelines
+            - failure_category (str|None): Added to failing pipelines only; set to a job
+              category or None for non-failing pipelines
+            - classification_attempted (bool|None): Added to failing pipelines only;
+              whether classification was attempted, or None for non-failing pipelines
+        """
+        from backend.gitlab_client import (
+            classify_pipeline_failure,
+            is_merge_request_pipeline
+        )
+        
+        log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
+        
+        if not pipelines:
+            logger.debug(f"{log_prefix}No pipelines to classify")
+            return
+        
+        # Build project_id -> default_branch map
+        project_default_branches = {}
+        for project in (projects or []):
+            project_id = project.get('id')
+            if project_id is not None:
+                project_default_branches[project_id] = project.get('default_branch', DEFAULT_BRANCH_NAME)
+        
+        # Add is_merge_request field to all pipelines (cheap, no API calls)
+        for pipeline in pipelines:
+            pipeline['is_merge_request'] = is_merge_request_pipeline(pipeline)
+        
+        # Identify failing pipelines that need classification
+        # Only classify failed/stuck pipelines
+        candidates = []
+        for pipeline in pipelines:
+            status = pipeline.get('status')
+            if status not in ('failed', 'stuck'):
+                # Non-failing pipeline - set fields to None
+                pipeline['failure_domain'] = None
+                pipeline['failure_category'] = None
+                pipeline['classification_attempted'] = None
+                continue
+            
+            # Determine priority for this pipeline
+            project_id = pipeline.get('project_id')
+            default_branch = project_default_branches.get(project_id, DEFAULT_BRANCH_NAME)
+            pipeline_ref = pipeline.get('ref', '')
+            is_default_branch = (pipeline_ref == default_branch)
+            is_merge_request = pipeline.get('is_merge_request', False)
+            
+            # Priority order: default branch > MR > other
+            if is_default_branch:
+                priority = 1
+            elif is_merge_request:
+                priority = 2
+            else:
+                priority = 3
+            
+            candidates.append({
+                'pipeline': pipeline,
+                'priority': priority
+            })
+        
+        if not candidates:
+            logger.debug(f"{log_prefix}No failing pipelines to classify")
+            return
+        
+        # Sort by priority (lower number = higher priority), then by pipeline ID descending
+        # (newer pipelines first)
+        candidates.sort(key=lambda c: (c['priority'], -(c['pipeline'].get('id') or 0)))
+        
+        # Apply budget cap
+        budget = PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL
+        if len(candidates) > budget:
+            logger.info(f"{log_prefix}Pipeline classification: capping from {len(candidates)} to {budget} requests")
+            candidates = candidates[:budget]
+        
+        # Log breakdown by priority level for operational visibility
+        priority_counts = {1: 0, 2: 0, 3: 0}
+        for candidate in candidates:
+            priority = candidate['priority']
+            if priority in priority_counts:
+                priority_counts[priority] += 1
+        
+        logger.info(
+            f"{log_prefix}Pipeline classification: classifying {len(candidates)} failing pipelines "
+            f"({priority_counts[1]} default-branch, {priority_counts[2]} MR, {priority_counts[3]} other)"
+        )
+        
+        # Classify each candidate
+        classified_count = 0
+        skipped_error = 0
+        
+        for candidate in candidates:
+            pipeline = candidate['pipeline']
+            project_id = pipeline.get('project_id')
+            pipeline_id = pipeline.get('id')
+            
+            try:
+                # Fetch jobs for this pipeline
+                jobs = self.gitlab_client.get_pipeline_jobs(project_id, pipeline_id)
+                
+                # Classify the failure
+                classification = classify_pipeline_failure(pipeline, jobs)
+                
+                # Add classification fields to pipeline
+                pipeline['failure_domain'] = classification['failure_domain']
+                pipeline['failure_category'] = classification['failure_category']
+                pipeline['classification_attempted'] = classification['classification_attempted']
+                
+                if classification['classification_attempted']:
+                    classified_count += 1
+                else:
+                    skipped_error += 1
+                    
+            except Exception as e:
+                logger.warning(f"{log_prefix}Error classifying pipeline {pipeline_id}: {e}")
+                # Set unclassified fields on error
+                pipeline['failure_domain'] = 'unclassified'
+                pipeline['failure_category'] = None
+                pipeline['classification_attempted'] = False
+                skipped_error += 1
+        
+        logger.info(f"{log_prefix}Pipeline classification complete: classified={classified_count}, skipped_error={skipped_error}")
     
     def _calculate_summary(self, projects, pipelines):
         """Calculate summary statistics
@@ -1665,6 +1821,11 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     'is_default_branch': is_default_branch,
                     'has_runner_issues': project_metadata.get('has_runner_issues', False),
                     'has_failing_jobs': project_metadata.get('has_failing_jobs', False),
+                    # Pipeline failure classification fields (added for issue requirement)
+                    'is_merge_request': pipeline.get('is_merge_request'),
+                    'failure_domain': pipeline.get('failure_domain'),
+                    'failure_category': pipeline.get('failure_category'),
+                    'classification_attempted': pipeline.get('classification_attempted'),
                 }
                 # Add MR-specific fields only if present (for merge request pipelines)
                 if 'original_ref' in pipeline:
