@@ -1768,6 +1768,20 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             ref_filter = query_params.get('ref', [None])[0] if query_params.get('ref') else None
             project_filter = query_params.get('project', [None])[0] if query_params.get('project') else None
             
+            # DSO-mode filtering parameters (default dso_only=true for safe defaults)
+            # dso_only: when true, filter to infra failures and verified unknowns only
+            # scope: 'default_branch' or 'all' (default 'all' to include MR pipelines)
+            try:
+                dso_only_str = query_params.get('dso_only', ['true'])[0].lower()
+                dso_only = dso_only_str in ('true', '1', 'yes')
+            except (ValueError, IndexError, AttributeError):
+                dso_only = True  # Safe default
+            
+            scope = query_params.get('scope', ['all'])[0] if query_params.get('scope') else 'all'
+            if scope not in ('default_branch', 'all'):
+                logger.warning(f"Invalid scope parameter: {scope}, defaulting to 'all'")
+                scope = 'all'
+            
             # Build project_id to metadata map for enriching pipelines
             project_metadata_map = {}
             if projects:
@@ -1782,9 +1796,10 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                         }
             
             # Format and filter pipeline data
+            # Apply filters in order: user filters (status, ref, project) -> DSO filter -> limit
             filtered_pipelines = []
             for pipeline in pipelines:
-                # Apply filters
+                # Apply user filters first
                 if status_filter and pipeline.get('status') != status_filter:
                     continue
                 if ref_filter and pipeline.get('ref') != ref_filter:
@@ -1804,6 +1819,38 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                     if (project_filter_lower not in project_name.lower() and 
                         project_filter_lower not in project_path.lower()):
                         continue
+                
+                # Apply scope filter (default_branch vs all)
+                if scope == 'default_branch' and not is_default_branch:
+                    continue
+                
+                # Apply DSO filtering if enabled (after user filters, before limit)
+                # DSO-mode includes only:
+                # - failure_domain == 'infra' (infrastructure failures)
+                # - OR (failure_domain == 'unknown' AND classification_attempted == true) (verified unknowns)
+                # Explicitly excludes:
+                # - failure_domain == 'code' (application code failures)
+                # - failure_domain == 'unclassified' (no classification attempted)
+                # - Non-failing pipelines are included (they don't have failure_domain set)
+                if dso_only:
+                    failure_domain = pipeline.get('failure_domain')
+                    classification_attempted = pipeline.get('classification_attempted')
+                    
+                    # If pipeline has a failure_domain, apply DSO filtering rules
+                    if failure_domain is not None:
+                        # Exclude code failures and unclassified failures
+                        if failure_domain == 'code':
+                            continue
+                        if failure_domain == 'unclassified':
+                            continue
+                        
+                        # For 'unknown' domain, only include if classification was attempted (verified unknown)
+                        if failure_domain == 'unknown' and not classification_attempted:
+                            continue
+                        
+                        # 'infra' domain is always included
+                        # 'unknown' with classification_attempted=True is included (verified unknown)
+                    # Non-failing pipelines (failure_domain is None) are always included
                 
                 formatted = {
                     'id': pipeline.get('id'),
