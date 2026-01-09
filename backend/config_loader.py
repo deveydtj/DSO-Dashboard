@@ -159,6 +159,20 @@ DEFAULT_DURATION_HYDRATION_CONFIG = {
 }
 
 
+# Default pipeline failure classification configuration
+# These values control how pipeline failures are classified into domains
+# (infrastructure vs code) by fetching job-level failure details.
+#
+# The budget is intentionally conservative to prevent rate limiting:
+# - max_job_calls_per_poll (20): With a 60s poll interval, this averages ~0.33 req/s
+#   which is well under GitLab's rate limits. Focuses on most recent/critical failures.
+# - enabled (True): Classification is enabled by default to provide failure insights
+DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG = {
+    'enabled': True,                  # Whether to classify pipeline failures
+    'max_job_calls_per_poll': 20,    # Max job list API calls per poll cycle
+}
+
+
 def load_config():
     """Load configuration from config.json or environment variables
     
@@ -401,6 +415,45 @@ def load_config():
     
     config['duration_hydration'] = duration_hydration
     
+    # Pipeline failure classification configuration
+    # Controls whether failing pipelines are classified into domains (infra vs code)
+    # by fetching job-level failure details.
+    # Environment variables override config.json values.
+    pipeline_failure_classification_raw = config.get('pipeline_failure_classification', {})
+    if not isinstance(pipeline_failure_classification_raw, dict):
+        logger.warning(f"Invalid pipeline_failure_classification (not a dict): {type(pipeline_failure_classification_raw).__name__}. Using defaults.")
+        pipeline_failure_classification_raw = {}
+    
+    pipeline_failure_classification = {}
+    
+    # enabled: bool, default True - when False, classification is skipped entirely
+    if 'PIPELINE_FAILURE_CLASSIFICATION_ENABLED' in os.environ:
+        pipeline_failure_classification['enabled'] = parse_bool_config(
+            os.environ['PIPELINE_FAILURE_CLASSIFICATION_ENABLED'],
+            DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['enabled'],
+            'PIPELINE_FAILURE_CLASSIFICATION_ENABLED'
+        )
+    else:
+        raw_enabled = pipeline_failure_classification_raw.get('enabled', DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['enabled'])
+        pipeline_failure_classification['enabled'] = parse_bool_config(
+            raw_enabled, DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['enabled'], 'pipeline_failure_classification.enabled'
+        )
+    
+    # max_job_calls_per_poll: int, max job list API calls per poll cycle for classification
+    if 'PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL' in os.environ:
+        pipeline_failure_classification['max_job_calls_per_poll'] = parse_int_config(
+            os.environ['PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL'],
+            DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['max_job_calls_per_poll'],
+            'PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL'
+        )
+    else:
+        raw_max_calls = pipeline_failure_classification_raw.get('max_job_calls_per_poll', DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['max_job_calls_per_poll'])
+        pipeline_failure_classification['max_job_calls_per_poll'] = parse_int_config(
+            raw_max_calls, DEFAULT_PIPELINE_FAILURE_CLASSIFICATION_CONFIG['max_job_calls_per_poll'], 'pipeline_failure_classification.max_job_calls_per_poll'
+        )
+    
+    config['pipeline_failure_classification'] = pipeline_failure_classification
+    
     # Ensure lists are clean (filter config.json values that might have empty strings or numeric IDs)
     if isinstance(config['group_ids'], list):
         config['group_ids'] = [str(gid).strip() for gid in config['group_ids'] if gid and str(gid).strip()]
@@ -429,6 +482,8 @@ def load_config():
     logger.info(f"  SLO: enabled={slo_config['enabled']}, default_branch_success_target={slo_config['default_branch_success_target']}")
     dh_config = config['duration_hydration']
     logger.info(f"  Duration hydration: global_cap={dh_config['global_cap']}, per_project_cap={dh_config['per_project_cap']}")
+    pfc_config = config['pipeline_failure_classification']
+    logger.info(f"  Pipeline failure classification: enabled={pfc_config['enabled']}, max_job_calls_per_poll={pfc_config['max_job_calls_per_poll']}")
     logger.info(f"  API token: {'***' if config['api_token'] else 'NOT SET'}")
     
     return config

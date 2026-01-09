@@ -489,7 +489,12 @@ class TestClassifyFailingPipelinesIntegration(unittest.TestCase):
             {'status': 'failed', 'failure_reason': 'script_failure', 'id': 1, 'created_at': '2024-01-01T00:00:00Z'}
         ]
         
-        poller = BackgroundPoller(mock_client, 60)
+        # Create poller with budget limited to 1
+        poller = BackgroundPoller(
+            mock_client, 
+            60,
+            pipeline_failure_classification_config={'enabled': True, 'max_job_calls_per_poll': 1}
+        )
         
         # Create pipelines with different ref types
         pipelines = [
@@ -504,9 +509,7 @@ class TestClassifyFailingPipelinesIntegration(unittest.TestCase):
             {'id': 103, 'default_branch': 'main'}
         ]
         
-        # Patch the constant to limit budget to 1
-        with patch('backend.app.PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL', 1):
-            poller._classify_failing_pipelines(pipelines, projects, poll_id='test')
+        poller._classify_failing_pipelines(pipelines, projects, poll_id='test')
         
         # Only one pipeline should be classified
         self.assertEqual(mock_client.get_pipeline_jobs.call_count, 1)

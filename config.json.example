@@ -42,6 +42,10 @@
     "global_cap": 200,
     "per_project_cap": 2
   },
+  "pipeline_failure_classification": {
+    "enabled": true,
+    "max_job_calls_per_poll": 20
+  },
   "job_analytics": {
     "window_days": 7,
     "max_pipelines_per_project": 100,
@@ -62,5 +66,6 @@
   "note11": "slo.enabled: Override with env var SLO_ENABLED. slo.default_branch_success_target: Override with env var SLO_DEFAULT_BRANCH_SUCCESS_TARGET. Must be > 0 and < 1. Values outside this range will cause validation failure at startup.",
   "note12": "duration_hydration: Configuration for fetching accurate pipeline durations. 'global_cap' (int, default 200) limits total detail API requests per poll cycle. 'per_project_cap' (int, default 2) limits detail requests per project for repo tiles. Override with env vars DURATION_HYDRATION_GLOBAL_CAP and DURATION_HYDRATION_PER_PROJECT_CAP.",
   "note13": "job_analytics: Configuration for 7-day job performance analytics. 'window_days' (int, default 7) sets the lookback period. 'max_pipelines_per_project' (int, default 100) limits pipelines inspected per project. 'max_job_calls_per_refresh' (int, default 50) limits job API calls per refresh cycle.",
-  "note14": "job_analytics_refresh_interval_sec: Seconds between automatic analytics refreshes (default 43200 = 12 hours, twice per day). Analytics only run if project_ids are configured."
+  "note14": "job_analytics_refresh_interval_sec: Seconds between automatic analytics refreshes (default 43200 = 12 hours, twice per day). Analytics only run if project_ids are configured.",
+  "note15": "pipeline_failure_classification: Configuration for classifying pipeline failures into domains (infra vs code). 'enabled' (bool, default true) enables/disables classification. 'max_job_calls_per_poll' (int, default 20) limits job API calls per poll cycle. Override with env vars PIPELINE_FAILURE_CLASSIFICATION_ENABLED and PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL."
 }
