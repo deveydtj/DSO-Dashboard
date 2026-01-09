@@ -13,7 +13,6 @@ from unittest.mock import patch
 # Add parent directory to path to import backend module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
-from backend import app as server
 from backend import config_loader
 
 
@@ -189,6 +188,9 @@ class TestPipelineFailureClassificationConfigLogging(unittest.TestCase):
             
             with patch.object(config_loader.logger, 'info') as mock_info:
                 config = config_loader.load_config()
+                
+                # Sanity check: config should contain pipeline_failure_classification section
+                self.assertIn('pipeline_failure_classification', config)
                 
                 # Check that a log message was made about pipeline_failure_classification
                 info_calls = [str(call) for call in mock_info.call_args_list]
