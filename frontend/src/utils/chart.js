@@ -225,7 +225,7 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
         const formattedValue = (durationScale.divisor === 1) 
             ? Math.round(value) 
             : value.toFixed(1);
-        ctx.fillText(`${formattedValue}${durationScale.unit}`, CHART_PADDING.left - 10, y + 4);
+        ctx.fillText(`${formattedValue} ${durationScale.unit}`, CHART_PADDING.left - 10, y + 4);
     }
     
     // Draw axes
