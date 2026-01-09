@@ -65,8 +65,18 @@ export function formatDuration(seconds) {
  * @returns {string} - Formatted date and time
  */
 export function formatTimestamp(dateString) {
+    // Handle missing or empty values gracefully
+    if (dateString === null || dateString === undefined || dateString === '') {
+        return '--';
+    }
+
     try {
         const date = new Date(dateString);
+        
+        // Guard against invalid dates (e.g., from null/undefined or bad strings)
+        if (isNaN(date.getTime())) {
+            return '--';
+        }
         
         // Format as "Jan 20, 2024 10:30 AM"
         const options = {
@@ -80,7 +90,7 @@ export function formatTimestamp(dateString) {
         
         return date.toLocaleString('en-US', options);
     } catch (error) {
-        return dateString;
+        return '--';
     }
 }
 

@@ -2311,3 +2311,7 @@ body.compact .sparkline--repo .sparkline-bar--pipeline {
     color: var(--accent-error);
 }
 
+.chart-tooltip-raw-seconds {
+    margin-top: 4px;
+}
+

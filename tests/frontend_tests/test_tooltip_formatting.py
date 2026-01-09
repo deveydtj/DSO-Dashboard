@@ -43,6 +43,39 @@ console.log(JSON.stringify({{ formatted: result }}));
         # Should not be the original ISO string
         self.assertNotEqual(formatted, '2024-01-20T10:30:00.000Z')
     
+    def test_format_timestamp_handles_null_value(self):
+        """Test that formatTimestamp handles null values gracefully."""
+        script = f"""
+import {{ formatTimestamp }} from 'file://{self.formatters_path}';
+
+const result = formatTimestamp(null);
+console.log(JSON.stringify({{ formatted: result }}));
+"""
+        result = self.run_node_script(script)
+        self.assertEqual(result['formatted'], '--')
+    
+    def test_format_timestamp_handles_undefined_value(self):
+        """Test that formatTimestamp handles undefined values gracefully."""
+        script = f"""
+import {{ formatTimestamp }} from 'file://{self.formatters_path}';
+
+const result = formatTimestamp(undefined);
+console.log(JSON.stringify({{ formatted: result }}));
+"""
+        result = self.run_node_script(script)
+        self.assertEqual(result['formatted'], '--')
+    
+    def test_format_timestamp_handles_invalid_date_string(self):
+        """Test that formatTimestamp handles invalid date strings gracefully."""
+        script = f"""
+import {{ formatTimestamp }} from 'file://{self.formatters_path}';
+
+const result = formatTimestamp('invalid-date-string');
+console.log(JSON.stringify({{ formatted: result }}));
+"""
+        result = self.run_node_script(script)
+        self.assertEqual(result['formatted'], '--')
+    
     def test_format_duration_with_scale_seconds(self):
         """Test formatDurationWithScale with seconds unit."""
         script = f"""

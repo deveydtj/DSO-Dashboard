@@ -62,7 +62,7 @@ export function buildTooltipContent(dataPoint, metricName, metricValue, scale, p
     html += '<div class="chart-tooltip-metric">';
     html += `<div class="chart-tooltip-metric-name">${escapeHtml(metricLabel)}</div>`;
     html += `<div class="chart-tooltip-metric-value ${metricClass}">${escapeHtml(duration.scaled)}</div>`;
-    html += '<div class="chart-tooltip-row" style="margin-top: 4px;">';
+    html += '<div class="chart-tooltip-row chart-tooltip-raw-seconds">';
     html += '<span class="chart-tooltip-label">Raw seconds:</span>';
     html += `<span class="chart-tooltip-value">${escapeHtml(duration.raw)}</span>`;
     html += '</div>';

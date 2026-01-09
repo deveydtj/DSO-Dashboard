@@ -226,9 +226,22 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
                 if (document.contains(canvas)) {
                     renderJobPerformanceChart(canvas, analytics.data, { window_days: analytics.window_days || 7 });
                     
+                    // Remove old handlers before re-attaching to prevent duplicates
+                    const handlers = mouseHandlers.get(canvas);
+                    if (handlers) {
+                        canvas.removeEventListener('mousemove', handlers.mousemove);
+                        canvas.removeEventListener('mouseout', handlers.mouseout);
+                    }
+                    
                     // Re-attach mouse handlers after resize
                     canvas.addEventListener('mousemove', mousemoveHandler);
                     canvas.addEventListener('mouseout', mouseoutHandler);
+                    
+                    // Update stored handlers
+                    mouseHandlers.set(canvas, {
+                        mousemove: mousemoveHandler,
+                        mouseout: mouseoutHandler
+                    });
                 }
                 resizeTimeouts.delete(canvas);
             }, 200);
