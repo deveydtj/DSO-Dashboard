@@ -1851,7 +1851,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                             continue
                         
                         # For 'unknown' domain, only include if classification was attempted (verified unknown)
-                        if failure_domain == 'unknown' and not classification_attempted:
+                        # Use explicit check for True to handle None case correctly
+                        if failure_domain == 'unknown' and classification_attempted is not True:
                             continue
                         
                         # 'infra' domain is always included
