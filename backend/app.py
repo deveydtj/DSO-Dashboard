@@ -1768,15 +1768,15 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             ref_filter = query_params.get('ref', [None])[0] if query_params.get('ref') else None
             project_filter = query_params.get('project', [None])[0] if query_params.get('project') else None
             
-            # DSO-mode filtering parameters (default dso_only=true for safe defaults)
+            # DSO-mode filtering parameters (default dso_only=false for backward compatibility)
             # dso_only: when true, filter to infra failures and verified unknowns only
             # scope: 'default_branch' or 'all' (default 'all' to include MR pipelines)
             try:
-                dso_only_str = query_params.get('dso_only', ['true'])[0]
+                dso_only_str = query_params.get('dso_only', ['false'])[0]
                 # Normalize to lowercase for comparison after extracting
                 dso_only = dso_only_str.lower() in ('true', '1', 'yes')
             except (ValueError, IndexError, AttributeError):
-                dso_only = True  # Safe default
+                dso_only = False  # Backward-compatible default: no DSO-only filtering
             
             # Extract scope parameter with default
             try:
@@ -1784,9 +1784,16 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             except (IndexError, AttributeError):
                 scope = 'all'
             
+            # Validate scope parameter
             if scope not in ('default_branch', 'all'):
-                logger.warning(f"Invalid scope parameter: {scope}, defaulting to 'all'")
-                scope = 'all'
+                logger.info(f"Invalid scope parameter received: {scope!r}")
+                self.send_json_response(
+                    {
+                        'error': "Invalid 'scope' parameter. Allowed values are 'default_branch' and 'all'."
+                    },
+                    status=400,
+                )
+                return
             
             # Build project_id to metadata map for enriching pipelines
             project_metadata_map = {}

@@ -3,22 +3,21 @@
 Tests for DSO-mode filtering in /api/pipelines endpoint
 
 This test suite validates:
-1. Default behavior (dso_only=true) filters to DSO-relevant pipelines only
-2. dso_only=false returns all pipelines (subject to other filters)
-3. Verified unknown failures (unknown + classification_attempted=true) are included
-4. Unclassified failures (unclassified or unknown without classification) are excluded
-5. Code failures are excluded when dso_only=true
-6. Infra failures are always included when dso_only=true
-7. Non-failing pipelines are always included
-8. Scope filtering (default_branch vs all) works correctly
+1. Default behavior (dso_only=false) returns all pipelines for backward compatibility
+2. dso_only=true filters to DSO-relevant pipelines only
+3. dso_only=false returns all pipelines (subject to other filters)
+4. Verified unknown failures (unknown + classification_attempted=true) are included
+5. Unclassified failures (unclassified or unknown without classification) are excluded
+6. Code failures are excluded when dso_only=true
+7. Infra failures are always included when dso_only=true
+8. Non-failing pipelines are always included
+9. Scope filtering (default_branch vs all) works correctly
 """
 
 import unittest
 import sys
 import os
-import json
 from unittest.mock import MagicMock
-from datetime import datetime
 
 # Add parent directory to path to import backend.app
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -94,9 +93,27 @@ class TestDSOPipelineFiltering(unittest.TestCase):
         pass
     
     def test_default_dso_only_filters_correctly(self):
-        """Test default behavior (dso_only=true) includes only DSO-relevant pipelines"""
+        """Test default behavior (dso_only=false) returns all pipelines"""
         handler = MagicMock(spec=server.DashboardRequestHandler)
-        handler.path = '/api/pipelines'  # No query params, should default to dso_only=true
+        handler.path = '/api/pipelines'  # No query params, should default to dso_only=false
+        handler.send_json_response = MagicMock()
+        
+        server.DashboardRequestHandler.handle_pipelines(handler)
+        
+        handler.send_json_response.assert_called_once()
+        response = handler.send_json_response.call_args[0][0]
+        
+        # Verify response structure
+        self.assertIn('pipelines', response)
+        pipelines = response['pipelines']
+        
+        # Default behavior should return all 11 pipelines (no filtering)
+        self.assertEqual(len(pipelines), 11, f"Expected 11 pipelines with default dso_only=false, got {len(pipelines)}")
+    
+    def test_dso_only_true_filters_correctly(self):
+        """Test dso_only=true filters to DSO-relevant pipelines only"""
+        handler = MagicMock(spec=server.DashboardRequestHandler)
+        handler.path = '/api/pipelines?dso_only=true'
         handler.send_json_response = MagicMock()
         
         server.DashboardRequestHandler.handle_pipelines(handler)
@@ -125,7 +142,7 @@ class TestDSOPipelineFiltering(unittest.TestCase):
         self.assertNotIn(11, pipeline_ids, "Unclassified failure should be excluded")
         
         # Total should be 6 (1 success + 1 running + 2 infra + 2 verified unknown)
-        self.assertEqual(len(pipelines), 6, f"Expected 6 pipelines, got {len(pipelines)}")
+        self.assertEqual(len(pipelines), 6, f"Expected 6 pipelines with dso_only=true, got {len(pipelines)}")
     
     def test_dso_only_false_returns_all_pipelines(self):
         """Test dso_only=false returns all pipelines (no DSO filtering)"""
@@ -288,8 +305,8 @@ class TestDSOPipelineFiltering(unittest.TestCase):
             # Should not filter (11 pipelines expected)
             self.assertEqual(len(pipelines), 11, f"dso_only={dso_value} should not filter (11 pipelines)")
     
-    def test_invalid_scope_parameter_defaults_to_all(self):
-        """Test invalid scope parameter defaults to 'all' with warning"""
+    def test_invalid_scope_parameter_returns_400(self):
+        """Test invalid scope parameter returns 400 error"""
         handler = MagicMock(spec=server.DashboardRequestHandler)
         handler.path = '/api/pipelines?scope=invalid&dso_only=false'
         handler.send_json_response = MagicMock()
@@ -297,14 +314,17 @@ class TestDSOPipelineFiltering(unittest.TestCase):
         server.DashboardRequestHandler.handle_pipelines(handler)
         
         handler.send_json_response.assert_called_once()
-        response = handler.send_json_response.call_args[0][0]
-        pipelines = response['pipelines']
+        # Should be called with status=400
+        call_args = handler.send_json_response.call_args
+        response = call_args[0][0]
+        status = call_args[1].get('status', 200) if len(call_args) > 1 else 200
         
-        # Should default to scope=all (include all 11 pipelines)
-        self.assertEqual(len(pipelines), 11, "Invalid scope should default to 'all'")
+        self.assertEqual(status, 400, "Invalid scope should return 400 status")
+        self.assertIn('error', response, "Response should contain error message")
+        self.assertIn('scope', response['error'].lower(), "Error message should mention 'scope'")
     
     def test_backward_compatibility_no_query_params(self):
-        """Test backward compatibility: no query params applies default DSO filtering"""
+        """Test backward compatibility: no query params returns all pipelines (dso_only=false default)"""
         handler = MagicMock(spec=server.DashboardRequestHandler)
         handler.path = '/api/pipelines'  # No query params at all
         handler.send_json_response = MagicMock()
@@ -315,9 +335,9 @@ class TestDSOPipelineFiltering(unittest.TestCase):
         response = handler.send_json_response.call_args[0][0]
         pipelines = response['pipelines']
         
-        # Default behavior should filter (dso_only=true by default)
-        # Should get 6 pipelines (non-failing + infra + verified unknown)
-        self.assertEqual(len(pipelines), 6, "Default behavior should apply DSO filtering")
+        # Default behavior should NOT filter (dso_only=false by default for backward compatibility)
+        # Should get all 11 pipelines
+        self.assertEqual(len(pipelines), 11, "Default behavior should NOT apply DSO filtering for backward compatibility")
 
 
 if __name__ == '__main__':
