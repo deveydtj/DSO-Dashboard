@@ -12,38 +12,66 @@ const HTTP_CONFLICT = 409;
 const HTTP_INTERNAL_SERVER_ERROR = 500;
 const HTTP_SERVICE_UNAVAILABLE = 503;
 
+// WeakMap to store refresh button handlers for cleanup
+const refreshButtonHandlers = new WeakMap();
+
+// WeakMap to store error timeout IDs for cleanup
+const errorTimeouts = new WeakMap();
+
+// WeakMap to store resize handlers for cleanup
+const resizeHandlers = new WeakMap();
+
+// WeakMap to store resize timeout IDs for cleanup
+const resizeTimeouts = new WeakMap();
+
+// Flag to prevent multiple concurrent modal opens
+let isModalOpening = false;
+
 /**
  * Open the job performance modal for a specific project
  * @param {Object} project - Project object with id, name, etc.
  * @param {string} apiBase - Base URL for API
  */
 export async function openJobPerformanceModal(project, apiBase) {
-    const modalId = 'jobPerformanceModal';
-    
-    // Update modal title with project name
-    const modal = document.getElementById(modalId);
-    if (!modal) {
-        console.error('Job performance modal not found in DOM');
+    // Prevent concurrent opens
+    if (isModalOpening) {
+        console.warn('Modal is already opening, ignoring duplicate request');
         return;
     }
     
-    const modalTitle = modal.querySelector('.modal-title');
-    if (modalTitle) {
-        // Use textContent for safety (already safe, but consistent with codebase practices)
-        modalTitle.textContent = `Job Performance: ${project.name}`;
-    }
+    isModalOpening = true;
     
-    // Open modal and show loading state
-    openModal(modalId);
-    setModalLoading(modalId, 'Loading job analytics...');
-    
-    // Fetch analytics data
     try {
-        const analytics = await fetchJobAnalytics(apiBase, project.id);
-        renderJobAnalytics(modalId, analytics, project, apiBase);
-    } catch (error) {
-        console.error('Error fetching job analytics:', error);
-        handleJobAnalyticsError(modalId, error, project, apiBase);
+        const modalId = 'jobPerformanceModal';
+        
+        // Update modal title with project name
+        const modal = document.getElementById(modalId);
+        if (!modal) {
+            console.error('Job performance modal not found in DOM');
+            return;
+        }
+        
+        const modalTitle = modal.querySelector('.modal-title');
+        if (modalTitle) {
+            // Use textContent for safety (already safe, but consistent with codebase practices)
+            modalTitle.textContent = `Job Performance: ${project.name}`;
+        }
+    
+        // Open modal and show loading state
+        openModal(modalId);
+        setModalLoading(modalId, 'Loading job analytics...');
+        
+        // Fetch analytics data
+        try {
+            const analytics = await fetchJobAnalytics(apiBase, project.id);
+            renderJobAnalytics(modalId, analytics, project, apiBase);
+        } catch (error) {
+            console.error('Error fetching job analytics:', error);
+            handleJobAnalyticsError(modalId, error, project, apiBase);
+        }
+    } finally {
+        // Reset flag after operation completes (success or error)
+        isModalOpening = false;
     }
 }
 
@@ -105,9 +133,9 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
             </div>
         </div>
         <div class="chart-info">
-            <strong>Window:</strong> ${analytics.window_days || 7} days | 
-            <strong>Pipelines:</strong> ${analytics.data.length} | 
-            <strong>Computed:</strong> ${formatComputedTime(analytics.computed_at)}
+            <strong>Window:</strong> ${escapeHtml(String(analytics.window_days || 7))} days | 
+            <strong>Pipelines:</strong> ${escapeHtml(String(analytics.data.length))} | 
+            <strong>Computed:</strong> ${escapeHtml(formatComputedTime(analytics.computed_at))}
         </div>
     `;
     
@@ -115,8 +143,8 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
     
     // Render chart on canvas
     const canvas = document.getElementById('jobPerformanceChart');
-    if (canvas) {
-        renderJobPerformanceChart(canvas, analytics.data);
+    if (canvas && analytics.data) {
+        renderJobPerformanceChart(canvas, analytics.data, { window_days: analytics.window_days || 7 });
         
         // Clean up old resize handler and timeout if exists
         const oldResizeHandler = resizeHandlers.get(canvas);
@@ -184,7 +212,7 @@ function handleJobAnalyticsError(modalId, error, project, apiBase) {
             <div class="modal-error-message">${escapeHtml(message)}</div>
         </div>
         ${showRefresh ? `
-            <div style="margin-top: 1rem; text-align: center;">
+            <div class="modal-error-actions">
                 ${renderRefreshButton(project.id, apiBase, '🔄 Compute Analytics')}
             </div>
         ` : ''}
@@ -250,6 +278,16 @@ export function cleanupJobPerformanceModal() {
             clearTimeout(errorTimeout);
             errorTimeouts.delete(modal);
         }
+        
+        // Clean up refresh button handlers
+        const refreshBtn = modal.querySelector('[data-action="refresh"]');
+        if (refreshBtn) {
+            const refreshHandler = refreshButtonHandlers.get(refreshBtn);
+            if (refreshHandler) {
+                refreshBtn.removeEventListener('click', refreshHandler);
+                refreshButtonHandlers.delete(refreshBtn);
+            }
+        }
     }
 }
 
@@ -303,8 +341,7 @@ function attachRefreshHandler(modalId, project, apiBase) {
             const modalBody = modal.querySelector('.modal-body');
             if (modalBody) {
                 const errorDiv = document.createElement('div');
-                errorDiv.className = 'modal-error';
-                errorDiv.style.marginBottom = '1rem';
+                errorDiv.className = 'modal-error embedded-error';
                 
                 let errorMessage = 'Failed to refresh analytics. Please try again.';
                 

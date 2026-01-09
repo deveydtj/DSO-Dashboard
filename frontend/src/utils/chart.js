@@ -7,22 +7,48 @@ const DASH_PATTERN = [5, 5];
 
 // Cache for CSS variables to avoid repeated DOM queries
 let cssVariableCache = null;
+let cssVariableSignature = '';
 
 /**
- * Get CSS variables for chart colors with caching
+ * Get CSS variables for chart colors with caching.
+ * The cache is automatically refreshed if the underlying CSS variables change.
  * @returns {Object} - Object with color values
  */
 function getCachedCSSVariables() {
-    if (!cssVariableCache) {
-        const rootStyles = getComputedStyle(document.documentElement);
-        cssVariableCache = {
-            accentInfo: rootStyles.getPropertyValue('--accent-info').trim() || '#3b82f6',
-            accentWarning: rootStyles.getPropertyValue('--accent-warning').trim() || '#f59e0b',
-            accentError: rootStyles.getPropertyValue('--accent-error').trim() || '#ef4444',
-            accentPrimary: rootStyles.getPropertyValue('--accent-primary').trim() || '#6366f1'
-        };
+    const rootStyles = getComputedStyle(document.documentElement);
+
+    // Build a simple signature of the current raw CSS variable values
+    const currentSignature = [
+        rootStyles.getPropertyValue('--accent-info'),
+        rootStyles.getPropertyValue('--accent-warning'),
+        rootStyles.getPropertyValue('--accent-error'),
+        rootStyles.getPropertyValue('--accent-primary')
+    ].join('|');
+
+    // If the signature matches, return the existing cache
+    if (cssVariableCache && cssVariableSignature === currentSignature) {
+        return cssVariableCache;
     }
+
+    // Signature changed or cache is empty: rebuild the cache
+    cssVariableSignature = currentSignature;
+    cssVariableCache = {
+        accentInfo: (rootStyles.getPropertyValue('--accent-info') || '').trim() || '#3b82f6',
+        accentWarning: (rootStyles.getPropertyValue('--accent-warning') || '').trim() || '#f59e0b',
+        accentError: (rootStyles.getPropertyValue('--accent-error') || '').trim() || '#ef4444',
+        accentPrimary: (rootStyles.getPropertyValue('--accent-primary') || '').trim() || '#6366f1'
+    };
+
     return cssVariableCache;
+}
+
+/**
+ * Clear the cached CSS variables so that colors are re-read on next use.
+ * This can be called by theme switchers when CSS custom properties change.
+ */
+export function clearChartCssVariableCache() {
+    cssVariableCache = null;
+    cssVariableSignature = '';
 }
 
 /**
@@ -45,6 +71,10 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
     
     // Set canvas size based on container
     const container = canvas.parentElement;
+    if (!container) {
+        console.error('Canvas has no parent container');
+        return;
+    }
     const width = container.clientWidth - 20; // Padding
     const height = container.clientHeight - 20;
     
@@ -104,7 +134,20 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
     const minDuration = Math.min(...allDurations);
     
     // Create unified time range for consistent x-axis scaling
-    const allTimestamps = data.map(d => new Date(d.created_at).getTime()).filter(t => !isNaN(t));
+    const now = Date.now();
+    const TEN_YEARS_MS = 10 * 365 * 24 * 60 * 60 * 1000;
+    const allTimestamps = data
+        .map(d => new Date(d.created_at).getTime())
+        .filter(t => !isNaN(t) && Math.abs(t - now) <= TEN_YEARS_MS);
+    
+    if (allTimestamps.length === 0) {
+        ctx.fillStyle = '#a0a0b0';
+        ctx.font = '16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No valid timestamp data', width / 2, height / 2);
+        return;
+    }
+    
     const minTime = Math.min(...allTimestamps);
     const maxTime = Math.max(...allTimestamps);
     const timeRange = maxTime - minTime;
@@ -267,11 +310,15 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
         });
     }
     
-    // Chart title
+    // Chart title with dynamic window days
+    const windowDays = (typeof options.window_days === 'number' && options.window_days > 0) 
+        ? options.window_days 
+        : 7;
+    const title = `Job Duration Trend (${windowDays} day${windowDays === 1 ? '' : 's'})`;
     ctx.fillStyle = '#e0e0e0';
     ctx.font = 'bold 14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('Job Duration Trend (7 days)', CHART_PADDING.left, CHART_PADDING.top - 10);
+    ctx.fillText(title, CHART_PADDING.left, CHART_PADDING.top - 10);
     
     // Y-axis label
     ctx.save();

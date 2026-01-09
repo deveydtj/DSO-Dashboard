@@ -124,7 +124,9 @@ export async function fetchJobAnalytics(apiBase, projectId, timeoutMs = DEFAULT_
  * Trigger a manual refresh of job analytics for a specific project
  * @param {string} apiBase - Base URL for API (e.g., window.location.origin)
  * @param {number|string} projectId - GitLab project ID
- * @param {number} [timeoutMs] - Optional timeout in milliseconds (longer for compute operations)
+ * @param {number} [timeoutMs] - Optional timeout in milliseconds (default: 30 seconds).
+ *                                This should be sufficient for most job analytics computations.
+ *                                Increase if backend processing typically takes longer.
  * @returns {Promise<Object>} - Refresh result with updated analytics
  * @throws {Error} - Throws on network or HTTP errors
  */

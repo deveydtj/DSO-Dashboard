@@ -659,6 +659,11 @@ body {
         -4px -4px 8px var(--shadow-light);
 }
 
+.repo-job-performance-btn:focus {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
 .repo-job-performance-btn:active {
     transform: translateY(0);
     box-shadow: 
@@ -2078,6 +2083,11 @@ body.compact .sparkline--repo .sparkline-bar--pipeline {
         -6px -6px 12px var(--shadow-light);
 }
 
+.chart-refresh-btn:focus:not(:disabled) {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
 .chart-refresh-btn:active:not(:disabled) {
     transform: translateY(0);
     box-shadow: 
@@ -2158,6 +2168,17 @@ body.compact .sparkline--repo .sparkline-bar--pipeline {
     border-radius: var(--radius-sm);
     font-size: 0.85rem;
     color: var(--text-secondary);
+}
+
+/* Modal error actions container */
+.modal-error-actions {
+    margin-top: 1rem;
+    text-align: center;
+}
+
+/* Embedded error message in modal body */
+.embedded-error {
+    margin-bottom: 1rem;
 }
 
 /* Modal not available state */

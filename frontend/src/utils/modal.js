@@ -46,36 +46,39 @@ export function openModal(modalId) {
  * Close a modal by ID
  * @param {string} modalId - The ID of the modal element
  */
-export function closeModal(modalId) {
+export async function closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (!modal) {
         console.error(`Modal with ID "${modalId}" not found`);
         return;
     }
-    
+
+    // For job performance modal, run view-specific cleanup before hiding
+    // to avoid timing races with DOM teardown
+    if (modalId === 'jobPerformanceModal') {
+        try {
+            // Dynamic import to avoid circular dependency
+            const module = await import('../views/jobPerformanceView.js');
+            if (module.cleanupJobPerformanceModal) {
+                module.cleanupJobPerformanceModal();
+            }
+        } catch (err) {
+            console.warn('Failed to cleanup job performance modal:', err);
+        }
+    }
+
+    // Now hide the modal
     modal.style.display = 'none';
-    
+
     // Restore original body scroll value for this modal
     const originalOverflow = originalBodyOverflowMap.get(modal);
     if (originalOverflow !== undefined) {
         document.body.style.overflow = originalOverflow;
         originalBodyOverflowMap.delete(modal);
     }
-    
+
     // Clean up event listeners
     cleanupModalCloseHandlers(modal);
-    
-    // Call modal-specific cleanup if available
-    if (modalId === 'jobPerformanceModal') {
-        // Dynamic import to avoid circular dependency
-        import('../views/jobPerformanceView.js').then(module => {
-            if (module.cleanupJobPerformanceModal) {
-                module.cleanupJobPerformanceModal();
-            }
-        }).catch(err => {
-            console.warn('Failed to cleanup job performance modal:', err);
-        });
-    }
 }
 
 /**
