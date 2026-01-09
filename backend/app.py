@@ -1772,12 +1772,18 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             # dso_only: when true, filter to infra failures and verified unknowns only
             # scope: 'default_branch' or 'all' (default 'all' to include MR pipelines)
             try:
-                dso_only_str = query_params.get('dso_only', ['true'])[0].lower()
-                dso_only = dso_only_str in ('true', '1', 'yes')
+                dso_only_str = query_params.get('dso_only', ['true'])[0]
+                # Normalize to lowercase for comparison after extracting
+                dso_only = dso_only_str.lower() in ('true', '1', 'yes')
             except (ValueError, IndexError, AttributeError):
                 dso_only = True  # Safe default
             
-            scope = query_params.get('scope', ['all'])[0] if query_params.get('scope') else 'all'
+            # Extract scope parameter with default
+            try:
+                scope = query_params.get('scope', ['all'])[0]
+            except (IndexError, AttributeError):
+                scope = 'all'
+            
             if scope not in ('default_branch', 'all'):
                 logger.warning(f"Invalid scope parameter: {scope}, defaulting to 'all'")
                 scope = 'all'
