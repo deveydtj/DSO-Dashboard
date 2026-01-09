@@ -105,6 +105,9 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
         return;
     }
     
+    // Store point coordinates for hover detection (cleared on each render)
+    canvas._pointCoordinates = [];
+    
     // Set canvas size based on container
     const container = canvas.parentElement;
     if (!container) {
@@ -238,7 +241,7 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
     ctx.stroke();
     
     // Helper function to draw a line series with time-based x-axis
-    const drawLine = (dataPoints, color, lineWidth = 2) => {
+    const drawLine = (dataPoints, color, lineWidth = 2, pointCoordinates = []) => {
         if (dataPoints.length < 2) return;
         
         ctx.strokeStyle = color;
@@ -258,7 +261,7 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
         
         ctx.stroke();
         
-        // Draw dots at each data point
+        // Draw dots at each data point and store coordinates
         ctx.fillStyle = color;
         dataPoints.forEach((point, i) => {
             const x = xScale(point.timestamp);
@@ -267,6 +270,17 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
             ctx.beginPath();
             ctx.arc(x, y, 3, 0, Math.PI * 2);
             ctx.fill();
+            
+            // Store coordinates for hover detection
+            if (point.dataPoint) {
+                pointCoordinates.push({
+                    x: x,
+                    y: y,
+                    dataPoint: point.dataPoint,
+                    metricName: point.metricName,
+                    metricValue: point.metricValue
+                });
+            }
         });
     };
     
@@ -276,32 +290,33 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
      * @param {Object} colors - Object with avg, p95, and p99 keys
      * @param {boolean} isDashed - Whether to use dashed lines
      * @param {number} divisor - Scaling divisor for duration values
+     * @param {Array} pointCoordinates - Array to store point coordinates for hover
      */
-    const renderDurationSeries = (sourceData, colors, isDashed = false, divisor = 1) => {
+    const renderDurationSeries = (sourceData, colors, isDashed = false, divisor = 1, pointCoordinates = []) => {
         if (sourceData.length === 0) return;
         
-        // Prepare data series with timestamps and scaled values
+        // Prepare data series with timestamps, scaled values, and original data
         const avgData = sourceData
             .filter(d => d.avg_duration != null && d.avg_duration > 0)
-            .map(d => ({ value: d.avg_duration / divisor, timestamp: d.created_at }));
+            .map(d => ({ value: d.avg_duration / divisor, timestamp: d.created_at, dataPoint: d, metricName: 'avg', metricValue: d.avg_duration }));
         
         const p95Data = sourceData
             .filter(d => d.p95_duration != null && d.p95_duration > 0)
-            .map(d => ({ value: d.p95_duration / divisor, timestamp: d.created_at }));
+            .map(d => ({ value: d.p95_duration / divisor, timestamp: d.created_at, dataPoint: d, metricName: 'p95', metricValue: d.p95_duration }));
         
         const p99Data = sourceData
             .filter(d => d.p99_duration != null && d.p99_duration > 0)
-            .map(d => ({ value: d.p99_duration / divisor, timestamp: d.created_at }));
+            .map(d => ({ value: d.p99_duration / divisor, timestamp: d.created_at, dataPoint: d, metricName: 'p99', metricValue: d.p99_duration }));
         
         // Set dash pattern if needed
         if (isDashed) {
             ctx.setLineDash(DASH_PATTERN);
         }
         
-        // Draw lines
-        drawLine(avgData, colors.avg, 2);
-        drawLine(p95Data, colors.p95, 2);
-        drawLine(p99Data, colors.p99, 2);
+        // Draw lines and store coordinates
+        drawLine(avgData, colors.avg, 2, pointCoordinates);
+        drawLine(p95Data, colors.p95, 2, pointCoordinates);
+        drawLine(p99Data, colors.p99, 2, pointCoordinates);
         
         // Reset dash pattern
         if (isDashed) {
@@ -317,14 +332,14 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
         avg: cssVars.accentInfo,
         p95: cssVars.accentWarning,
         p99: cssVars.accentError
-    }, false, durationScale.divisor);
+    }, false, durationScale.divisor, canvas._pointCoordinates);
     
     // Render MR lines (dashed)
     renderDurationSeries(mrData, {
         avg: cssVars.accentPrimary,
         p95: cssVars.accentWarning,
         p99: cssVars.accentError
-    }, true, durationScale.divisor);
+    }, true, durationScale.divisor, canvas._pointCoordinates);
     
     // X-axis labels (date/time) - use time-based positioning
     ctx.fillStyle = '#a0a0b0';
@@ -373,4 +388,7 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
     ctx.textAlign = 'center';
     ctx.fillText(`Duration (${durationScale.label})`, 0, 0);
     ctx.restore();
+    
+    // Store duration scale on canvas for tooltip access
+    canvas._durationScale = durationScale;
 }

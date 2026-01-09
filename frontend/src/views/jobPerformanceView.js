@@ -5,6 +5,7 @@ import { escapeHtml } from '../utils/formatters.js';
 import { openModal, setModalContent, setModalLoading } from '../utils/modal.js';
 import { fetchJobAnalytics, refreshJobAnalytics } from '../api/apiClient.js';
 import { renderJobPerformanceChart } from '../utils/chart.js';
+import { showTooltip, hideTooltip, findNearestPoint, buildTooltipContent } from '../utils/tooltip.js';
 
 // HTTP status code constants
 const HTTP_NOT_FOUND = 404;
@@ -23,6 +24,9 @@ let resizeHandlers = new WeakMap();
 
 // WeakMap to store resize timeout IDs for cleanup
 let resizeTimeouts = new WeakMap();
+
+// WeakMap to store mouse handlers for cleanup
+let mouseHandlers = new WeakMap();
 
 // Flag to prevent multiple concurrent modal opens
 let isModalOpening = false;
@@ -146,6 +150,60 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
     if (canvas && analytics.data) {
         renderJobPerformanceChart(canvas, analytics.data, { window_days: analytics.window_days || 7 });
         
+        // Get tooltip element
+        const tooltip = document.getElementById('chartTooltip');
+        
+        // Clean up old mouse handlers if they exist
+        const oldMouseHandlers = mouseHandlers.get(canvas);
+        if (oldMouseHandlers) {
+            canvas.removeEventListener('mousemove', oldMouseHandlers.mousemove);
+            canvas.removeEventListener('mouseout', oldMouseHandlers.mouseout);
+        }
+        
+        // Add mouse event handlers for tooltip
+        const mousemoveHandler = (event) => {
+            // Get canvas-relative coordinates
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = event.clientX - rect.left;
+            const mouseY = event.clientY - rect.top;
+            
+            // Find nearest point
+            const pointCoordinates = canvas._pointCoordinates || [];
+            const nearestPoint = findNearestPoint(mouseX, mouseY, pointCoordinates, 20);
+            
+            if (nearestPoint && tooltip) {
+                // Build tooltip content
+                const scale = canvas._durationScale || { unit: 's', label: 'seconds', divisor: 1 };
+                const content = buildTooltipContent(
+                    nearestPoint.dataPoint,
+                    nearestPoint.metricName,
+                    nearestPoint.metricValue,
+                    scale,
+                    project.name
+                );
+                
+                // Show tooltip at cursor position
+                showTooltip(tooltip, event.clientX, event.clientY, content);
+            } else if (tooltip) {
+                hideTooltip(tooltip);
+            }
+        };
+        
+        const mouseoutHandler = () => {
+            if (tooltip) {
+                hideTooltip(tooltip);
+            }
+        };
+        
+        canvas.addEventListener('mousemove', mousemoveHandler);
+        canvas.addEventListener('mouseout', mouseoutHandler);
+        
+        // Store handlers for cleanup
+        mouseHandlers.set(canvas, {
+            mousemove: mousemoveHandler,
+            mouseout: mouseoutHandler
+        });
+        
         // Clean up old resize handler and timeout if exists
         const oldResizeHandler = resizeHandlers.get(canvas);
         if (oldResizeHandler) {
@@ -167,6 +225,23 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
                 // Check if canvas still exists before rendering
                 if (document.contains(canvas)) {
                     renderJobPerformanceChart(canvas, analytics.data, { window_days: analytics.window_days || 7 });
+                    
+                    // Remove old handlers before re-attaching to prevent duplicates
+                    const handlers = mouseHandlers.get(canvas);
+                    if (handlers) {
+                        canvas.removeEventListener('mousemove', handlers.mousemove);
+                        canvas.removeEventListener('mouseout', handlers.mouseout);
+                    }
+                    
+                    // Re-attach mouse handlers after resize
+                    canvas.addEventListener('mousemove', mousemoveHandler);
+                    canvas.addEventListener('mouseout', mouseoutHandler);
+                    
+                    // Update stored handlers
+                    mouseHandlers.set(canvas, {
+                        mousemove: mousemoveHandler,
+                        mouseout: mouseoutHandler
+                    });
                 }
                 resizeTimeouts.delete(canvas);
             }, 200);
@@ -256,6 +331,20 @@ export function cleanupJobPerformanceModal() {
             clearTimeout(resizeTimeout);
             resizeTimeouts.delete(canvas);
         }
+        
+        // Clean up mouse handlers
+        const handlers = mouseHandlers.get(canvas);
+        if (handlers) {
+            canvas.removeEventListener('mousemove', handlers.mousemove);
+            canvas.removeEventListener('mouseout', handlers.mouseout);
+            mouseHandlers.delete(canvas);
+        }
+    }
+    
+    // Hide tooltip
+    const tooltip = document.getElementById('chartTooltip');
+    if (tooltip) {
+        tooltip.style.display = 'none';
     }
     
     // Clean up error timeouts

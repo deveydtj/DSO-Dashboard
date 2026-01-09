@@ -58,3 +58,64 @@ export function formatDuration(seconds) {
     if (mins === 0) return `${secs}s`;
     return `${mins}m ${secs}s`;
 }
+
+/**
+ * Format a date string as human-readable timestamp
+ * @param {string} dateString - ISO date string
+ * @returns {string} - Formatted date and time
+ */
+export function formatTimestamp(dateString) {
+    // Handle missing or empty values gracefully
+    if (dateString === null || dateString === undefined || dateString === '') {
+        return '--';
+    }
+
+    try {
+        const date = new Date(dateString);
+        
+        // Guard against invalid dates (e.g., from null/undefined or bad strings)
+        if (isNaN(date.getTime())) {
+            return '--';
+        }
+        
+        // Format as "Jan 20, 2024 10:30 AM"
+        const options = {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        };
+        
+        return date.toLocaleString('en-US', options);
+    } catch (error) {
+        return '--';
+    }
+}
+
+/**
+ * Format duration value with both scaled units and raw seconds
+ * @param {number} seconds - Duration in seconds
+ * @param {Object} scale - Scale object with unit, label, and divisor
+ * @returns {Object} - Object with scaled and raw formatted values
+ */
+export function formatDurationWithScale(seconds, scale) {
+    if (seconds == null || seconds < 0) {
+        return { scaled: '--', raw: '--' };
+    }
+    
+    // Scaled value
+    const scaledValue = seconds / scale.divisor;
+    const scaledFormatted = (scale.divisor === 1) 
+        ? `${Math.round(scaledValue)} ${scale.unit}`
+        : `${scaledValue.toFixed(1)} ${scale.unit}`;
+    
+    // Raw seconds
+    const rawFormatted = `${seconds.toFixed(1)}s`;
+    
+    return {
+        scaled: scaledFormatted,
+        raw: rawFormatted
+    };
+}
