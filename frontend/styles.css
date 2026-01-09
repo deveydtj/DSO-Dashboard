@@ -1999,6 +1999,11 @@ body.compact .sparkline--repo .sparkline-bar--pipeline {
         inset -4px -4px 8px var(--shadow-inset-light);
 }
 
+.modal-close:focus {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
 /* Modal body */
 .modal-body {
     padding: var(--spacing-md);

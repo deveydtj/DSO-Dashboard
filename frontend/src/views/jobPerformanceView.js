@@ -13,16 +13,16 @@ const HTTP_INTERNAL_SERVER_ERROR = 500;
 const HTTP_SERVICE_UNAVAILABLE = 503;
 
 // WeakMap to store refresh button handlers for cleanup
-const refreshButtonHandlers = new WeakMap();
+let refreshButtonHandlers = new WeakMap();
 
 // WeakMap to store error timeout IDs for cleanup
-const errorTimeouts = new WeakMap();
+let errorTimeouts = new WeakMap();
 
 // WeakMap to store resize handlers for cleanup
-const resizeHandlers = new WeakMap();
+let resizeHandlers = new WeakMap();
 
 // WeakMap to store resize timeout IDs for cleanup
-const resizeTimeouts = new WeakMap();
+let resizeTimeouts = new WeakMap();
 
 // Flag to prevent multiple concurrent modal opens
 let isModalOpening = false;
@@ -166,7 +166,7 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
             const timeoutId = setTimeout(() => {
                 // Check if canvas still exists before rendering
                 if (document.contains(canvas)) {
-                    renderJobPerformanceChart(canvas, analytics.data);
+                    renderJobPerformanceChart(canvas, analytics.data, { window_days: analytics.window_days || 7 });
                 }
                 resizeTimeouts.delete(canvas);
             }, 200);
@@ -237,18 +237,6 @@ function renderRefreshButton(projectId, apiBase, label) {
         </button>
     `;
 }
-
-// WeakMap to store refresh button handlers for cleanup
-const refreshButtonHandlers = new WeakMap();
-
-// WeakMap to store error timeout IDs for cleanup
-const errorTimeouts = new WeakMap();
-
-// WeakMap to store resize handlers for cleanup
-const resizeHandlers = new WeakMap();
-
-// WeakMap to store resize timeout IDs for cleanup
-const resizeTimeouts = new WeakMap();
 
 /**
  * Cleanup function to be called when modal closes
