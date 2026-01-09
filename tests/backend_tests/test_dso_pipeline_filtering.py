@@ -65,6 +65,10 @@ class TestDSOPipelineFiltering(unittest.TestCase):
              'failure_domain': 'unclassified', 'failure_category': None, 'classification_attempted': False},
             {'id': 11, 'status': 'failed', 'project_name': 'proj3', 'project_id': 102, 'ref': 'feature-branch',
              'failure_domain': 'unclassified', 'failure_category': None, 'classification_attempted': False},
+            
+            # Empty string failure_domain (should be treated as non-failing, included in DSO mode)
+            {'id': 12, 'status': 'success', 'project_name': 'proj1', 'project_id': 100, 'ref': 'main',
+             'failure_domain': '', 'classification_attempted': None},
         ]
         
         # Add required fields for all pipelines
@@ -107,8 +111,8 @@ class TestDSOPipelineFiltering(unittest.TestCase):
         self.assertIn('pipelines', response)
         pipelines = response['pipelines']
         
-        # Default behavior should return all 11 pipelines (no filtering)
-        self.assertEqual(len(pipelines), 11, f"Expected 11 pipelines with default dso_only=false, got {len(pipelines)}")
+        # Default behavior should return all 12 pipelines (no filtering)
+        self.assertEqual(len(pipelines), 12, f"Expected 12 pipelines with default dso_only=false, got {len(pipelines)}")
     
     def test_dso_only_true_filters_correctly(self):
         """Test dso_only=true filters to DSO-relevant pipelines only"""
@@ -141,8 +145,8 @@ class TestDSOPipelineFiltering(unittest.TestCase):
         self.assertNotIn(10, pipeline_ids, "Unclassified failure should be excluded")
         self.assertNotIn(11, pipeline_ids, "Unclassified failure should be excluded")
         
-        # Total should be 6 (1 success + 1 running + 2 infra + 2 verified unknown)
-        self.assertEqual(len(pipelines), 6, f"Expected 6 pipelines with dso_only=true, got {len(pipelines)}")
+        # Total should be 7 (1 success + 1 running + 2 infra + 2 verified unknown + 1 empty string)
+        self.assertEqual(len(pipelines), 7, f"Expected 7 pipelines with dso_only=true, got {len(pipelines)}")
     
     def test_dso_only_false_returns_all_pipelines(self):
         """Test dso_only=false returns all pipelines (no DSO filtering)"""
@@ -156,12 +160,12 @@ class TestDSOPipelineFiltering(unittest.TestCase):
         response = handler.send_json_response.call_args[0][0]
         pipelines = response['pipelines']
         
-        # Should include all 11 test pipelines
-        self.assertEqual(len(pipelines), 11, f"Expected 11 pipelines with dso_only=false, got {len(pipelines)}")
+        # Should include all 12 test pipelines
+        self.assertEqual(len(pipelines), 12, f"Expected 12 pipelines with dso_only=false, got {len(pipelines)}")
         
         # Verify all pipeline IDs are present
         pipeline_ids = [p['id'] for p in pipelines]
-        for expected_id in range(1, 12):
+        for expected_id in range(1, 13):
             self.assertIn(expected_id, pipeline_ids, f"Pipeline {expected_id} should be included with dso_only=false")
     
     def test_dso_only_with_limit(self):
@@ -180,7 +184,7 @@ class TestDSOPipelineFiltering(unittest.TestCase):
         self.assertEqual(len(pipelines), 3, "Should limit to 3 pipelines")
         
         # Verify total_before_limit shows the full filtered count
-        self.assertEqual(response['total_before_limit'], 6, "total_before_limit should show 6 (all DSO-filtered pipelines)")
+        self.assertEqual(response['total_before_limit'], 7, "total_before_limit should show 7 (all DSO-filtered pipelines)")
     
     def test_verified_unknown_included_unclassified_excluded(self):
         """Test that verified unknowns are included but unclassified are excluded"""
@@ -242,8 +246,8 @@ class TestDSOPipelineFiltering(unittest.TestCase):
         response = handler.send_json_response.call_args[0][0]
         pipelines = response['pipelines']
         
-        # Should include all 11 pipelines (both main and feature branches)
-        self.assertEqual(len(pipelines), 11, "scope=all should include all branch pipelines")
+        # Should include all 12 pipelines (both main and feature branches)
+        self.assertEqual(len(pipelines), 12, "scope=all should include all branch pipelines")
         
         # Verify both main and feature-branch refs are present
         refs = {p['ref'] for p in pipelines}
@@ -288,8 +292,8 @@ class TestDSOPipelineFiltering(unittest.TestCase):
             response = handler.send_json_response.call_args[0][0]
             pipelines = response['pipelines']
             
-            # Should filter (6 pipelines expected)
-            self.assertEqual(len(pipelines), 6, f"dso_only={dso_value} should filter to 6 pipelines")
+            # Should filter (7 pipelines expected)
+            self.assertEqual(len(pipelines), 7, f"dso_only={dso_value} should filter to 7 pipelines")
         
         # Test various falsy values
         for dso_value in ['false', 'False', 'FALSE', '0', 'no']:
@@ -302,8 +306,8 @@ class TestDSOPipelineFiltering(unittest.TestCase):
             response = handler.send_json_response.call_args[0][0]
             pipelines = response['pipelines']
             
-            # Should not filter (11 pipelines expected)
-            self.assertEqual(len(pipelines), 11, f"dso_only={dso_value} should not filter (11 pipelines)")
+            # Should not filter (12 pipelines expected)
+            self.assertEqual(len(pipelines), 12, f"dso_only={dso_value} should not filter (12 pipelines)")
     
     def test_invalid_scope_parameter_returns_400(self):
         """Test invalid scope parameter returns 400 error"""
@@ -337,8 +341,42 @@ class TestDSOPipelineFiltering(unittest.TestCase):
         pipelines = response['pipelines']
         
         # Default behavior should NOT filter (dso_only=false by default for backward compatibility)
-        # Should get all 11 pipelines
-        self.assertEqual(len(pipelines), 11, "Default behavior should NOT apply DSO filtering for backward compatibility")
+        # Should get all 12 pipelines
+        self.assertEqual(len(pipelines), 12, "Default behavior should NOT apply DSO filtering for backward compatibility")
+    
+    def test_empty_string_failure_domain_treated_as_non_failing(self):
+        """Test that empty string failure_domain is treated as non-failing pipeline"""
+        handler = MagicMock(spec=server.DashboardRequestHandler)
+        handler.path = '/api/pipelines?dso_only=true'
+        handler.send_json_response = MagicMock()
+        
+        server.DashboardRequestHandler.handle_pipelines(handler)
+        
+        handler.send_json_response.assert_called_once()
+        response = handler.send_json_response.call_args[0][0]
+        
+        # Verify response structure
+        self.assertIn('pipelines', response)
+        pipelines = response['pipelines']
+        pipeline_ids = [p['id'] for p in pipelines]
+        
+        # Empty string failure_domain (id=12) should be included as non-failing
+        self.assertIn(12, pipeline_ids, "Pipeline with empty string failure_domain should be included as non-failing")
+        
+        # Verify the pipeline is actually present and has correct properties
+        pipeline_12 = next((p for p in pipelines if p['id'] == 12), None)
+        self.assertIsNotNone(pipeline_12, "Pipeline 12 should be in the results")
+        
+        # Also verify with dso_only=false that it's included
+        handler2 = MagicMock(spec=server.DashboardRequestHandler)
+        handler2.path = '/api/pipelines?dso_only=false'
+        handler2.send_json_response = MagicMock()
+        
+        server.DashboardRequestHandler.handle_pipelines(handler2)
+        
+        response2 = handler2.send_json_response.call_args[0][0]
+        pipeline_ids2 = [p['id'] for p in response2['pipelines']]
+        self.assertIn(12, pipeline_ids2, "Pipeline with empty string failure_domain should be included with dso_only=false")
 
 
 if __name__ == '__main__':
