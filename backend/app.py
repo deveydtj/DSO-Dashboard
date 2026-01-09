@@ -932,8 +932,7 @@ class BackgroundPoller(threading.Thread):
         from backend.gitlab_client import (
             classify_pipeline_failure,
             is_merge_request_pipeline,
-            PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL,
-            DEFAULT_BRANCH_NAME
+            PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL
         )
         
         log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
