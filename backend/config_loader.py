@@ -596,6 +596,10 @@ def load_mock_data(scenario=''):
         logger.info(f"  Repositories: {len(data['repositories'])}")
         logger.info(f"  Pipelines: {len(data['pipelines'])}")
         
+        # Optional: job_analytics data (keyed by project_id)
+        if 'job_analytics' in data:
+            logger.info(f"  Job analytics: {len(data['job_analytics'])} project(s)")
+        
         return data
         
     except json.JSONDecodeError as e:

@@ -540,5 +540,118 @@
       "http_status": 200,
       "error": null
     }
-  ]
+  ],
+  "job_analytics": {
+    "10001": {
+      "project_id": 10001,
+      "window_days": 7,
+      "computed_at": "2024-01-20T10:35:00Z",
+      "data": [
+        {
+          "pipeline_id": 50001,
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "created_at": "2024-01-20T10:30:00Z",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 120.5,
+          "p95_duration": 180.2,
+          "p99_duration": 210.8,
+          "job_count": 12
+        },
+        {
+          "pipeline_id": 50009,
+          "pipeline_ref": "develop",
+          "pipeline_status": "success",
+          "created_at": "2024-01-20T08:00:00Z",
+          "is_default_branch": false,
+          "is_merge_request": false,
+          "avg_duration": 115.3,
+          "p95_duration": 175.6,
+          "p99_duration": 205.4,
+          "job_count": 11
+        }
+      ],
+      "staleness_seconds": 0,
+      "error": null
+    },
+    "10002": {
+      "project_id": 10002,
+      "window_days": 7,
+      "computed_at": "2024-01-20T09:20:00Z",
+      "data": [
+        {
+          "pipeline_id": 50002,
+          "pipeline_ref": "main",
+          "pipeline_status": "success",
+          "created_at": "2024-01-20T09:15:00Z",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 185.7,
+          "p95_duration": 250.3,
+          "p99_duration": 290.1,
+          "job_count": 15
+        },
+        {
+          "pipeline_id": 50010,
+          "pipeline_ref": "feature/auth",
+          "pipeline_status": "success",
+          "created_at": "2024-01-19T18:30:00Z",
+          "is_default_branch": false,
+          "is_merge_request": true,
+          "avg_duration": 178.2,
+          "p95_duration": 245.8,
+          "p99_duration": 285.5,
+          "job_count": 14
+        }
+      ],
+      "staleness_seconds": 0,
+      "error": null
+    },
+    "10003": {
+      "project_id": 10003,
+      "window_days": 7,
+      "computed_at": "2024-01-20T08:50:00Z",
+      "data": [
+        {
+          "pipeline_id": 50003,
+          "pipeline_ref": "main",
+          "pipeline_status": "failed",
+          "created_at": "2024-01-20T08:45:00Z",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 95.4,
+          "p95_duration": 145.2,
+          "p99_duration": 170.6,
+          "job_count": 8
+        },
+        {
+          "pipeline_id": 50104,
+          "pipeline_ref": "main",
+          "pipeline_status": "failed",
+          "created_at": "2024-01-20T04:45:00Z",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 88.3,
+          "p95_duration": 138.7,
+          "p99_duration": 162.4,
+          "job_count": 7
+        },
+        {
+          "pipeline_id": 50106,
+          "pipeline_ref": "main",
+          "pipeline_status": "failed",
+          "created_at": "2024-01-20T00:45:00Z",
+          "is_default_branch": true,
+          "is_merge_request": false,
+          "avg_duration": 92.1,
+          "p95_duration": 142.5,
+          "p99_duration": 168.9,
+          "job_count": 8
+        }
+      ],
+      "staleness_seconds": 0,
+      "error": null
+    }
+  }
 }

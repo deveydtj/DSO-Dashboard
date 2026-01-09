@@ -1828,24 +1828,50 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             slo_enabled = CONFIG.get('slo', {}).get('enabled', False)
             filtered_summary = filter_slo_fields_from_summary(mock_data['summary'], slo_enabled)
             
-            # Atomically update STATE with new mock data
+            # Prepare state updates
             # Use services from mock data if present, otherwise empty list
             services = mock_data.get('services', [])
-            update_state_atomic({
+            state_updates = {
                 'projects': mock_data['repositories'],
                 'pipelines': mock_data['pipelines'],
                 'summary': filtered_summary,
                 'services': services
-            })
+            }
+            
+            # Load job_analytics if present in mock data
+            # Job analytics are keyed by project_id (as strings or ints in JSON)
+            if 'job_analytics' in mock_data and mock_data['job_analytics']:
+                job_analytics_data = {}
+                # Convert project_id keys to integers for consistency
+                for project_id_str, analytics in mock_data['job_analytics'].items():
+                    try:
+                        project_id = int(project_id_str)
+                        job_analytics_data[project_id] = analytics
+                        # Also update per-project timestamps
+                        with STATE_LOCK:
+                            STATE['job_analytics_last_updated'][project_id] = datetime.now()
+                    except (ValueError, TypeError):
+                        logger.warning(f"Skipping invalid project_id in job_analytics: {project_id_str}")
+                
+                state_updates['job_analytics'] = job_analytics_data
+                logger.info(f"Reloaded job analytics for {len(job_analytics_data)} project(s)")
+            
+            # Atomically update STATE with new mock data
+            update_state_atomic(state_updates)
             
             # Get the timestamp that was just set (using atomic snapshot)
             snapshot = get_state_snapshot()
             timestamp_iso = snapshot['last_updated'].isoformat() if isinstance(snapshot['last_updated'], datetime) else str(snapshot['last_updated'])
             
+            # Count job analytics projects
+            job_analytics_count = len(mock_data.get('job_analytics', {}))
+            
             logger.info("Mock data reloaded successfully via API")
             logger.info(f"  Repositories: {len(mock_data['repositories'])}")
             logger.info(f"  Pipelines: {len(mock_data['pipelines'])}")
             logger.info(f"  Services: {len(services)}")
+            if job_analytics_count > 0:
+                logger.info(f"  Job analytics: {job_analytics_count} project(s)")
             
             self.send_json_response({
                 'reloaded': True,
@@ -1857,7 +1883,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 'summary': {
                     'repositories': len(mock_data['repositories']),
                     'pipelines': len(mock_data['pipelines']),
-                    'services': len(services)
+                    'services': len(services),
+                    'job_analytics': job_analytics_count
                 }
             })
             
@@ -2054,12 +2081,34 @@ def main():
         # Initialize STATE with mock data
         # Use services from mock data if present, otherwise empty list
         services = mock_data.get('services', [])
-        update_state_atomic({
+        
+        # Prepare state updates
+        state_updates = {
             'projects': mock_data['repositories'],
             'pipelines': mock_data['pipelines'],
             'summary': filtered_summary,
             'services': services
-        })
+        }
+        
+        # Load job_analytics if present in mock data
+        # Job analytics are keyed by project_id (as strings or ints in JSON)
+        if 'job_analytics' in mock_data and mock_data['job_analytics']:
+            job_analytics_data = {}
+            # Convert project_id keys to integers for consistency
+            for project_id_str, analytics in mock_data['job_analytics'].items():
+                try:
+                    project_id = int(project_id_str)
+                    job_analytics_data[project_id] = analytics
+                    # Also update per-project timestamps
+                    with STATE_LOCK:
+                        STATE['job_analytics_last_updated'][project_id] = datetime.now()
+                except (ValueError, TypeError):
+                    logger.warning(f"Skipping invalid project_id in job_analytics: {project_id_str}")
+            
+            state_updates['job_analytics'] = job_analytics_data
+            logger.info(f"Loaded job analytics for {len(job_analytics_data)} project(s)")
+        
+        update_state_atomic(state_updates)
         logger.info("Mock data loaded into STATE successfully")
         
         # No GitLab client or poller in mock mode
