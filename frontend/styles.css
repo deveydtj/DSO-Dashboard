@@ -1878,7 +1878,8 @@ body.compact .footer {
 }
 
 .sparkline--repo .sparkline-bar--running {
-    background: var(--accent-blue);
+    /* Fixed: Changed from undefined --accent-blue to --accent-info to align with theme */
+    background: var(--accent-info);
     opacity: 0.8;
 }
 
