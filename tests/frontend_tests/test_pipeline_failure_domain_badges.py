@@ -14,13 +14,27 @@ class TestPipelineFailureDomainBadges(unittest.TestCase):
 
     def run_node_script(self, script):
         """Run a Node.js script and return the parsed JSON output."""
-        completed = subprocess.run(
-            ['node', '--input-type=module', '-e', script],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return json.loads(completed.stdout.strip())
+        try:
+            completed = subprocess.run(
+                ['node', '--input-type=module', '-e', script],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return json.loads(completed.stdout.strip())
+        except subprocess.CalledProcessError as e:
+            # Provide detailed error information for debugging
+            raise AssertionError(
+                f"Node.js script execution failed with exit code {e.returncode}.\n"
+                f"STDOUT: {e.stdout}\n"
+                f"STDERR: {e.stderr}"
+            ) from e
+        except json.JSONDecodeError as e:
+            raise AssertionError(
+                f"Failed to parse JSON output from Node.js script.\n"
+                f"Output: {completed.stdout}\n"
+                f"Error: {e}"
+            ) from e
 
     def test_infra_failure_shows_badge(self):
         """Verify infrastructure failures show 'Infra' badge."""

@@ -829,7 +829,6 @@ body {
 .failure-domain-badge {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
     padding: 0.2rem 0.5rem;
     margin-left: 0.4rem;
     font-size: 0.7rem;
