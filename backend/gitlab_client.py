@@ -363,8 +363,8 @@ def classify_pipeline_failure(pipeline, jobs=None):
         jobs,
         key=lambda j: (
             j.get('created_at') or '',
-            j.get('id') or 0,
-        ),
+            j.get('id', float('inf'))
+        )
     )
     
     # Find first failed job

@@ -241,6 +241,48 @@ class TestClassifyPipelineFailureChronologicalOrdering(unittest.TestCase):
         # Should classify the first chronological failure (script_failure)
         self.assertEqual(result['failure_domain'], 'code')
         self.assertEqual(result['failure_category'], 'script_failure')
+    
+    def test_jobs_with_missing_created_at(self):
+        """Test that jobs with missing or None created_at are handled gracefully"""
+        pipeline = {
+            'id': 135,
+            'status': 'failed',
+            'source': 'push'
+        }
+        # Jobs with missing/None created_at get empty string, which sorts BEFORE ISO timestamps
+        # So jobs WITHOUT timestamps come first, then sorted by ID
+        jobs = [
+            {'status': 'failed', 'failure_reason': 'out of memory', 'id': 3},  # Missing created_at, ID 3
+            {'status': 'failed', 'failure_reason': 'waiting for pod: timed out', 'id': 1, 'created_at': None},  # None created_at, ID 1 (will be first)
+            {'status': 'failed', 'failure_reason': 'script_failure', 'id': 2, 'created_at': '2024-01-01T03:00:00Z'},  # Has timestamp
+        ]
+        
+        result = classify_pipeline_failure(pipeline, jobs)
+        
+        # Should classify the job with smallest ID among those without timestamp (pod_timeout with ID 1)
+        # Empty strings sort before ISO timestamps
+        self.assertEqual(result['failure_domain'], 'infra')
+        self.assertEqual(result['failure_category'], 'pod_timeout')
+    
+    def test_jobs_all_missing_created_at(self):
+        """Test that jobs without any created_at timestamps are sorted by ID"""
+        pipeline = {
+            'id': 136,
+            'status': 'failed',
+            'source': 'push'
+        }
+        # All jobs missing created_at - should sort by ID (lowest first)
+        jobs = [
+            {'status': 'failed', 'failure_reason': 'script_failure', 'id': 3},
+            {'status': 'failed', 'failure_reason': 'out of memory', 'id': 2},
+            {'status': 'failed', 'failure_reason': 'waiting for pod: timed out', 'id': 1},
+        ]
+        
+        result = classify_pipeline_failure(pipeline, jobs)
+        
+        # Should classify the job with lowest ID (pod_timeout with id=1)
+        self.assertEqual(result['failure_domain'], 'infra')
+        self.assertEqual(result['failure_category'], 'pod_timeout')
 
 
 class TestClassifyPipelineFailureResponseStructure(unittest.TestCase):
@@ -369,6 +411,199 @@ class TestClassifyPipelineFailureAllDomains(unittest.TestCase):
         self.assertEqual(result['failure_domain'], 'unclassified')
         self.assertIsNone(result['failure_category'])
         self.assertFalse(result['classification_attempted'])
+
+
+class TestClassifyFailingPipelinesIntegration(unittest.TestCase):
+    """Integration tests for _classify_failing_pipelines method"""
+    
+    def test_budget_enforcement(self):
+        """Test that budget cap limits API calls"""
+        from unittest.mock import MagicMock
+        import sys
+        
+        # Import BackgroundPoller
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+        from backend.app import BackgroundPoller
+        from backend.gitlab_client import PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL
+        
+        # Create mock GitLab client
+        mock_client = MagicMock()
+        mock_client.get_pipeline_jobs.return_value = [
+            {'status': 'failed', 'failure_reason': 'script_failure', 'id': 1, 'created_at': '2024-01-01T00:00:00Z'}
+        ]
+        
+        # Create poller with mock client
+        poller = BackgroundPoller(mock_client, 60)
+        
+        # Create more failing pipelines than budget allows
+        num_pipelines = PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL + 10
+        pipelines = []
+        for i in range(num_pipelines):
+            pipelines.append({
+                'id': i,
+                'project_id': 100 + i,
+                'status': 'failed',
+                'ref': 'main',
+                'source': 'push'
+            })
+        
+        projects = [{'id': 100 + i, 'default_branch': 'main'} for i in range(num_pipelines)]
+        
+        # Classify pipelines
+        poller._classify_failing_pipelines(pipelines, projects, poll_id='test')
+        
+        # Should only call get_pipeline_jobs up to budget
+        self.assertEqual(mock_client.get_pipeline_jobs.call_count, PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL)
+        
+        # All pipelines should have is_merge_request field
+        for pipeline in pipelines:
+            self.assertIn('is_merge_request', pipeline)
+        
+        # Pipelines are sorted by priority, then by descending ID (newer first)
+        # Since all are priority 1 (default branch), highest IDs are classified first
+        # So pipelines with IDs from (num_pipelines-1) down to (num_pipelines-BUDGET) should be classified
+        budget = PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL
+        first_unclassified_id = num_pipelines - budget
+        
+        # Pipelines with high IDs (>= num_pipelines - budget) should be classified
+        for i in range(first_unclassified_id, num_pipelines):
+            self.assertIsNotNone(pipelines[i].get('failure_domain'))
+            self.assertEqual(pipelines[i]['failure_domain'], 'code')
+            self.assertIsNotNone(pipelines[i].get('failure_category'))
+            self.assertIsNotNone(pipelines[i].get('classification_attempted'))
+        
+        # Pipelines with low IDs (< num_pipelines - budget) should not be classified
+        for i in range(0, first_unclassified_id):
+            self.assertNotIn('failure_domain', pipelines[i])
+    
+    def test_prioritization_default_branch_first(self):
+        """Test that default branch pipelines are prioritized over MR and other refs"""
+        from unittest.mock import MagicMock, patch
+        import sys
+        
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+        from backend.app import BackgroundPoller
+        
+        mock_client = MagicMock()
+        mock_client.get_pipeline_jobs.return_value = [
+            {'status': 'failed', 'failure_reason': 'script_failure', 'id': 1, 'created_at': '2024-01-01T00:00:00Z'}
+        ]
+        
+        poller = BackgroundPoller(mock_client, 60)
+        
+        # Create pipelines with different ref types
+        pipelines = [
+            {'id': 1, 'project_id': 101, 'status': 'failed', 'ref': 'feature/test', 'source': 'push'},  # Other ref (priority 3)
+            {'id': 2, 'project_id': 102, 'status': 'failed', 'ref': 'main', 'source': 'push'},  # Default branch (priority 1)
+            {'id': 3, 'project_id': 103, 'status': 'failed', 'ref': 'mr-branch', 'source': 'merge_request_event'},  # MR (priority 2)
+        ]
+        
+        projects = [
+            {'id': 101, 'default_branch': 'main'},
+            {'id': 102, 'default_branch': 'main'},
+            {'id': 103, 'default_branch': 'main'}
+        ]
+        
+        # Patch the constant to limit budget to 1
+        with patch('backend.app.PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL', 1):
+            poller._classify_failing_pipelines(pipelines, projects, poll_id='test')
+        
+        # Only one pipeline should be classified
+        self.assertEqual(mock_client.get_pipeline_jobs.call_count, 1)
+        
+        # Default branch pipeline (id=2, index 1) should be classified first
+        self.assertIsNotNone(pipelines[1].get('failure_domain'))
+        self.assertEqual(pipelines[1]['failure_domain'], 'code')
+        
+        # Other pipelines should not be classified (no failure_domain set)
+        self.assertIsNone(pipelines[0].get('failure_domain'))
+        self.assertIsNone(pipelines[2].get('failure_domain'))
+    
+    def test_non_failing_pipelines_get_null_fields(self):
+        """Test that non-failing pipelines get None for classification fields"""
+        from unittest.mock import MagicMock
+        import sys
+        
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+        from backend.app import BackgroundPoller
+        
+        mock_client = MagicMock()
+        poller = BackgroundPoller(mock_client, 60)
+        
+        # Create mix of failing and non-failing pipelines
+        pipelines = [
+            {'id': 1, 'project_id': 101, 'status': 'success', 'ref': 'main', 'source': 'push'},
+            {'id': 2, 'project_id': 102, 'status': 'running', 'ref': 'main', 'source': 'push'},
+            {'id': 3, 'project_id': 103, 'status': 'pending', 'ref': 'main', 'source': 'push'},
+        ]
+        
+        projects = [{'id': 101, 'default_branch': 'main'}]
+        
+        poller._classify_failing_pipelines(pipelines, projects, poll_id='test')
+        
+        # Non-failing pipelines should have null classification fields
+        for pipeline in pipelines:
+            self.assertIsNone(pipeline.get('failure_domain'))
+            self.assertIsNone(pipeline.get('failure_category'))
+            self.assertIsNone(pipeline.get('classification_attempted'))
+            # But is_merge_request should be set for all
+            self.assertFalse(pipeline.get('is_merge_request'))
+        
+        # No API calls should be made for non-failing pipelines
+        mock_client.get_pipeline_jobs.assert_not_called()
+    
+    def test_exception_handling_sets_unclassified(self):
+        """Test that exceptions during job fetching set unclassified fields"""
+        from unittest.mock import MagicMock
+        import sys
+        
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+        from backend.app import BackgroundPoller
+        
+        mock_client = MagicMock()
+        # Simulate API error
+        mock_client.get_pipeline_jobs.side_effect = Exception("API Error")
+        
+        poller = BackgroundPoller(mock_client, 60)
+        
+        pipelines = [
+            {'id': 1, 'project_id': 101, 'status': 'failed', 'ref': 'main', 'source': 'push'}
+        ]
+        
+        projects = [{'id': 101, 'default_branch': 'main'}]
+        
+        poller._classify_failing_pipelines(pipelines, projects, poll_id='test')
+        
+        # Pipeline should have unclassified fields
+        self.assertEqual(pipelines[0]['failure_domain'], 'unclassified')
+        self.assertIsNone(pipelines[0]['failure_category'])
+        self.assertFalse(pipelines[0]['classification_attempted'])
+    
+    def test_is_merge_request_added_to_all_pipelines(self):
+        """Test that is_merge_request field is added to all pipelines regardless of status"""
+        from unittest.mock import MagicMock
+        import sys
+        
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+        from backend.app import BackgroundPoller
+        
+        mock_client = MagicMock()
+        poller = BackgroundPoller(mock_client, 60)
+        
+        pipelines = [
+            {'id': 1, 'project_id': 101, 'status': 'success', 'ref': 'main', 'source': 'push'},
+            {'id': 2, 'project_id': 102, 'status': 'failed', 'ref': 'mr-branch', 'source': 'merge_request_event'},
+            {'id': 3, 'project_id': 103, 'status': 'running', 'ref': 'feature', 'source': 'push'},
+        ]
+        
+        projects = [{'id': 101, 'default_branch': 'main'}]
+        
+        poller._classify_failing_pipelines(pipelines, projects, poll_id='test')
+        
+        # All pipelines should have is_merge_request field
+        self.assertFalse(pipelines[0]['is_merge_request'])  # Push to main
+        self.assertTrue(pipelines[1]['is_merge_request'])   # MR pipeline
+        self.assertFalse(pipelines[2]['is_merge_request'])  # Push to feature
 
 
 if __name__ == '__main__':

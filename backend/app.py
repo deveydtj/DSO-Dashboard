@@ -453,8 +453,8 @@ class BackgroundPoller(threading.Thread):
         )
         
         # Classify failing pipelines across all refs (default + MR + other)
-        # This adds failure_domain, failure_category, classification_attempted fields
-        # and is_merge_request field to pipeline data
+        # This adds is_merge_request field to ALL pipelines, and adds failure_domain,
+        # failure_category, classification_attempted fields to failing pipelines
         self._classify_failing_pipelines(
             pipeline_data['all_pipelines'],
             enriched_projects,
@@ -923,16 +923,19 @@ class BackgroundPoller(threading.Thread):
             poll_id: Optional poll cycle identifier for logging context
         
         Side effects:
-            Mutates pipeline dicts in place, adding:
-            - is_merge_request (bool): Whether pipeline is for a merge request
-            - failure_domain (str|None): 'infra', 'code', 'unknown', 'unclassified', or None
-            - failure_category (str|None): Job category or None
-            - classification_attempted (bool|None): Whether classification was attempted or None
+            Mutates pipeline dicts in place:
+            - is_merge_request (bool): Added to ALL pipelines to indicate whether the
+              pipeline is for a merge request
+            - failure_domain (str|None): Added to failing pipelines only; set to 'infra',
+              'code', 'unknown', 'unclassified', or None for non-failing pipelines
+            - failure_category (str|None): Added to failing pipelines only; set to a job
+              category or None for non-failing pipelines
+            - classification_attempted (bool|None): Added to failing pipelines only;
+              whether classification was attempted, or None for non-failing pipelines
         """
         from backend.gitlab_client import (
             classify_pipeline_failure,
-            is_merge_request_pipeline,
-            PIPELINE_FAILURE_CLASSIFICATION_MAX_JOB_CALLS_PER_POLL
+            is_merge_request_pipeline
         )
         
         log_prefix = f"[poll_id={poll_id}] " if poll_id else ""
@@ -988,7 +991,8 @@ class BackgroundPoller(threading.Thread):
             logger.debug(f"{log_prefix}No failing pipelines to classify")
             return
         
-        # Sort by priority (lower number = higher priority)
+        # Sort by priority (lower number = higher priority), then by pipeline ID descending
+        # (newer pipelines first)
         candidates.sort(key=lambda c: (c['priority'], -(c['pipeline'].get('id') or 0)))
         
         # Apply budget cap
@@ -997,7 +1001,17 @@ class BackgroundPoller(threading.Thread):
             logger.info(f"{log_prefix}Pipeline classification: capping from {len(candidates)} to {budget} requests")
             candidates = candidates[:budget]
         
-        logger.info(f"{log_prefix}Pipeline classification: classifying {len(candidates)} failing pipelines")
+        # Log breakdown by priority level for operational visibility
+        priority_counts = {1: 0, 2: 0, 3: 0}
+        for candidate in candidates:
+            priority = candidate['priority']
+            if priority in priority_counts:
+                priority_counts[priority] += 1
+        
+        logger.info(
+            f"{log_prefix}Pipeline classification: classifying {len(candidates)} failing pipelines "
+            f"({priority_counts[1]} default-branch, {priority_counts[2]} MR, {priority_counts[3]} other)"
+        )
         
         # Classify each candidate
         classified_count = 0
@@ -1026,7 +1040,7 @@ class BackgroundPoller(threading.Thread):
                     skipped_error += 1
                     
             except Exception as e:
-                logger.debug(f"{log_prefix}Error classifying pipeline {pipeline_id}: {e}")
+                logger.warning(f"{log_prefix}Error classifying pipeline {pipeline_id}: {e}")
                 # Set unclassified fields on error
                 pipeline['failure_domain'] = 'unclassified'
                 pipeline['failure_category'] = None
