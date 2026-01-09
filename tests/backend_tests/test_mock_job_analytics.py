@@ -88,6 +88,7 @@ class TestMockJobAnalyticsLoading(unittest.TestCase):
                 with server.STATE_LOCK:
                     server.STATE['job_analytics_last_updated'][project_id] = datetime.now()
             except (ValueError, TypeError):
+                # Skip any invalid project_id keys in the mock data
                 pass
         
         server.update_state_atomic({
@@ -147,6 +148,7 @@ class TestMockJobAnalyticsLoading(unittest.TestCase):
                 project_id = int(project_id_str)
                 job_analytics_data[project_id] = analytics
             except (ValueError, TypeError):
+                # Skip any invalid project_id keys in the mock data
                 pass
         
         # All keys should be integers
