@@ -1856,8 +1856,8 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 state_updates['job_analytics'] = job_analytics_data
                 logger.info(f"Reloaded job analytics for {len(job_analytics_data)} project(s)")
                 
-                # Update timestamps after state update (to avoid nested locking)
-                # This must be done separately since update_state_atomic doesn't handle timestamps dict
+                # Update timestamps before state update for cleaner lock pattern
+                # This avoids holding the lock across update_state_atomic()
                 with STATE_LOCK:
                     for project_id, timestamp in job_analytics_timestamps.items():
                         STATE['job_analytics_last_updated'][project_id] = timestamp
@@ -2114,8 +2114,8 @@ def main():
             state_updates['job_analytics'] = job_analytics_data
             logger.info(f"Loaded job analytics for {len(job_analytics_data)} project(s)")
             
-            # Update timestamps after state update (to avoid nested locking)
-            # This must be done separately since update_state_atomic doesn't handle timestamps dict
+            # Update timestamps before state update for cleaner lock pattern
+            # This avoids holding the lock across update_state_atomic()
             with STATE_LOCK:
                 for project_id, timestamp in job_analytics_timestamps.items():
                     STATE['job_analytics_last_updated'][project_id] = timestamp
