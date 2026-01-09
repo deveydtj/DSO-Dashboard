@@ -70,9 +70,10 @@ export async function fetchRepos(apiBase, timeoutMs = DEFAULT_TIMEOUT) {
  * @throws {Error} - Throws on network or HTTP errors
  */
 export async function fetchPipelines(apiBase, timeoutMs = DEFAULT_TIMEOUT, dsoOnly = false) {
-    const url = dsoOnly 
-        ? `${apiBase}/api/pipelines?dso_only=true`
-        : `${apiBase}/api/pipelines?dso_only=false`;
+    let url = `${apiBase}/api/pipelines`;
+    if (dsoOnly) {
+        url += '?dso_only=true';
+    }
     const response = await fetchWithTimeout(url, timeoutMs);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return response.json();

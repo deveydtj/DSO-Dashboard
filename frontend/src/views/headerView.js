@@ -143,7 +143,8 @@ export function setupDsoModeToggle(onToggle) {
 /**
  * Initialize all header toggles
  * Call this from DashboardApp.init()
- * @param {Function} onDsoModeToggle - Callback for DSO Mode toggle
+ * @param {Function} onDsoModeToggle - Callback invoked whenever the DSO Mode toggle is clicked.
+ *     Receives a single boolean argument representing the new DSO Mode state (true when enabled).
  */
 export function initHeaderToggles(onDsoModeToggle) {
     checkDensityMode();

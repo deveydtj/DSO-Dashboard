@@ -53,9 +53,16 @@ export class DashboardApp {
         console.log('🚀 Initializing DSO Dashboard...');
         // Initialize header toggles (TV, Compact, DSO Mode)
         // Pass callback to reload pipelines when DSO Mode changes
-        initHeaderToggles(() => {
+        initHeaderToggles(async () => {
             console.log('🔄 DSO Mode toggled, reloading pipelines...');
-            this.loadPipelines();
+            await this.loadPipelines();
+            // Re-render attention strip to reflect updated pipeline data
+            renderAttentionStrip({
+                summary: this.cachedData.summary,
+                repos: this.cachedData.repos || [],
+                pipelines: this.cachedData.pipelines || [],
+                services: this.cachedData.services || []
+            });
         });
         this.checkHealth();
         this.loadAllData();

@@ -14,13 +14,36 @@ class TestDsoModeToggle(unittest.TestCase):
 
     def run_node_script(self, script):
         """Run a Node.js script and return the parsed JSON output."""
-        completed = subprocess.run(
-            ['node', '--input-type=module', '-e', script],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        return json.loads(completed.stdout.strip())
+        try:
+            completed = subprocess.run(
+                ['node', '--input-type=module', '-e', script],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            # Provide clearer diagnostics when Node.js fails (e.g., syntax/import errors).
+            message_parts = [
+                "Node.js script failed",
+                f"Return code: {e.returncode}",
+            ]
+            if e.stdout:
+                message_parts.append("STDOUT:\n" + e.stdout)
+            if e.stderr:
+                message_parts.append("STDERR:\n" + e.stderr)
+            raise AssertionError("\n".join(message_parts))
+
+        stdout = completed.stdout.strip()
+        if not stdout:
+            raise AssertionError("Node.js script produced no output on stdout to parse as JSON")
+
+        try:
+            return json.loads(stdout)
+        except json.JSONDecodeError as e:
+            # Include the raw stdout to help debug malformed JSON or extra logging.
+            raise AssertionError(
+                f"Failed to parse JSON from Node.js stdout: {e}\nRaw stdout:\n{stdout}"
+            ) from e
 
     def test_dso_mode_defaults_to_enabled(self):
         """Verify DSO Mode defaults to enabled when not set in localStorage."""
