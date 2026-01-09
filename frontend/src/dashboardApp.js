@@ -19,7 +19,7 @@ import {
 } from './api/apiClient.js';
 
 // Import view modules
-import { initHeaderToggles } from './views/headerView.js';
+import { initHeaderToggles, isDsoModeEnabled } from './views/headerView.js';
 import { renderSummaryKpis } from './views/kpiView.js';
 import { renderRepositories, getRepoKey, attachRepoCardHandlers } from './views/repoView.js';
 import { renderPipelines } from './views/pipelineView.js';
@@ -51,8 +51,19 @@ export class DashboardApp {
 
     init() {
         console.log('🚀 Initializing DSO Dashboard...');
-        // Initialize header toggles (TV, Compact, Wallboard)
-        initHeaderToggles();
+        // Initialize header toggles (TV, Compact, DSO Mode)
+        // Pass callback to reload pipelines when DSO Mode changes
+        initHeaderToggles(async () => {
+            console.log('🔄 DSO Mode toggled, reloading pipelines...');
+            await this.loadPipelines();
+            // Re-render attention strip to reflect updated pipeline data
+            renderAttentionStrip({
+                summary: this.cachedData.summary,
+                repos: this.cachedData.repos || [],
+                pipelines: this.cachedData.pipelines || [],
+                services: this.cachedData.services || []
+            });
+        });
         this.checkHealth();
         this.loadAllData();
         this.startAutoRefresh();
@@ -161,11 +172,13 @@ export class DashboardApp {
 
     async loadPipelines() {
         try {
-            const data = await fetchPipelines(this.apiBase, this.fetchTimeout);
+            // Get DSO Mode state to determine which pipelines to fetch
+            const dsoMode = isDsoModeEnabled();
+            const data = await fetchPipelines(this.apiBase, this.fetchTimeout, dsoMode);
             this.cachedData.pipelines = data.pipelines;
             // Use view module to render pipelines
             renderPipelines(data.pipelines || []);
-            console.log(`✅ Loaded ${data.pipelines?.length || 0} pipelines`);
+            console.log(`✅ Loaded ${data.pipelines?.length || 0} pipelines (DSO Mode: ${dsoMode})`);
             return true;
         } catch (error) {
             console.error('❌ Error loading pipelines:', error);

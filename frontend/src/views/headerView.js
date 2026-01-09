@@ -1,5 +1,10 @@
-// Header view module - Compact mode toggle functionality
+// Header view module - Compact mode and DSO Mode toggle functionality
 // Pure JavaScript - no external dependencies
+
+/**
+ * DSO Mode localStorage key
+ */
+const DSO_MODE_STORAGE_KEY = 'dso-mode-enabled';
 
 /**
  * Check for density URL parameter and apply compact mode
@@ -56,10 +61,93 @@ export function setupDensityToggle() {
 }
 
 /**
+ * Get DSO Mode state from localStorage (defaults to enabled)
+ * @returns {boolean} - True if DSO Mode is enabled
+ */
+export function isDsoModeEnabled() {
+    const stored = localStorage.getItem(DSO_MODE_STORAGE_KEY);
+    // Default to enabled if not set
+    return stored === null ? true : stored === 'true';
+}
+
+/**
+ * Set DSO Mode state in localStorage
+ * @param {boolean} enabled - True to enable DSO Mode
+ */
+export function setDsoModeEnabled(enabled) {
+    localStorage.setItem(DSO_MODE_STORAGE_KEY, enabled.toString());
+}
+
+/**
+ * Update pipeline section title based on DSO Mode state
+ * @param {boolean} enabled - True if DSO Mode is enabled
+ */
+export function updatePipelineSectionTitle(enabled) {
+    const title = document.getElementById('pipelineSectionTitle');
+    if (!title) return;
+    
+    if (enabled) {
+        title.textContent = '🔧 Infra / Runner Issues (Verified Unknown Included)';
+    } else {
+        title.textContent = '🔧 Recent Pipelines';
+    }
+}
+
+/**
+ * Setup the DSO Mode toggle button with click handler
+ * @param {Function} onToggle - Callback function when toggle state changes (receives boolean enabled)
+ */
+export function setupDsoModeToggle(onToggle) {
+    const toggle = document.getElementById('dsoModeToggle');
+    if (!toggle) return;
+
+    // Read current mode from localStorage
+    const isDsoMode = isDsoModeEnabled();
+    
+    // Set toggle UI state
+    if (isDsoMode) {
+        toggle.classList.add('active');
+    }
+    
+    // Set initial title
+    updatePipelineSectionTitle(isDsoMode);
+
+    // Add click handler
+    toggle.addEventListener('click', () => {
+        const isCurrentlyEnabled = toggle.classList.contains('active');
+        const newState = !isCurrentlyEnabled;
+        
+        if (newState) {
+            // Enable DSO Mode
+            toggle.classList.add('active');
+            console.log('🎯 DSO Mode enabled');
+        } else {
+            // Disable DSO Mode
+            toggle.classList.remove('active');
+            console.log('🎯 DSO Mode disabled');
+        }
+        
+        // Save to localStorage
+        setDsoModeEnabled(newState);
+        
+        // Update section title
+        updatePipelineSectionTitle(newState);
+        
+        // Notify caller to reload data
+        if (onToggle) {
+            onToggle(newState);
+        }
+    });
+}
+
+/**
  * Initialize all header toggles
  * Call this from DashboardApp.init()
+ * @param {Function} onDsoModeToggle - Callback invoked whenever the DSO Mode toggle is clicked.
+ *     Receives a single boolean argument representing the new DSO Mode state (true when enabled).
  */
-export function initHeaderToggles() {
+export function initHeaderToggles(onDsoModeToggle) {
     checkDensityMode();
     setupDensityToggle();
+    setupDsoModeToggle(onDsoModeToggle);
 }
