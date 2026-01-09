@@ -825,6 +825,45 @@ body {
     color: var(--accent-warning);
 }
 
+/* Failure Domain Badges - Shows failure classification in pipeline table */
+.failure-domain-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem 0.5rem;
+    margin-left: 0.4rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    cursor: help;
+    border: 1px solid transparent;
+}
+
+/* Infrastructure failure badge - red/critical styling */
+.failure-domain-badge--infra {
+    background: rgba(220, 38, 38, 0.15);
+    color: #dc2626;
+    border-color: rgba(220, 38, 38, 0.3);
+}
+
+/* Unknown (verified) badge - blue/info styling to show it was analyzed */
+.failure-domain-badge--unknown-verified {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--accent-info);
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+/* Code failure badge - subdued yellow/warning styling */
+.failure-domain-badge--code {
+    background: rgba(245, 158, 11, 0.1);
+    color: rgba(245, 158, 11, 0.7);
+    border-color: rgba(245, 158, 11, 0.2);
+    opacity: 0.8;
+}
+
 .pipeline-table tbody tr:hover {
     background-color: rgba(255, 255, 255, 0.02);
 }
@@ -1774,6 +1813,12 @@ body.compact .pipeline-link {
 /* Compact mode DSO emphasis styles */
 body.compact .pipeline-issue-badge {
     font-size: 0.65rem;
+    margin-left: 0.25rem;
+}
+
+body.compact .failure-domain-badge {
+    font-size: 0.6rem;
+    padding: 0.15rem 0.4rem;
     margin-left: 0.25rem;
 }
 
