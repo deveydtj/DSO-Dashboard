@@ -157,7 +157,7 @@ index.html
 | `GET /api/health` | Health check and backend status |
 | `GET /api/summary` | Dashboard statistics (KPIs) |
 | `GET /api/repos` | Repository list with pipeline health metrics |
-| `GET /api/pipelines` | Recent pipeline runs (supports `?limit=`, `?status=`, `?ref=`, `?project=`) |
+| `GET /api/pipelines` | Recent pipeline runs (supports `?limit=`, `?status=`, `?ref=`, `?project=`, `?dso_only=`, `?scope=`) |
 | `GET /api/services` | External service health status |
 | `POST /api/mock/reload` | Hot-reload mock data (mock mode only) |
 

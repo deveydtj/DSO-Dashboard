@@ -1841,16 +1841,17 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                 # DSO-mode includes only:
                 # - failure_domain == 'infra' (infrastructure failures)
                 # - OR (failure_domain == 'unknown' AND classification_attempted == true) (verified unknowns)
+                # - Non-failing pipelines (no failure_domain set)
                 # Explicitly excludes:
                 # - failure_domain == 'code' (application code failures)
                 # - failure_domain == 'unclassified' (no classification attempted)
-                # - Non-failing pipelines are included (they don't have failure_domain set)
                 if dso_only:
                     failure_domain = pipeline.get('failure_domain')
                     classification_attempted = pipeline.get('classification_attempted')
                     
                     # If pipeline has a failure_domain, apply DSO filtering rules
-                    if failure_domain is not None:
+                    # Handle both None and empty string cases
+                    if failure_domain:
                         # Exclude code failures and unclassified failures
                         if failure_domain == 'code':
                             continue
