@@ -66,6 +66,38 @@ function createIssueBadges(hasRunnerIssues, hasFailingJobs, isDefaultBranch) {
 }
 
 /**
+ * Create failure domain badge for pipeline classification
+ * Shows classification of pipeline failures: infra vs unknown vs code
+ * @param {string|null} failureDomain - Failure domain: 'infra', 'code', 'unknown', 'unclassified', or null
+ * @param {boolean|null} classificationAttempted - Whether classification was attempted
+ * @returns {string} - HTML string for badge (empty if no badge needed)
+ */
+export function createFailureDomainBadge(failureDomain, classificationAttempted) {
+    // No badge for non-failing pipelines or unclassified failures
+    if (!failureDomain || failureDomain === 'unclassified') {
+        return '';
+    }
+    
+    // Infrastructure failure - show "Infra" badge
+    if (failureDomain === 'infra') {
+        return '<span class="failure-domain-badge failure-domain-badge--infra" title="Infrastructure failure detected" aria-label="Infrastructure failure">Infra</span>';
+    }
+    
+    // Unknown failure with verification - show "Unknown (verified)" badge
+    if (failureDomain === 'unknown' && classificationAttempted === true) {
+        return '<span class="failure-domain-badge failure-domain-badge--unknown-verified" title="Unknown failure cause (classification attempted and verified)" aria-label="Unknown verified failure">Unknown (verified)</span>';
+    }
+    
+    // Code failure - show "Code" badge with subdued styling
+    if (failureDomain === 'code') {
+        return '<span class="failure-domain-badge failure-domain-badge--code" title="Application code failure detected" aria-label="Code failure">Code</span>';
+    }
+    
+    // Default: no badge for other cases
+    return '';
+}
+
+/**
  * Create HTML for a single pipeline table row
  * @param {Object} pipeline - Pipeline data
  * @returns {string} - HTML string for the table row
@@ -92,6 +124,12 @@ export function createPipelineRow(pipeline) {
     // Create issue badges if applicable
     const issueBadges = createIssueBadges(hasRunnerIssues, hasFailingJobs, isDefaultBranch);
     
+    // Create failure domain badge for failing pipelines
+    const failureDomainBadge = createFailureDomainBadge(
+        pipeline.failure_domain || null,
+        pipeline.classification_attempted || null
+    );
+    
     // Project name styling: bold for default branch
     const projectNameClass = isDefaultBranch ? 'pipeline-project-name default-branch' : 'pipeline-project-name';
     
@@ -103,6 +141,7 @@ export function createPipelineRow(pipeline) {
             <td>
                 <span class="pipeline-status ${normalizedStatus}" title="Raw status: ${escapeHtml(status)}">${escapeHtml(status)}</span>
                 ${issueBadges}
+                ${failureDomainBadge}
             </td>
             <td><span class="${projectNameClass}">${escapeHtml(pipeline.project_name)}</span></td>
             <td><span class="${refClass}">${escapeHtml(pipeline.ref || '--')}</span></td>
