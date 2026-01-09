@@ -1842,19 +1842,25 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             # Job analytics are keyed by project_id (as strings or ints in JSON)
             if 'job_analytics' in mock_data and mock_data['job_analytics']:
                 job_analytics_data = {}
+                job_analytics_timestamps = {}
                 # Convert project_id keys to integers for consistency
                 for project_id_str, analytics in mock_data['job_analytics'].items():
                     try:
                         project_id = int(project_id_str)
                         job_analytics_data[project_id] = analytics
-                        # Also update per-project timestamps
-                        with STATE_LOCK:
-                            STATE['job_analytics_last_updated'][project_id] = datetime.now()
+                        # Collect timestamps to update after state update
+                        job_analytics_timestamps[project_id] = datetime.now()
                     except (ValueError, TypeError):
                         logger.warning(f"Skipping invalid project_id in job_analytics: {project_id_str}")
                 
                 state_updates['job_analytics'] = job_analytics_data
                 logger.info(f"Reloaded job analytics for {len(job_analytics_data)} project(s)")
+                
+                # Update timestamps after state update (to avoid nested locking)
+                # This must be done separately since update_state_atomic doesn't handle timestamps dict
+                with STATE_LOCK:
+                    for project_id, timestamp in job_analytics_timestamps.items():
+                        STATE['job_analytics_last_updated'][project_id] = timestamp
             
             # Atomically update STATE with new mock data
             update_state_atomic(state_updates)
@@ -2094,19 +2100,25 @@ def main():
         # Job analytics are keyed by project_id (as strings or ints in JSON)
         if 'job_analytics' in mock_data and mock_data['job_analytics']:
             job_analytics_data = {}
+            job_analytics_timestamps = {}
             # Convert project_id keys to integers for consistency
             for project_id_str, analytics in mock_data['job_analytics'].items():
                 try:
                     project_id = int(project_id_str)
                     job_analytics_data[project_id] = analytics
-                    # Also update per-project timestamps
-                    with STATE_LOCK:
-                        STATE['job_analytics_last_updated'][project_id] = datetime.now()
+                    # Collect timestamps to update after state update
+                    job_analytics_timestamps[project_id] = datetime.now()
                 except (ValueError, TypeError):
                     logger.warning(f"Skipping invalid project_id in job_analytics: {project_id_str}")
             
             state_updates['job_analytics'] = job_analytics_data
             logger.info(f"Loaded job analytics for {len(job_analytics_data)} project(s)")
+            
+            # Update timestamps after state update (to avoid nested locking)
+            # This must be done separately since update_state_atomic doesn't handle timestamps dict
+            with STATE_LOCK:
+                for project_id, timestamp in job_analytics_timestamps.items():
+                    STATE['job_analytics_last_updated'][project_id] = timestamp
         
         update_state_atomic(state_updates)
         logger.info("Mock data loaded into STATE successfully")
