@@ -1809,7 +1809,7 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
                         }
             
             # Format and filter pipeline data
-            # Apply filters in order: user filters (status, ref, project) -> DSO filter -> limit
+            # Apply filters in order: user filters (status, ref, project) -> scope -> DSO -> limit
             filtered_pipelines = []
             for pipeline in pipelines:
                 # Apply user filters first
