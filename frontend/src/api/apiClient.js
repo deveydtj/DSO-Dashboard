@@ -65,11 +65,15 @@ export async function fetchRepos(apiBase, timeoutMs = DEFAULT_TIMEOUT) {
  * Fetch pipelines from the API
  * @param {string} apiBase - Base URL for API (e.g., window.location.origin)
  * @param {number} [timeoutMs] - Optional timeout in milliseconds
+ * @param {boolean} [dsoOnly=false] - Optional flag to filter DSO-relevant pipelines only
  * @returns {Promise<Object>} - Pipeline data with pipelines array
  * @throws {Error} - Throws on network or HTTP errors
  */
-export async function fetchPipelines(apiBase, timeoutMs = DEFAULT_TIMEOUT) {
-    const response = await fetchWithTimeout(`${apiBase}/api/pipelines`, timeoutMs);
+export async function fetchPipelines(apiBase, timeoutMs = DEFAULT_TIMEOUT, dsoOnly = false) {
+    const url = dsoOnly 
+        ? `${apiBase}/api/pipelines?dso_only=true`
+        : `${apiBase}/api/pipelines?dso_only=false`;
+    const response = await fetchWithTimeout(url, timeoutMs);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return response.json();
 }
