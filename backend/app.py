@@ -2235,9 +2235,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError) as e:
             # Client disconnected mid-response - log at debug level to avoid noise
             # Note: These are specific network-related OSError subclasses that represent
-            # normal client disconnects. Other OSError subclasses (for example,
-            # FileNotFoundError, PermissionError, or generic OSError/IOError) will fall
-            # through to the general Exception handler below and be treated as unexpected.
+            # normal client disconnects. Other OSError subclasses (like FileNotFoundError,
+            # PermissionError) or other exception types (like IOError) will be caught by
+            # the general Exception handler below and treated as unexpected.
             logger.debug(f"Client disconnected during response write: {type(e).__name__}")
             # Return early without raising - connection is already closed
             return

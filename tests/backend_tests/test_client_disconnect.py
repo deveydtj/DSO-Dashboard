@@ -127,6 +127,26 @@ class TestClientDisconnectHandling(unittest.TestCase):
             log_message = mock_log.call_args[0][0]
             self.assertIn('Error writing JSON response', log_message)
     
+    def test_non_oserror_exception_handled(self):
+        """Test that non-OSError exceptions are caught and logged at warning level"""
+        # Create a mock wfile that raises a non-OSError exception
+        mock_wfile = MagicMock()
+        mock_wfile.write.side_effect = ValueError("Unexpected value error")
+        self.handler.wfile = mock_wfile
+        
+        # Call send_json_response - should not raise
+        with patch.object(server.logger, 'warning') as mock_log:
+            server.DashboardRequestHandler.send_json_response(
+                self.handler,
+                {'test': 'data'}
+            )
+            
+            # Verify warning log was called (not debug)
+            mock_log.assert_called_once()
+            log_message = mock_log.call_args[0][0]
+            self.assertIn('Error writing JSON response', log_message)
+            self.assertIn('ValueError', log_message)
+    
     def test_headers_sent_before_disconnect(self):
         """Test that headers are sent even if write fails"""
         # Create a mock wfile that raises error on write
