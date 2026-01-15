@@ -7,6 +7,7 @@ import unittest
 import sys
 import os
 import io
+import json
 from unittest.mock import MagicMock, patch
 
 # Add parent directory to path to import backend
@@ -31,16 +32,21 @@ class TestClientDisconnectHandling(unittest.TestCase):
         self.handler.wfile = io.BytesIO()
         
         # Call send_json_response
+        test_data = {'status': 'ok', 'message': 'test'}
         server.DashboardRequestHandler.send_json_response(
             self.handler, 
-            {'status': 'ok', 'message': 'test'}
+            test_data
         )
         
-        # Verify data was written
+        # Verify data was written and is valid JSON
         written_data = self.handler.wfile.getvalue()
         self.assertGreater(len(written_data), 0)
-        self.assertIn(b'status', written_data)
-        self.assertIn(b'ok', written_data)
+        
+        # Parse the JSON to ensure it's valid and matches expected structure
+        parsed_data = json.loads(written_data.decode('utf-8'))
+        self.assertEqual(parsed_data['status'], 'ok')
+        self.assertEqual(parsed_data['message'], 'test')
+        self.assertEqual(parsed_data, test_data)
     
     def test_connection_aborted_error_handled(self):
         """Test that ConnectionAbortedError is caught and logged"""
