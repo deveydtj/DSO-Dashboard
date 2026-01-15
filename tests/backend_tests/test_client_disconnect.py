@@ -109,10 +109,11 @@ class TestClientDisconnectHandling(unittest.TestCase):
             self.assertIn('BrokenPipeError', log_message)
     
     def test_unexpected_write_error_handled(self):
-        """Test that unexpected write errors are caught and logged at warning level"""
-        # Create a mock wfile that raises an unexpected error
+        """Test that unexpected OSError-based write errors are caught and logged at warning level"""
+        # Create a mock wfile that raises an unexpected OSError
+        # Note: In Python 3, IOError is an alias for OSError
         mock_wfile = MagicMock()
-        mock_wfile.write.side_effect = IOError("Unexpected IO error")
+        mock_wfile.write.side_effect = OSError("Unexpected OS error")
         self.handler.wfile = mock_wfile
         
         # Call send_json_response - should not raise
