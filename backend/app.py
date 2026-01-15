@@ -2234,6 +2234,9 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(data, indent=2).encode('utf-8'))
         except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError) as e:
             # Client disconnected mid-response - log at debug level to avoid noise
+            # Note: These are all OSError subclasses. Catching them explicitly provides
+            # clear intent and avoids catching other OSError types (like IOError) that
+            # should be treated as unexpected errors.
             logger.debug(f"Client disconnected during response write: {type(e).__name__}")
             # Return early without raising - connection is already closed
             return
