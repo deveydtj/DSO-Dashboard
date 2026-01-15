@@ -2217,14 +2217,31 @@ class DashboardRequestHandler(SimpleHTTPRequestHandler):
             self.send_json_response({'error': str(e)}, status=500)
     
     def send_json_response(self, data, status=200):
-        """Send JSON response with security headers"""
+        """Send JSON response with security headers
+        
+        Handles client disconnects gracefully to avoid noisy tracebacks when
+        clients close the connection mid-response.
+        """
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Cache-Control', 'no-store, max-age=0')
         self.send_header('X-Content-Type-Options', 'nosniff')
         self.end_headers()
-        self.wfile.write(json.dumps(data, indent=2).encode('utf-8'))
+        
+        # Write response with safe handling of client disconnects
+        try:
+            self.wfile.write(json.dumps(data, indent=2).encode('utf-8'))
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError) as e:
+            # Client disconnected mid-response - log at debug level to avoid noise
+            logger.debug(f"Client disconnected during response write: {type(e).__name__}")
+            # Return early without raising - connection is already closed
+            return
+        except Exception as e:
+            # Unexpected write error - log at warning level for visibility
+            logger.warning(f"Error writing JSON response: {type(e).__name__}: {e}")
+            # Don't raise - response is already in progress
+            return
     
     def log_message(self, format, *args):
         """Override to use logger with enhanced context
