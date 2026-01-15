@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""
+Tests for handling client disconnect errors during JSON response writes
+"""
+
+import unittest
+import sys
+import os
+import io
+import json
+from unittest.mock import MagicMock, patch
+
+# Add parent directory to path to import backend
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+
+from backend import app as server
+
+
+class TestClientDisconnectHandling(unittest.TestCase):
+    """Test that send_json_response handles client disconnects gracefully"""
+    
+    def setUp(self):
+        """Set up a mock request handler"""
+        self.handler = MagicMock(spec=server.DashboardRequestHandler)
+        self.handler.send_response = MagicMock()
+        self.handler.send_header = MagicMock()
+        self.handler.end_headers = MagicMock()
+        
+    def test_normal_response_succeeds(self):
+        """Test that normal response writing still works"""
+        # Create a mock wfile that accepts writes
+        self.handler.wfile = io.BytesIO()
+        
+        # Call send_json_response
+        test_data = {'status': 'ok', 'message': 'test'}
+        server.DashboardRequestHandler.send_json_response(
+            self.handler, 
+            test_data
+        )
+        
+        # Verify data was written and is valid JSON
+        written_data = self.handler.wfile.getvalue()
+        self.assertGreater(len(written_data), 0)
+        
+        # Parse the JSON to ensure it's valid and matches expected structure
+        parsed_data = json.loads(written_data.decode('utf-8'))
+        self.assertEqual(parsed_data['status'], 'ok')
+        self.assertEqual(parsed_data['message'], 'test')
+        self.assertEqual(parsed_data, test_data)
+    
+    def test_connection_aborted_error_handled(self):
+        """Test that ConnectionAbortedError is caught and logged"""
+        # Create a mock wfile that raises ConnectionAbortedError
+        mock_wfile = MagicMock()
+        mock_wfile.write.side_effect = ConnectionAbortedError("Client closed connection")
+        self.handler.wfile = mock_wfile
+        
+        # Call send_json_response - should not raise
+        with patch.object(server.logger, 'debug') as mock_log:
+            server.DashboardRequestHandler.send_json_response(
+                self.handler,
+                {'test': 'data'}
+            )
+            
+            # Verify debug log was called (not warning or error)
+            mock_log.assert_called_once()
+            log_message = mock_log.call_args[0][0]
+            self.assertIn('Client disconnected', log_message)
+            self.assertIn('ConnectionAbortedError', log_message)
+    
+    def test_connection_reset_error_handled(self):
+        """Test that ConnectionResetError is caught and logged"""
+        # Create a mock wfile that raises ConnectionResetError
+        mock_wfile = MagicMock()
+        mock_wfile.write.side_effect = ConnectionResetError("Connection reset by peer")
+        self.handler.wfile = mock_wfile
+        
+        # Call send_json_response - should not raise
+        with patch.object(server.logger, 'debug') as mock_log:
+            server.DashboardRequestHandler.send_json_response(
+                self.handler,
+                {'test': 'data'}
+            )
+            
+            # Verify debug log was called
+            mock_log.assert_called_once()
+            log_message = mock_log.call_args[0][0]
+            self.assertIn('Client disconnected', log_message)
+            self.assertIn('ConnectionResetError', log_message)
+    
+    def test_broken_pipe_error_handled(self):
+        """Test that BrokenPipeError is caught and logged"""
+        # Create a mock wfile that raises BrokenPipeError
+        mock_wfile = MagicMock()
+        mock_wfile.write.side_effect = BrokenPipeError("Broken pipe")
+        self.handler.wfile = mock_wfile
+        
+        # Call send_json_response - should not raise
+        with patch.object(server.logger, 'debug') as mock_log:
+            server.DashboardRequestHandler.send_json_response(
+                self.handler,
+                {'test': 'data'}
+            )
+            
+            # Verify debug log was called
+            mock_log.assert_called_once()
+            log_message = mock_log.call_args[0][0]
+            self.assertIn('Client disconnected', log_message)
+            self.assertIn('BrokenPipeError', log_message)
+    
+    def test_unexpected_write_error_handled(self):
+        """Test that unexpected OSError-based write errors are caught and logged at warning level"""
+        # Create a mock wfile that raises an unexpected OSError
+        # Note: In Python 3, IOError is an alias for OSError
+        mock_wfile = MagicMock()
+        mock_wfile.write.side_effect = OSError("Unexpected OS error")
+        self.handler.wfile = mock_wfile
+        
+        # Call send_json_response - should not raise
+        with patch.object(server.logger, 'warning') as mock_log:
+            server.DashboardRequestHandler.send_json_response(
+                self.handler,
+                {'test': 'data'}
+            )
+            
+            # Verify warning log was called (not debug)
+            mock_log.assert_called_once()
+            log_message = mock_log.call_args[0][0]
+            self.assertIn('Error writing JSON response', log_message)
+    
+    def test_non_oserror_exception_handled(self):
+        """Test that non-OSError exceptions are caught and logged at warning level"""
+        # Create a mock wfile that raises a non-OSError exception
+        mock_wfile = MagicMock()
+        mock_wfile.write.side_effect = ValueError("Unexpected value error")
+        self.handler.wfile = mock_wfile
+        
+        # Call send_json_response - should not raise
+        with patch.object(server.logger, 'warning') as mock_log:
+            server.DashboardRequestHandler.send_json_response(
+                self.handler,
+                {'test': 'data'}
+            )
+            
+            # Verify warning log was called (not debug)
+            mock_log.assert_called_once()
+            log_message = mock_log.call_args[0][0]
+            self.assertIn('Error writing JSON response', log_message)
+            self.assertIn('ValueError', log_message)
+    
+    def test_headers_sent_before_disconnect(self):
+        """Test that headers are sent even if write fails"""
+        # Create a mock wfile that raises error on write
+        mock_wfile = MagicMock()
+        mock_wfile.write.side_effect = ConnectionAbortedError("Client closed")
+        self.handler.wfile = mock_wfile
+        
+        # Call send_json_response
+        with patch.object(server.logger, 'debug'):
+            server.DashboardRequestHandler.send_json_response(
+                self.handler,
+                {'test': 'data'},
+                status=200
+            )
+        
+        # Verify send_response and headers were called before the write
+        self.handler.send_response.assert_called_once_with(200)
+        self.handler.send_header.assert_called()
+        self.handler.end_headers.assert_called_once()
+
+
+if __name__ == '__main__':
+    unittest.main()
