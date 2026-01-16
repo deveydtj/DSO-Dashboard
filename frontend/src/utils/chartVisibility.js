@@ -15,6 +15,11 @@ const DEFAULT_VISIBILITY = {
  * @returns {Object} - Visibility state object
  */
 export function getVisibility() {
+    // Check if localStorage is available
+    if (typeof localStorage === 'undefined') {
+        return { ...DEFAULT_VISIBILITY };
+    }
+    
     try {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
