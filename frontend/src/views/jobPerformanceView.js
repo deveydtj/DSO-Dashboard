@@ -117,15 +117,15 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
             <div class="chart-controls">
                 <span class="chart-controls-label">Show:</span>
                 <label class="chart-control">
-                    <input type="checkbox" id="toggleAvg" ${visibility.avg ? 'checked' : ''}>
+                    <input type="checkbox" id="toggleAvg" aria-label="Show average duration line" ${visibility.avg ? 'checked' : ''}>
                     <span>Avg</span>
                 </label>
                 <label class="chart-control">
-                    <input type="checkbox" id="toggleP95" ${visibility.p95 ? 'checked' : ''}>
+                    <input type="checkbox" id="toggleP95" aria-label="Show P95 duration line" ${visibility.p95 ? 'checked' : ''}>
                     <span>P95</span>
                 </label>
                 <label class="chart-control">
-                    <input type="checkbox" id="toggleP99" ${visibility.p99 ? 'checked' : ''}>
+                    <input type="checkbox" id="toggleP99" aria-label="Show P99 duration line" ${visibility.p99 ? 'checked' : ''}>
                     <span>P99</span>
                 </label>
             </div>

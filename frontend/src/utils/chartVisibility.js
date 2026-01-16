@@ -35,6 +35,11 @@ export function getVisibility() {
  * @param {Object} visibility - Visibility state object
  */
 export function setVisibility(visibility) {
+    // Check if localStorage is available
+    if (typeof localStorage === 'undefined') {
+        return;
+    }
+    
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(visibility));
     } catch (error) {
