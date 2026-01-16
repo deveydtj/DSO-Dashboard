@@ -390,17 +390,8 @@ export function cleanupJobPerformanceModal() {
                 }
             }
         });
-    }
-    
-    // Hide tooltip
-    const tooltip = document.getElementById('chartTooltip');
-    if (tooltip) {
-        tooltip.style.display = 'none';
-    }
-    
-    // Clean up error timeouts
-    const modal = document.getElementById('jobPerformanceModal');
-    if (modal) {
+        
+        // Clean up error timeouts
         const errorTimeout = errorTimeouts.get(modal);
         if (errorTimeout) {
             clearTimeout(errorTimeout);
@@ -416,6 +407,12 @@ export function cleanupJobPerformanceModal() {
                 refreshButtonHandlers.delete(refreshBtn);
             }
         }
+    }
+    
+    // Hide tooltip
+    const tooltip = document.getElementById('chartTooltip');
+    if (tooltip) {
+        tooltip.style.display = 'none';
     }
 }
 
