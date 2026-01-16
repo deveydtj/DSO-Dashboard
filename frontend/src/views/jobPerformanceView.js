@@ -6,6 +6,7 @@ import { openModal, setModalContent, setModalLoading } from '../utils/modal.js';
 import { fetchJobAnalytics, refreshJobAnalytics } from '../api/apiClient.js';
 import { renderJobPerformanceChart } from '../utils/chart.js';
 import { showTooltip, hideTooltip, findNearestPoint, buildTooltipContent } from '../utils/tooltip.js';
+import { getVisibility, setVisibility, toggleMetric } from '../utils/chartVisibility.js';
 
 // HTTP status code constants
 const HTTP_NOT_FOUND = 404;
@@ -103,6 +104,9 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
         return;
     }
     
+    // Get current visibility state
+    const visibility = getVisibility();
+    
     // Render chart container with data
     const content = `
         <div class="chart-container">
@@ -110,19 +114,34 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
                 <div class="chart-title">7-Day Job Performance Trend</div>
                 ${renderRefreshButton(project.id, apiBase, '🔄 Refresh')}
             </div>
+            <div class="chart-controls">
+                <span class="chart-controls-label">Show:</span>
+                <label class="chart-control">
+                    <input type="checkbox" id="toggleAvg" ${visibility.avg ? 'checked' : ''}>
+                    <span>Avg</span>
+                </label>
+                <label class="chart-control">
+                    <input type="checkbox" id="toggleP95" ${visibility.p95 ? 'checked' : ''}>
+                    <span>P95</span>
+                </label>
+                <label class="chart-control">
+                    <input type="checkbox" id="toggleP99" ${visibility.p99 ? 'checked' : ''}>
+                    <span>P99</span>
+                </label>
+            </div>
             <div class="chart-canvas-wrapper">
                 <canvas id="jobPerformanceChart" role="img" aria-label="Job performance chart showing average, P95, and P99 job durations over 7 days"></canvas>
             </div>
             <div class="chart-legend">
-                <div class="legend-item">
+                <div class="legend-item ${visibility.avg ? '' : 'is-hidden'}" data-metric="avg">
                     <div class="legend-color legend-color--avg"></div>
                     <span>Average Duration</span>
                 </div>
-                <div class="legend-item">
+                <div class="legend-item ${visibility.p95 ? '' : 'is-hidden'}" data-metric="p95">
                     <div class="legend-color legend-color--p95"></div>
                     <span>P95 Duration</span>
                 </div>
-                <div class="legend-item">
+                <div class="legend-item ${visibility.p99 ? '' : 'is-hidden'}" data-metric="p99">
                     <div class="legend-color legend-color--p99"></div>
                     <span>P99 Duration</span>
                 </div>
@@ -145,10 +164,17 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
     
     setModalContent(modalId, content);
     
+    // Attach toggle event handlers
+    attachToggleHandlers(modalId, analytics, project, apiBase);
+    
     // Render chart on canvas
     const canvas = document.getElementById('jobPerformanceChart');
     if (canvas && analytics.data) {
-        renderJobPerformanceChart(canvas, analytics.data, { window_days: analytics.window_days || 7 });
+        const currentVisibility = getVisibility();
+        renderJobPerformanceChart(canvas, analytics.data, { 
+            window_days: analytics.window_days || 7,
+            visibility: currentVisibility
+        });
         
         // Get tooltip element
         const tooltip = document.getElementById('chartTooltip');
@@ -224,7 +250,11 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
             const timeoutId = setTimeout(() => {
                 // Check if canvas still exists before rendering
                 if (document.contains(canvas)) {
-                    renderJobPerformanceChart(canvas, analytics.data, { window_days: analytics.window_days || 7 });
+                    const currentVisibility = getVisibility();
+                    renderJobPerformanceChart(canvas, analytics.data, { 
+                        window_days: analytics.window_days || 7,
+                        visibility: currentVisibility
+                    });
                     
                     // Remove old handlers before re-attaching to prevent duplicates
                     const handlers = mouseHandlers.get(canvas);
@@ -365,6 +395,59 @@ export function cleanupJobPerformanceModal() {
                 refreshButtonHandlers.delete(refreshBtn);
             }
         }
+    }
+}
+
+/**
+ * Attach toggle event handlers for chart visibility controls
+ * @param {string} modalId - Modal element ID
+ * @param {Object} analytics - Analytics data
+ * @param {Object} project - Project object
+ * @param {string} apiBase - Base URL for API
+ */
+function attachToggleHandlers(modalId, analytics, project, apiBase) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    
+    const toggleAvg = modal.querySelector('#toggleAvg');
+    const toggleP95 = modal.querySelector('#toggleP95');
+    const toggleP99 = modal.querySelector('#toggleP99');
+    
+    const handleToggle = (metric) => {
+        // Toggle visibility state
+        const newVisibility = toggleMetric(metric);
+        
+        // Update legend items
+        const legendItems = modal.querySelectorAll('.legend-item[data-metric]');
+        legendItems.forEach(item => {
+            const itemMetric = item.getAttribute('data-metric');
+            if (itemMetric && newVisibility.hasOwnProperty(itemMetric)) {
+                if (newVisibility[itemMetric]) {
+                    item.classList.remove('is-hidden');
+                } else {
+                    item.classList.add('is-hidden');
+                }
+            }
+        });
+        
+        // Re-render chart
+        const canvas = document.getElementById('jobPerformanceChart');
+        if (canvas && analytics.data) {
+            renderJobPerformanceChart(canvas, analytics.data, {
+                window_days: analytics.window_days || 7,
+                visibility: newVisibility
+            });
+        }
+    };
+    
+    if (toggleAvg) {
+        toggleAvg.addEventListener('change', () => handleToggle('avg'));
+    }
+    if (toggleP95) {
+        toggleP95.addEventListener('change', () => handleToggle('p95'));
+    }
+    if (toggleP99) {
+        toggleP99.addEventListener('change', () => handleToggle('p99'));
     }
 }
 
