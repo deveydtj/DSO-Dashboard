@@ -91,7 +91,7 @@ export function determineDurationUnit(data) {
  * Render a line chart showing job performance trends
  * @param {HTMLCanvasElement} canvas - Canvas element to render on
  * @param {Array} data - Array of analytics data points
- * @param {Object} options - Chart options
+ * @param {Object} options - Chart options (window_days, visibility)
  */
 export function renderJobPerformanceChart(canvas, data, options = {}) {
     if (!canvas || !data || data.length === 0) {
@@ -107,6 +107,9 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
     
     // Store point coordinates for hover detection (cleared on each render)
     canvas._pointCoordinates = [];
+    
+    // Get visibility options (default: all visible)
+    const visibility = options.visibility || { avg: true, p95: true, p99: true };
     
     // Set canvas size based on container
     const container = canvas.parentElement;
@@ -291,8 +294,9 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
      * @param {boolean} isDashed - Whether to use dashed lines
      * @param {number} divisor - Scaling divisor for duration values
      * @param {Array} pointCoordinates - Array to store point coordinates for hover
+     * @param {Object} visibility - Visibility state for each metric
      */
-    const renderDurationSeries = (sourceData, colors, isDashed = false, divisor = 1, pointCoordinates = []) => {
+    const renderDurationSeries = (sourceData, colors, isDashed = false, divisor = 1, pointCoordinates = [], visibility = { avg: true, p95: true, p99: true }) => {
         if (sourceData.length === 0) return;
         
         // Prepare data series with timestamps, scaled values, and original data
@@ -313,10 +317,16 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
             ctx.setLineDash(DASH_PATTERN);
         }
         
-        // Draw lines and store coordinates
-        drawLine(avgData, colors.avg, 2, pointCoordinates);
-        drawLine(p95Data, colors.p95, 2, pointCoordinates);
-        drawLine(p99Data, colors.p99, 2, pointCoordinates);
+        // Draw lines and store coordinates only if visible
+        if (visibility.avg) {
+            drawLine(avgData, colors.avg, 2, pointCoordinates);
+        }
+        if (visibility.p95) {
+            drawLine(p95Data, colors.p95, 2, pointCoordinates);
+        }
+        if (visibility.p99) {
+            drawLine(p99Data, colors.p99, 2, pointCoordinates);
+        }
         
         // Reset dash pattern
         if (isDashed) {
@@ -332,14 +342,14 @@ export function renderJobPerformanceChart(canvas, data, options = {}) {
         avg: cssVars.accentInfo,
         p95: cssVars.accentWarning,
         p99: cssVars.accentError
-    }, false, durationScale.divisor, canvas._pointCoordinates);
+    }, false, durationScale.divisor, canvas._pointCoordinates, visibility);
     
     // Render MR lines (dashed)
     renderDurationSeries(mrData, {
         avg: cssVars.accentPrimary,
         p95: cssVars.accentWarning,
         p99: cssVars.accentError
-    }, true, durationScale.divisor, canvas._pointCoordinates);
+    }, true, durationScale.divisor, canvas._pointCoordinates, visibility);
     
     // X-axis labels (date/time) - use time-based positioning
     ctx.fillStyle = '#a0a0b0';

@@ -6,6 +6,7 @@ import { openModal, setModalContent, setModalLoading } from '../utils/modal.js';
 import { fetchJobAnalytics, refreshJobAnalytics } from '../api/apiClient.js';
 import { renderJobPerformanceChart } from '../utils/chart.js';
 import { showTooltip, hideTooltip, findNearestPoint, buildTooltipContent } from '../utils/tooltip.js';
+import { getVisibility, toggleMetric } from '../utils/chartVisibility.js';
 
 // HTTP status code constants
 const HTTP_NOT_FOUND = 404;
@@ -27,6 +28,9 @@ let resizeTimeouts = new WeakMap();
 
 // WeakMap to store mouse handlers for cleanup
 let mouseHandlers = new WeakMap();
+
+// WeakMap to store toggle handlers for cleanup
+let toggleHandlers = new WeakMap();
 
 // Flag to prevent multiple concurrent modal opens
 let isModalOpening = false;
@@ -103,6 +107,9 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
         return;
     }
     
+    // Get current visibility state
+    const visibility = getVisibility();
+    
     // Render chart container with data
     const content = `
         <div class="chart-container">
@@ -110,19 +117,34 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
                 <div class="chart-title">7-Day Job Performance Trend</div>
                 ${renderRefreshButton(project.id, apiBase, '🔄 Refresh')}
             </div>
+            <div class="chart-controls">
+                <span class="chart-controls-label">Show:</span>
+                <label class="chart-control">
+                    <input type="checkbox" id="toggleAvg" aria-label="Show average duration line" ${visibility.avg ? 'checked' : ''}>
+                    <span>Avg</span>
+                </label>
+                <label class="chart-control">
+                    <input type="checkbox" id="toggleP95" aria-label="Show P95 duration line" ${visibility.p95 ? 'checked' : ''}>
+                    <span>P95</span>
+                </label>
+                <label class="chart-control">
+                    <input type="checkbox" id="toggleP99" aria-label="Show P99 duration line" ${visibility.p99 ? 'checked' : ''}>
+                    <span>P99</span>
+                </label>
+            </div>
             <div class="chart-canvas-wrapper">
                 <canvas id="jobPerformanceChart" role="img" aria-label="Job performance chart showing average, P95, and P99 job durations over 7 days"></canvas>
             </div>
             <div class="chart-legend">
-                <div class="legend-item">
+                <div class="legend-item ${visibility.avg ? '' : 'is-hidden'}" data-metric="avg">
                     <div class="legend-color legend-color--avg"></div>
                     <span>Average Duration</span>
                 </div>
-                <div class="legend-item">
+                <div class="legend-item ${visibility.p95 ? '' : 'is-hidden'}" data-metric="p95">
                     <div class="legend-color legend-color--p95"></div>
                     <span>P95 Duration</span>
                 </div>
-                <div class="legend-item">
+                <div class="legend-item ${visibility.p99 ? '' : 'is-hidden'}" data-metric="p99">
                     <div class="legend-color legend-color--p99"></div>
                     <span>P99 Duration</span>
                 </div>
@@ -145,10 +167,17 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
     
     setModalContent(modalId, content);
     
+    // Attach toggle event handlers
+    attachToggleHandlers(modalId, analytics, project, apiBase);
+    
     // Render chart on canvas
     const canvas = document.getElementById('jobPerformanceChart');
     if (canvas && analytics.data) {
-        renderJobPerformanceChart(canvas, analytics.data, { window_days: analytics.window_days || 7 });
+        const currentVisibility = getVisibility();
+        renderJobPerformanceChart(canvas, analytics.data, { 
+            window_days: analytics.window_days || 7,
+            visibility: currentVisibility
+        });
         
         // Get tooltip element
         const tooltip = document.getElementById('chartTooltip');
@@ -224,7 +253,11 @@ function renderJobAnalytics(modalId, analytics, project, apiBase) {
             const timeoutId = setTimeout(() => {
                 // Check if canvas still exists before rendering
                 if (document.contains(canvas)) {
-                    renderJobPerformanceChart(canvas, analytics.data, { window_days: analytics.window_days || 7 });
+                    const currentVisibility = getVisibility();
+                    renderJobPerformanceChart(canvas, analytics.data, { 
+                        window_days: analytics.window_days || 7,
+                        visibility: currentVisibility
+                    });
                     
                     // Remove old handlers before re-attaching to prevent duplicates
                     const handlers = mouseHandlers.get(canvas);
@@ -341,15 +374,24 @@ export function cleanupJobPerformanceModal() {
         }
     }
     
-    // Hide tooltip
-    const tooltip = document.getElementById('chartTooltip');
-    if (tooltip) {
-        tooltip.style.display = 'none';
-    }
-    
-    // Clean up error timeouts
+    // Clean up toggle handlers
     const modal = document.getElementById('jobPerformanceModal');
     if (modal) {
+        const toggleAvg = modal.querySelector('#toggleAvg');
+        const toggleP95 = modal.querySelector('#toggleP95');
+        const toggleP99 = modal.querySelector('#toggleP99');
+        
+        [toggleAvg, toggleP95, toggleP99].forEach(toggle => {
+            if (toggle) {
+                const handler = toggleHandlers.get(toggle);
+                if (handler) {
+                    toggle.removeEventListener('change', handler);
+                    toggleHandlers.delete(toggle);
+                }
+            }
+        });
+        
+        // Clean up error timeouts
         const errorTimeout = errorTimeouts.get(modal);
         if (errorTimeout) {
             clearTimeout(errorTimeout);
@@ -365,6 +407,84 @@ export function cleanupJobPerformanceModal() {
                 refreshButtonHandlers.delete(refreshBtn);
             }
         }
+    }
+    
+    // Hide tooltip
+    const tooltip = document.getElementById('chartTooltip');
+    if (tooltip) {
+        tooltip.style.display = 'none';
+    }
+}
+
+/**
+ * Attach toggle event handlers for chart visibility controls
+ * @param {string} modalId - Modal element ID
+ * @param {Object} analytics - Analytics data
+ * @param {Object} project - Project object
+ * @param {string} apiBase - Base URL for API
+ */
+function attachToggleHandlers(modalId, analytics, project, apiBase) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    
+    const toggleAvg = modal.querySelector('#toggleAvg');
+    const toggleP95 = modal.querySelector('#toggleP95');
+    const toggleP99 = modal.querySelector('#toggleP99');
+    
+    const handleToggle = (metric) => {
+        // Toggle visibility state
+        const newVisibility = toggleMetric(metric);
+        
+        // Update legend items
+        const legendItems = modal.querySelectorAll('.legend-item[data-metric]');
+        legendItems.forEach(item => {
+            const itemMetric = item.getAttribute('data-metric');
+            if (itemMetric && Object.prototype.hasOwnProperty.call(newVisibility, itemMetric)) {
+                if (newVisibility[itemMetric]) {
+                    item.classList.remove('is-hidden');
+                } else {
+                    item.classList.add('is-hidden');
+                }
+            }
+        });
+        
+        // Re-render chart
+        const canvas = document.getElementById('jobPerformanceChart');
+        if (canvas && analytics.data) {
+            renderJobPerformanceChart(canvas, analytics.data, {
+                window_days: analytics.window_days || 7,
+                visibility: newVisibility
+            });
+        }
+    };
+    
+    // Clean up old handlers and attach new ones
+    if (toggleAvg) {
+        const oldHandler = toggleHandlers.get(toggleAvg);
+        if (oldHandler) {
+            toggleAvg.removeEventListener('change', oldHandler);
+        }
+        const avgHandler = () => handleToggle('avg');
+        toggleAvg.addEventListener('change', avgHandler);
+        toggleHandlers.set(toggleAvg, avgHandler);
+    }
+    if (toggleP95) {
+        const oldHandler = toggleHandlers.get(toggleP95);
+        if (oldHandler) {
+            toggleP95.removeEventListener('change', oldHandler);
+        }
+        const p95Handler = () => handleToggle('p95');
+        toggleP95.addEventListener('change', p95Handler);
+        toggleHandlers.set(toggleP95, p95Handler);
+    }
+    if (toggleP99) {
+        const oldHandler = toggleHandlers.get(toggleP99);
+        if (oldHandler) {
+            toggleP99.removeEventListener('change', oldHandler);
+        }
+        const p99Handler = () => handleToggle('p99');
+        toggleP99.addEventListener('change', p99Handler);
+        toggleHandlers.set(toggleP99, p99Handler);
     }
 }
 

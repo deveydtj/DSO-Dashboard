@@ -2166,6 +2166,46 @@ body.compact .sparkline--repo .sparkline-bar--pipeline {
     max-height: 100%;
 }
 
+/* Chart visibility controls */
+.chart-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm);
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: var(--radius-sm);
+}
+
+.chart-controls-label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-right: 0.25rem;
+}
+
+.chart-control {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    transition: color 0.2s ease;
+}
+
+.chart-control:hover {
+    color: var(--text-primary);
+}
+
+.chart-control input[type="checkbox"] {
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent-primary);
+}
+
 /* Chart legend */
 .chart-legend {
     display: flex;
@@ -2182,6 +2222,11 @@ body.compact .sparkline--repo .sparkline-bar--pipeline {
     gap: 0.5rem;
     font-size: 0.9rem;
     color: var(--text-secondary);
+    transition: opacity 0.2s ease;
+}
+
+.legend-item.is-hidden {
+    opacity: 0.4;
 }
 
 .legend-color {
