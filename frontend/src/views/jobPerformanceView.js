@@ -6,7 +6,7 @@ import { openModal, setModalContent, setModalLoading } from '../utils/modal.js';
 import { fetchJobAnalytics, refreshJobAnalytics } from '../api/apiClient.js';
 import { renderJobPerformanceChart } from '../utils/chart.js';
 import { showTooltip, hideTooltip, findNearestPoint, buildTooltipContent } from '../utils/tooltip.js';
-import { getVisibility, setVisibility, toggleMetric } from '../utils/chartVisibility.js';
+import { getVisibility, toggleMetric } from '../utils/chartVisibility.js';
 
 // HTTP status code constants
 const HTTP_NOT_FOUND = 404;
