@@ -29,6 +29,9 @@ let resizeTimeouts = new WeakMap();
 // WeakMap to store mouse handlers for cleanup
 let mouseHandlers = new WeakMap();
 
+// WeakMap to store toggle handlers for cleanup
+let toggleHandlers = new WeakMap();
+
 // Flag to prevent multiple concurrent modal opens
 let isModalOpening = false;
 
@@ -371,6 +374,24 @@ export function cleanupJobPerformanceModal() {
         }
     }
     
+    // Clean up toggle handlers
+    const modal = document.getElementById('jobPerformanceModal');
+    if (modal) {
+        const toggleAvg = modal.querySelector('#toggleAvg');
+        const toggleP95 = modal.querySelector('#toggleP95');
+        const toggleP99 = modal.querySelector('#toggleP99');
+        
+        [toggleAvg, toggleP95, toggleP99].forEach(toggle => {
+            if (toggle) {
+                const handler = toggleHandlers.get(toggle);
+                if (handler) {
+                    toggle.removeEventListener('change', handler);
+                    toggleHandlers.delete(toggle);
+                }
+            }
+        });
+    }
+    
     // Hide tooltip
     const tooltip = document.getElementById('chartTooltip');
     if (tooltip) {
@@ -421,7 +442,7 @@ function attachToggleHandlers(modalId, analytics, project, apiBase) {
         const legendItems = modal.querySelectorAll('.legend-item[data-metric]');
         legendItems.forEach(item => {
             const itemMetric = item.getAttribute('data-metric');
-            if (itemMetric && newVisibility.hasOwnProperty(itemMetric)) {
+            if (itemMetric && Object.prototype.hasOwnProperty.call(newVisibility, itemMetric)) {
                 if (newVisibility[itemMetric]) {
                     item.classList.remove('is-hidden');
                 } else {
@@ -440,14 +461,33 @@ function attachToggleHandlers(modalId, analytics, project, apiBase) {
         }
     };
     
+    // Clean up old handlers and attach new ones
     if (toggleAvg) {
-        toggleAvg.addEventListener('change', () => handleToggle('avg'));
+        const oldHandler = toggleHandlers.get(toggleAvg);
+        if (oldHandler) {
+            toggleAvg.removeEventListener('change', oldHandler);
+        }
+        const avgHandler = () => handleToggle('avg');
+        toggleAvg.addEventListener('change', avgHandler);
+        toggleHandlers.set(toggleAvg, avgHandler);
     }
     if (toggleP95) {
-        toggleP95.addEventListener('change', () => handleToggle('p95'));
+        const oldHandler = toggleHandlers.get(toggleP95);
+        if (oldHandler) {
+            toggleP95.removeEventListener('change', oldHandler);
+        }
+        const p95Handler = () => handleToggle('p95');
+        toggleP95.addEventListener('change', p95Handler);
+        toggleHandlers.set(toggleP95, p95Handler);
     }
     if (toggleP99) {
-        toggleP99.addEventListener('change', () => handleToggle('p99'));
+        const oldHandler = toggleHandlers.get(toggleP99);
+        if (oldHandler) {
+            toggleP99.removeEventListener('change', oldHandler);
+        }
+        const p99Handler = () => handleToggle('p99');
+        toggleP99.addEventListener('change', p99Handler);
+        toggleHandlers.set(toggleP99, p99Handler);
     }
 }
 

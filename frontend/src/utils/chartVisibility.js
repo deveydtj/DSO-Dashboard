@@ -55,7 +55,7 @@ export function setVisibility(visibility) {
 export function toggleMetric(metric) {
     const visibility = getVisibility();
     
-    if (visibility.hasOwnProperty(metric)) {
+    if (Object.prototype.hasOwnProperty.call(visibility, metric)) {
         visibility[metric] = !visibility[metric];
         setVisibility(visibility);
     }
